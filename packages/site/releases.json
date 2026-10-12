@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.5.3",
+      "date": "2026-10-12",
+      "title": "Housekeeping: the plugin has its own repository",
+      "items": [
+        "The plugin's GitHub repository now holds only the plugin, so Obsidian's review covers exactly the code you install. The website and hub moved to their own repository.",
+        "No change to the plugin or your page."
+      ],
+      "howto": "Nothing to do."
+    },
+    {
       "version": "0.5.2",
       "date": "2026-10-12",
       "title": "Under the hood: cleaner code for Obsidian's plugin review",
