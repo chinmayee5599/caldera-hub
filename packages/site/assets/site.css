@@ -222,3 +222,7 @@ section h2 { line-height: 1.12; }
 .learn-item:hover { text-decoration: none; border-color: var(--accent); }
 .learn-item b { color: var(--text-strong); font-size: 17px; }
 .learn-item span { color: var(--text-muted); font-size: 14.5px; }
+
+.invited-garden { margin-top: 6px; font-size: 14px; line-height: 1.5; }
+.invited-garden a { white-space: nowrap; }
+.invited-garden .all { margin-left: 2px; }

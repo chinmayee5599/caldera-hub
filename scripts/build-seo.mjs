@@ -93,11 +93,13 @@ const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-Se
 write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 write("llms.txt", `# Caldera
 
-> Caldera is a free, open-source Obsidian plugin and open protocol: the social layer for Obsidian. It turns a notes vault into a living public profile that updates itself, and lets vaults befriend each other, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is a free, open-source Obsidian plugin and open protocol: the social layer for Obsidian. It turns a notes vault into a living public profile that updates itself and a digital garden of notes grown in public (seedling, budding, evergreen; a license per note; links between gardens with backlinks on both sides), and lets vaults befriend each other, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
 - Install: copy one prompt into Claude Code, Codex or Cursor (it installs Obsidian if needed, then Caldera): ${SITE}/#install
 - Example profile: ${SITE}/@mike/
 - Directory of people: ${SITE}/people
+- Recently tended gardens: ${SITE}/gardens
+- Example garden: ${SITE}/@mike/garden.html
 - Source (MIT plugin, AGPL hub): https://github.com/schoettle-cmd/caldera
 
 ## Guides

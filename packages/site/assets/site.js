@@ -30,6 +30,23 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     var av = p.manifest && p.manifest.body && p.manifest.body.photos && p.manifest.body.photos.avatar;
     var img = document.getElementById("invited-av");
     if (av) img.src = "@" + h + "/" + String(av).replace(/^\.?\//, ""); else img.remove();
+    var g = (p.manifest && p.manifest.body && p.manifest.body.garden) || [];
+    var gb = document.getElementById("invited-garden");
+    if (gb && g.length) {
+      g = g.slice().sort(function (a, b) { return String(b.updated).localeCompare(String(a.updated)); });
+      var icon = { seedling: "\uD83C\uDF31", budding: "\uD83C\uDF3F", evergreen: "\uD83C\uDF33" };
+      gb.appendChild(document.createTextNode("From their garden: "));
+      g.slice(0, 3).forEach(function (n, i) {
+        if (!/^[a-z0-9-]+$/.test(n.slug || "")) return;
+        if (i) gb.appendChild(document.createTextNode(" \u00b7 "));
+        var a = document.createElement("a"); a.href = "@" + h + "/n/" + n.slug + ".html";
+        a.textContent = (icon[n.stage] ? icon[n.stage] + " " : "") + String(n.title || n.slug); gb.appendChild(a);
+      });
+      var all = document.createElement("a"); all.href = "@" + h + "/garden.html"; all.className = "all";
+      all.textContent = g.length > 3 ? "all " + g.length + " notes \u2192" : "walk the garden \u2192";
+      gb.appendChild(document.createTextNode(" ")); gb.appendChild(all);
+      gb.hidden = false;
+    }
     box.hidden = false;
   }).catch(function () {});
 })();
