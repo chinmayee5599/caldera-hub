@@ -19,7 +19,9 @@ const headTpl = guide.slice(0, guide.indexOf("</head>"))    // inherited per-pag
   .replace(/<link rel="canonical"[^>]*>\s*/g, "").replace(/<meta (property|name)="(og|twitter):[^>]*>\s*/g, "")
   .replace(/<meta name="robots"[^>]*>\s*/g, "").replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>\s*/g, "");
 const header = guide.slice(guide.indexOf('<header class="nav">'), guide.indexOf("</header>") + 9).replace(/ aria-current="page"/g, "");
-const footer = guide.slice(guide.indexOf('<footer class="footer">'), guide.indexOf("</footer>") + 9)
+// idempotent: drop any Learn links left by earlier builds before adding exactly one (it used to stack one per rebuild)
+const noLearn = h => h.replace(/(<a href="\/learn">Learn<\/a> &middot; )+/g, "");
+const footer = noLearn(guide.slice(guide.indexOf('<footer class="footer">'), guide.indexOf("</footer>") + 9))
   .replace('<a href="guide.html">Guide</a>', '<a href="/learn">Learn</a> &middot; <a href="guide.html">Guide</a>');
 
 function head(title, description, slug, extra = "") {
@@ -71,7 +73,7 @@ ${footer}
 // canonical + og on existing pages; homepage JSON-LD
 const core = [["index.html", ""], ["people.html", "people"], ["guide.html", "guide"], ["changelog.html", "changelog"], ["privacy.html", "privacy"], ["terms.html", "terms"]];
 for (const [f, slug] of core) {
-  let s = read(f).replace(/<link rel="canonical"[^>]*>/g, "");
+  let s = noLearn(read(f).replace(/<link rel="canonical"[^>]*>/g, ""));
   s = s.replace("</head>", `<link rel="canonical" href="${SITE}/${slug}">\n</head>`);
   s = s.replace(/<a href="guide\.html">Guide<\/a> &middot; <a href="changelog\.html">/, '<a href="/learn">Learn</a> &middot; <a href="guide.html">Guide</a> &middot; <a href="changelog.html">');
   if (f === "index.html") {
@@ -83,7 +85,7 @@ for (const [f, slug] of core) {
     s = s.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "").replace("</head>", `${ld(app)}\n</head>`);
     if (!s.includes('href="/learn"')) s = s.replace('<span><a href="PROTOCOL.md">', '<span><a href="/learn">Learn</a> &middot; <a href="PROTOCOL.md">');
   }
-  write(f, s);
+  write(f, s.replace(/\n{3,}/g, "\n\n"));   // each build used to add blank lines before </head>
 }
 
 // sitemap, robots, llms
