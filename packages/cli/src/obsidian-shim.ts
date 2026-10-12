@@ -42,7 +42,8 @@ export class App {
     const byPath = new Map(files.map(f => [f.path, f]));
     const cache = new Map<string, any>();
     this.vault = {
-      adapter: { getBasePath: () => root }, configDir: ".obsidian",
+      adapter: { getBasePath: () => root, exists: async (p: string) => fs.existsSync(path.join(root, p)), read: async (p: string) => fs.readFileSync(path.join(root, p), "utf8"),
+        write: async (p: string, d: string) => { fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true }); fs.writeFileSync(path.join(root, p), d); } }, configDir: ".obsidian",
       getMarkdownFiles: () => files.filter(f => f.extension === "md"),
       getAbstractFileByPath: (p: string) => byPath.get(p) || null,
       cachedRead: async (f: TFile) => fs.readFileSync(f.abs, "utf8"),
