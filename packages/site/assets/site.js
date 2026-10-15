@@ -27,6 +27,7 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     if (!p) return;
     document.getElementById("invited-name").textContent = p.name || "@" + h;
     document.getElementById("invited-handle").textContent = "@" + h;
+    var add = document.getElementById("invited-add"); if (add) add.href = "obsidian://caldera?friend=" + encodeURIComponent(h);
     var av = p.manifest && p.manifest.body && p.manifest.body.photos && p.manifest.body.photos.avatar;
     var img = document.getElementById("invited-av");
     if (av) img.src = "@" + h + "/" + String(av).replace(/^\.?\//, ""); else img.remove();

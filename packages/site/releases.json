@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.6.1",
+      "date": "2026-10-15",
+      "title": "Same nav everywhere, and adding friends in one click",
+      "items": [
+        "Your profile, your garden home and every garden note now share the same left nav: your profile, Garden home and your vault tree. Clicking 'Garden' in the tree opens your garden home.",
+        "Every profile and garden page has an 'Add @handle as friend' button. It opens Obsidian and sends the request after you confirm.",
+        "The Caldera panel has an 'Invite someone new' link to copy. It walks the new person through installing, then gives them a one-click button to add you.",
+        "Add a friend by handle or by pasting their profile link. Friend requests now show who sent them and stay put if you restart Obsidian."
+      ]
+    },
+    {
       "version": "0.6.0",
       "date": "2026-10-15",
       "title": "Your garden home",
