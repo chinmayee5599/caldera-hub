@@ -250,6 +250,48 @@ export function createHub(opts: HubOptions) {
     return `<section class="g-xlinks"><h2>Linked from other gardens</h2>${rows.map(r => `<a class="g-card" href="../../@${e(r.src_handle)}/n/${e(r.src_slug)}.html"><span class="g-card-t">${e(r.src_title)}</span><span class="g-card-m"><span class="g-who">@${e(r.src_handle)}</span>${r.name ? `<span>${e(r.name)}</span>` : ""}</span></a>`).join("")}</section>`;
   }
 
+  /** "How this garden works" block injected into a hosted garden.html: everything the garden system tracks for this person,
+   * read live (gravity, credits, asks/offers, links from other gardens, friends, rank) plus plain-English explainers. */
+  function gardenHomeBlock(handle: string): string {
+    const prof = q("SELECT id, name FROM profiles WHERE handle=?").get(handle) as any;
+    if (!prof) return "";
+    const id = prof.id;
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    settleExpiredAsks();
+    const notes = (q("SELECT COUNT(*) n FROM garden_notes WHERE owner=?").get(id) as any).n;
+    const links = q("SELECT COUNT(*) n, COUNT(DISTINCT src_handle) w FROM garden_links WHERE dst_handle=?").get(handle) as any;
+    const grav = gravityOf(id);
+    const givers = q(`SELECT g.reason, g.ts, p.handle FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? ORDER BY g.ts DESC LIMIT 5`).all(id) as any[];
+    const bal = balance(id);
+    const asks = q("SELECT title, bounty FROM asks WHERE author=? AND status='open' AND visibility='public' ORDER BY ts DESC LIMIT 5").all(id) as any[];
+    const held = asks.reduce((s, a) => s + (a.bounty || 0), 0);
+    const offers = q("SELECT title FROM offers WHERE author=? ORDER BY ts DESC LIMIT 5").all(id) as any[];
+    const friends = (q("SELECT COUNT(*) n FROM friends WHERE a=? OR b=?").get(id, id) as any).n;
+    const board = leaderboard(null) as any[];
+    const rank = board.findIndex(r => r.id === id) + 1;
+    const tile = (n: string, l: string, x: string) => `<div class="gh-tile"><b>${e(n)}</b><span>${e(l)}</span><small>${e(x)}</small></div>`;
+    const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+    return `<section class="gh" aria-label="How this garden works">
+<style>.gh{margin:22px 0 26px;padding:18px 18px 8px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--bg-raised)}
+.gh h2{margin:0 0 4px;font-family:var(--font-display);font-size:1.15rem;color:var(--text-strong)}.gh>p{margin:0 0 14px;color:var(--text-muted);font-size:var(--text-sm)}
+.gh-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.gh-tile{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--radius-md);background:var(--bg-sunken)}
+.gh-tile b{font-size:1.4rem;color:var(--accent-text);font-variant-numeric:tabular-nums}.gh-tile span{font-weight:600;color:var(--text)}.gh-tile small{color:var(--text-muted);font-size:var(--text-xs);line-height:1.35}
+.gh-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.gh-cols h3{margin:16px 0 6px;font-size:var(--text-sm);color:var(--text-strong);text-transform:uppercase;letter-spacing:.04em}
+.gh-cols>div>h3:first-child{margin-top:4px}.gh-cols p,.gh-cols li{font-size:var(--text-sm);color:var(--text);line-height:1.5}.gh-cols ul{margin:0;padding-left:18px}.gh-cols .mut{color:var(--text-muted)}
+.gh-cta{margin:14px 0 10px;padding:12px 14px;border-radius:var(--radius-md);background:var(--accent-soft);font-size:var(--text-sm);color:var(--text)}</style>
+<h2>How this garden works</h2>
+<p>A garden is more than notes. It is a small economy of help between Obsidian vaults: notes link across gardens, friends give gravity, and asks pay out help credits.</p>
+<div class="gh-tiles">${tile(String(notes), "notes planted", "Public notes, each signed and dated")}${tile(String(links.n || 0), "links in", `From ${links.w || 0} other garden${links.w === 1 ? "" : "s"}`)}${tile(grav.toFixed(1), "gravity", "Goodwill from friends")}${tile(String(bal), "help credits", held ? `${held} held in open bounties` : "Spendable on bounties")}${tile(String(friends), "friends", "Vaults connected")}${tile(rank ? `#${rank}` : "-", "this week", "Activity leaderboard")}</div>
+<div class="gh-cols">
+<div><h3>Gravity (goodwill)</h3><p>Friends give gravity to say "you helped". It is positive only, fades with a 30-day half-life so it reflects recent help, and a gift from someone with more gravity counts a little more (1x to 2x, capped).</p>${givers.length ? `<ul>${givers.map(g => `<li>@${e(g.handle || "friend")}${g.reason ? `: ${e(g.reason)}` : ""}</li>`).join("")}</ul>` : `<p class="mut">No gravity yet. Be the first.</p>`}</div>
+<div><h3>Help credits and asks</h3><p>Everyone starts with 100 credits. An ask can carry a bounty; the credits are held until the asker awards them to whoever helped, and come back after 30 days if nobody does. Credits have no cash value.</p>${asks.length ? `<ul>${asks.map(a => `<li>${e(a.title)}${a.bounty ? ` <span class="mut">(${a.bounty} credits)</span>` : ""}</li>`).join("")}</ul>` : `<p class="mut">No open asks right now.</p>`}</div>
+<div><h3>Offers</h3><p>What this person is happy to help with.</p>${offers.length ? `<ul>${offers.map(o => `<li>${e(o.title)}</li>`).join("")}</ul>` : `<p class="mut">No offers posted yet.</p>`}<h3>Reuse and links</h3><p>Each note shows its license. Link to any note from your own garden with <code>[[@${e(handle)}/note-slug]]</code> and it appears on that note under "Linked from other gardens".</p></div>
+</div>
+<div class="gh-cta"><b>Take part:</b> with Caldera in Obsidian, add @${e(handle)} as a friend, give gravity, answer an ask, or link a note. New to Caldera? <a href="${e(hub)}/#install">Grow your own garden</a>.</div>
+</section>`;
+  }
+
   function recentGardenNotes(limit = 60) {
     return (q(`SELECT g.handle, g.slug, g.title, g.stage, g.license, g.updated, g.excerpt, g.words, p.name, p.id, p.manifest FROM garden_notes g
       JOIN profiles p ON p.id=g.owner WHERE p.handle IS NOT NULL ORDER BY g.updated DESC LIMIT ?`).all(Math.min(200, limit * 3)) as any[])
@@ -413,6 +455,10 @@ export function createHub(opts: HubOptions) {
           let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
           const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
           if (note) html = html.replace("<!--caldera:xlinks-->", xlinksBlock(m[1], note[1]));
+          if (rel === "garden.html") {   // garden home: live gravity/credits/asks/links block (marker from 0.6.0; older builds: before the stage filter)
+            const gh = gardenHomeBlock(m[1]);
+            html = html.includes("<!--caldera:gardenhome-->") ? html.replace("<!--caldera:gardenhome-->", gh) : html.replace('<div class="g-filter"', gh + '<div class="g-filter"');
+          }
           if (!html.includes("Heatmap sizing (2026-10-12)") && html.includes('class="heat-box"')) html = html.replace(/<\/head>/i, HEAT_FIX + "</head>");   // pages built before 0.5.1
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
