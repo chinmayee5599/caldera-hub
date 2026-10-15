@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.6.0",
+      "date": "2026-10-15",
+      "title": "Your garden home",
+      "items": [
+        "Your garden page now opens with 'How this garden works': notes planted, links from other gardens, gravity, help credits (and how many are held in bounties), your open asks and offers, friends and your weekly rank. Read live from the hub every time someone visits.",
+        "Plain explanations on the page of how gravity (goodwill friends give) and help credits (bounties on asks) work, and how other gardens can link your notes.",
+        "The Garden section on your profile now links straight to your garden home.",
+        "The AI setup prompts walk new users through it: which sections to turn on, what gravity and credits are, and drafting their first asks and offers."
+      ]
+    },
+    {
       "version": "0.5.4",
       "date": "2026-10-12",
       "title": "Your garden grows itself from your daily journal",
