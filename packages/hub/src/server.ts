@@ -87,7 +87,13 @@ export function createHub(opts: HubOptions) {
     CREATE INDEX IF NOT EXISTS garden_recent ON garden_notes(updated);
     CREATE TABLE IF NOT EXISTS garden_links (owner TEXT, src_handle TEXT, src_slug TEXT, src_title TEXT, dst_handle TEXT, dst_slug TEXT);
     CREATE INDEX IF NOT EXISTS garden_dst ON garden_links(dst_handle, dst_slug);
+    CREATE TABLE IF NOT EXISTS page_views (handle TEXT, path TEXT, ts TEXT, visitor TEXT);
+    CREATE INDEX IF NOT EXISTS views_by_handle ON page_views(handle, ts);
   `);
+  // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
+  // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
+  const VIEW_SALT = crypto.randomBytes(16).toString("hex");
+  const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
   const now = () => new Date().toISOString();
 
@@ -303,7 +309,7 @@ export function createHub(opts: HubOptions) {
 
   function erase(id: string) {
     const pr = profile(id);
-    if (pr?.handle) fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true });
+    if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
@@ -452,6 +458,12 @@ export function createHub(opts: HubOptions) {
         res.removeHeader("x-frame-options");
         const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "x-robots-tag": "noindex", "content-security-policy": PROFILE_CSP, "cache-control": "no-cache" };
         if (path.extname(file).toLowerCase() === ".html") {   // every hosted page gets the Caldera bar, whatever plugin version built it
+          const ua = String(req.headers["user-agent"] || "");
+          if (ua && !BOT_UA.test(ua) && url.searchParams.get("caldera") !== "owner" && req.method === "GET") {   // the owner's own Public view passes caldera=owner
+            const day = new Date().toISOString().slice(0, 10);
+            const visitor = crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16);
+            try { q("INSERT INTO page_views VALUES (?,?,?,?)").run(m[1], rel, now(), visitor); } catch { /* counting never breaks a page */ }
+          }
           let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
           const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
           if (note) html = html.replace("<!--caldera:xlinks-->", xlinksBlock(m[1], note[1]));
@@ -481,6 +493,26 @@ export function createHub(opts: HubOptions) {
         const token = crypto.randomBytes(24).toString("hex");
         q("INSERT INTO tokens VALUES (?,?,?)").run(hashToken(token), env.from, Date.now() + 3600_000);  // only the hash is stored
         return json(res, 200, { token, expires_in: 3600 });
+      }
+
+      // Owner-only activity for the private view inside Obsidian: who looked, what they read, gravity, new friends, links in.
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/activity$/);
+      if (req.method === "GET" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const pr = profile(m[1]); if (!pr?.handle) return json(res, 404, { error: "publish your profile first" });
+        const since = url.searchParams.get("since") || new Date(Date.now() - 86400_000).toISOString();
+        const h = pr.handle as string;
+        const v = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(h, since) as any;
+        const pages = (q("SELECT path, COUNT(*) n FROM page_views WHERE handle=? AND ts > ? GROUP BY path ORDER BY n DESC LIMIT 8").all(h, since) as any[]).map(r => [r.path, r.n]);
+        const d14 = new Date(Date.now() - 13 * 86400_000).toISOString().slice(0, 10);
+        const days = (q("SELECT substr(ts,1,10) d, COUNT(*) n, COUNT(DISTINCT visitor) u FROM page_views WHERE handle=? AND ts >= ? GROUP BY d ORDER BY d").all(h, d14) as any[]).map(r => [r.d, r.n, r.u]);
+        const total = (q("SELECT COUNT(*) n FROM page_views WHERE handle=?").get(h) as any).n;
+        const hn = (id: string) => (profile(id)?.handle as string) || null;
+        const gravity = (q("SELECT sender, reason, ts FROM gravity WHERE recipient=? AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], since) as any[]).map(r => ({ from: hn(r.sender), reason: r.reason || "", ts: r.ts }));
+        const friends = (q("SELECT a, b, ts FROM friends WHERE (a=? OR b=?) AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], m[1], since) as any[]).map(r => ({ handle: hn(r.a === m![1] ? r.b : r.a), ts: r.ts }));
+        const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
+        const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
+        return json(res, 200, { since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks });
       }
 
       m = p.match(/^\/v1\/inbox\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);

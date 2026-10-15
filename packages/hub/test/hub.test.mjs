@@ -197,3 +197,26 @@ test("gardens: signed garden index, cross-garden backlinks injected into note pa
   assert.ok(!(await get("/v1/gardens/recent")).body.notes.some(n => n.handle === "gone"));
   gh.server.close(); fs.rmSync(gdir, { recursive: true, force: true });
 });
+
+test("owner activity: counts real visits (not bots, not the owner's own view), owner-only, erased with the profile", async () => {
+  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-")); const h3 = createHub({ dataDir: d3 }); const base = "http://127.0.0.1:" + await h3.listen(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const get = (p, tk) => fetch(base + p, { headers: tk ? { authorization: "Bearer " + tk } : {} }).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
+  const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const o = C.newIdentity();
+  await post(`/v1/profiles/${o.id}/bundle`, { manifest: C.sign(o, "profile.manifest", { name: "Olga", handle: "olga", boxKey: o.boxPublic }), files: { "index.html": Buffer.from("<p>o</p>").toString("base64"), "garden.html": Buffer.from("<p>g</p>").toString("base64") } });
+  const ua = (s) => ({ headers: { "user-agent": s } });
+  await fetch(base + "/@olga/", ua("Mozilla/5.0 Safari"));
+  await fetch(base + "/@olga/garden.html", ua("Mozilla/5.0 Safari"));
+  await fetch(base + "/@olga/", ua("Googlebot/2.1"));
+  await fetch(base + "/@olga/?caldera=owner", ua("Mozilla/5.0 Safari"));
+  assert.equal((await get(`/v1/owner/${o.id}/activity`)).status, 401);
+  assert.equal((await get(`/v1/owner/${o.id}/activity`, await login(eve))).status, 401, "someone else cannot read it");
+  const a = (await get(`/v1/owner/${o.id}/activity?since=2000-01-01`, await login(o))).body;
+  assert.equal(a.views, 2); assert.equal(a.visitors, 1); assert.equal(a.totalViews, 2);
+  assert.deepEqual(a.pages.map(p => p[0]).sort(), ["garden.html", "index.html"]);
+  await post("/v1/envelopes", C.sign(o, "profile.delete", {}));
+  await post(`/v1/profiles/${o.id}/bundle`, { manifest: C.sign(o, "profile.manifest", { name: "Olga", handle: "olga", boxKey: o.boxPublic }), files: { "index.html": Buffer.from("<p>o</p>").toString("base64") } });
+  assert.equal((await get(`/v1/owner/${o.id}/activity?since=2000-01-01`, await login(o))).body.totalViews, 0, "views erased");
+  h3.server.close(); fs.rmSync(d3, { recursive: true, force: true });
+});
