@@ -22,7 +22,7 @@ const header = guide.slice(guide.indexOf('<header class="nav">'), guide.indexOf(
 // idempotent: drop any Learn links left by earlier builds before adding exactly one (it used to stack one per rebuild)
 const noLearn = h => h.replace(/(<a href="\/learn">Learn<\/a> &middot; )+/g, "");
 const footer = noLearn(guide.slice(guide.indexOf('<footer class="footer">'), guide.indexOf("</footer>") + 9))
-  .replace('<a href="guide.html">Guide</a>', '<a href="/learn">Learn</a> &middot; <a href="guide.html">Guide</a>');
+  .replace('<a href="/guide">Guide</a>', '<a href="/learn">Learn</a> &middot; <a href="/guide">Guide</a>');
 
 function head(title, description, slug, extra = "") {
   const url = slug ? `${SITE}/${slug}` : `${SITE}/`;
@@ -75,7 +75,7 @@ const core = [["index.html", ""], ["people.html", "people"], ["guide.html", "gui
 for (const [f, slug] of core) {
   let s = noLearn(read(f).replace(/<link rel="canonical"[^>]*>/g, ""));
   s = s.replace("</head>", `<link rel="canonical" href="${SITE}/${slug}">\n</head>`);
-  s = s.replace(/<a href="guide\.html">Guide<\/a> &middot; <a href="changelog\.html">/, '<a href="/learn">Learn</a> &middot; <a href="guide.html">Guide</a> &middot; <a href="changelog.html">');
+  s = s.replace(/<a href="guide\.html">Guide<\/a> &middot; <a href="changelog\.html">/, '<a href="/learn">Learn</a> &middot; <a href="/guide">Guide</a> &middot; <a href="/changelog">');
   if (f === "index.html") {
     const faq = [...s.matchAll(/<details><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map(m => ({ "@type": "Question", name: strip(m[1]), acceptedAnswer: { "@type": "Answer", text: strip(m[2]) } }));
     const app = { "@context": "https://schema.org", "@graph": [

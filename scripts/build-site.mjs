@@ -24,8 +24,8 @@ update("changelog.html", h => fill(h, "RELEASES", rendered + "\n  "));
 
 const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<title>Caldera - what's new</title><link>${HUB}/changelog.html</link><description>Caldera release notes</description>
-${releases.map(r => `<item><title>${esc(r.version + ": " + r.title)}</title><link>${HUB}/changelog.html#v${esc(r.version)}</link><guid>${HUB}/changelog.html#v${esc(r.version)}</guid><pubDate>${new Date(r.date + "T17:00:00Z").toUTCString()}</pubDate><description>${esc(r.items.join(" "))}</description></item>`).join("\n")}
+<title>Caldera - what's new</title><link>${HUB}/changelog</link><description>Caldera release notes</description>
+${releases.map(r => `<item><title>${esc(r.version + ": " + r.title)}</title><link>${HUB}/changelog#v${esc(r.version)}</link><guid>${HUB}/changelog#v${esc(r.version)}</guid><pubDate>${new Date(r.date + "T17:00:00Z").toUTCString()}</pubDate><description>${esc(r.items.join(" "))}</description></item>`).join("\n")}
 </channel></rss>
 `;
 fs.writeFileSync(new URL("releases.xml", site), rss);
