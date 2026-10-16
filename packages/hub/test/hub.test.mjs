@@ -394,3 +394,20 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.equal((await fetch(base + "/@mike-2/")).status, 404);
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("an older Caldera can't overwrite what a newer one published (bundle and private layer)", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const h = createHub({ dataDir: d, privateUrl: "https://box.ts.net:8443", tailnetOwners: { "me@x.com": "vee" } });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const vee = C.newIdentity(), man = () => C.sign(vee, "profile.manifest", { name: "Vee", handle: "vee", boxKey: vee.boxPublic });
+  const files = { "index.html": Buffer.from("<p>x</p>").toString("base64") };
+  assert.equal((await post(`/v1/profiles/${vee.id}/bundle`, { manifest: man(), files, v: "0.12.3" })).status, 200);
+  assert.equal((await post(`/v1/profiles/${vee.id}/bundle`, { manifest: man(), files, v: "0.10.1" })).status, 409, "older plugin refused");
+  assert.equal((await post(`/v1/profiles/${vee.id}/bundle`, { manifest: man(), files })).status, 409, "unversioned (pre-0.12.3) refused once a versioned one published");
+  assert.equal((await post(`/v1/profiles/${vee.id}/bundle`, { manifest: man(), files, v: "0.12.10" })).status, 200, "numeric compare, not string");
+  const { body: ch } = await post("/v1/auth/challenge", { id: vee.id }); const tk = (await post("/v1/auth/verify", C.sign(vee, "message", { nonce: ch.nonce }))).body.token;
+  assert.equal((await post(`/v1/owner/${vee.id}/private`, { html: "a", v: "0.12.3" }, tk)).status, 200);
+  assert.equal((await post(`/v1/owner/${vee.id}/private`, { html: "old" }, tk)).status, 409);
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});

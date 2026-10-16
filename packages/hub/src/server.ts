@@ -107,6 +107,7 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS traffic_sites (key TEXT PRIMARY KEY, owner TEXT, project TEXT, public INTEGER, secret TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS traffic (key TEXT, ts TEXT, kind TEXT, visitor TEXT);
     CREATE INDEX IF NOT EXISTS traffic_by_key ON traffic(key, ts);
+    CREATE TABLE IF NOT EXISTS client_versions (owner TEXT, kind TEXT, v TEXT, PRIMARY KEY (owner, kind));
     CREATE TABLE IF NOT EXISTS agent_keys (key TEXT PRIMARY KEY, owner TEXT UNIQUE, secret TEXT, repos TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
   `);
@@ -341,7 +342,7 @@ export function createHub(opts: HubOptions) {
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
-    q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
+    q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
@@ -438,6 +439,14 @@ export function createHub(opts: HubOptions) {
   }
   const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
     return !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, wk) || !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk); };
+  /** An older Caldera (say, a stale copy still running on another device) must not overwrite what a newer one published. */
+  const semver = (v: unknown) => String(v || "0.0.0").split(".").map(x => parseInt(x, 10) || 0);
+  function staleClient(owner: string, kind: string, v: unknown): string | null {
+    const row = q("SELECT v FROM client_versions WHERE owner=? AND kind=?").get(owner, kind) as any, a = semver(v), b = semver(row?.v);
+    for (let i = 0; i < 3; i++) { if ((a[i] || 0) > (b[i] || 0)) break; if ((a[i] || 0) < (b[i] || 0)) return row.v; }
+    q("INSERT OR REPLACE INTO client_versions VALUES (?,?,?)").run(owner, kind, String(v || "0.0.0").slice(0, 20));
+    return null;
+  }
   const liveScript = (cfg: object) => `<script>window.CALDERA_LIVE=${JSON.stringify(cfg).replace(/</g, "\\u003c")}</script>`;
   const injectLive = (html: string, cfg: object) => /<\/head>/i.test(html) ? html.replace(/<\/head>/i, liveScript(cfg) + "</head>") : liveScript(cfg) + html;
   const liveToken = (handle: string, day = new Date().toISOString().slice(0, 10)) => crypto.createHmac("sha256", PRIV_KEY).update("live:" + handle + ":" + day).digest("hex").slice(0, 24);
@@ -536,6 +545,7 @@ export function createHub(opts: HubOptions) {
       if (req.method === "POST" && m) {
         const body = await readBody(req);
         if (body.manifest?.from !== m[1]) return json(res, 403, { error: "manifest must be signed by the profile" });
+        { const newer = staleClient(m[1], "bundle", body.v); if (newer) return json(res, 409, { error: `Caldera ${newer} already published this profile; update Caldera on this device (you have ${body.v || "an older version"})` }); }
         if (!profile(m[1]) && !allowNewProfile(req)) return json(res, 429, { error: "too many new profiles from this address today" });
         const r = accept(body.manifest); if (r.status !== 200) return json(res, r.status, r.body);
         const handle = r.body.handle; if (!handle) return json(res, 400, { error: "a handle is required to host a page" });
@@ -622,7 +632,8 @@ export function createHub(opts: HubOptions) {
       if (req.method === "POST" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
         const pr = profile(m[1]); if (!pr?.handle || !privateFor(pr.handle)) return json(res, 403, { error: "no private address is set up for this profile on this hub" });
-        const { html, built, pages } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown> };
+        const { html, built, pages, v } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown>; v?: string };
+        const newer = staleClient(m[1], "private", v); if (newer) return json(res, 409, { error: `Caldera ${newer} already pushed this; update Caldera here (you have ${v || "an older version"})` });
         if (typeof html !== "string" || html.length > 3_000_000) return json(res, 400, { error: "bad private layer" });
         const priv: Record<string, string> = {};   // private versions of whole pages (only the city, for now)
         for (const [k, v] of Object.entries(pages || {})) if (k === "city.html" && typeof v === "string" && v.length < 4_000_000) priv[k] = v;
