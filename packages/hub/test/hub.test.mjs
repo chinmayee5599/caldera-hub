@@ -328,3 +328,69 @@ test("agents: owner key from site sync, secret-signed reports, public sees distr
   assert.equal((await (await fetch(base + "/v1/live/tia")).json()).agents.length, 2);
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("sign up with GitHub: hosted profile + city, edit, claim into a vault, delete", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  fs.writeFileSync(path.join(d, "github-app.json"), JSON.stringify({ id: 1, slug: "caldera-test", client_id: "cid", client_secret: "csec", pem: privateKey.export({ type: "pkcs1", format: "pem" }) }));
+  const now = new Date().toISOString(), weeks = Array.from({ length: 52 }, (_, i) => ({ total: i % 3, days: [0, 0, 0, 0, 0, 0, 0] }));
+  const users = { tok42: { id: 42, login: "octo-cat", name: "Octo Cat", bio: "I build things", created_at: "2019-01-01T00:00:00Z", public_repos: 2, followers: 3, html_url: "https://github.com/octo-cat", avatar_url: "https://avatars.githubusercontent.com/u/42?v=4" },
+    tok43: { id: 43, login: "newbie", created_at: now, public_repos: 0, followers: 0, html_url: "https://github.com/newbie", avatar_url: "https://avatars.githubusercontent.com/u/43" },
+    tok44: { id: 44, login: "Mike", name: "Taken Handle", created_at: "2018-01-01T00:00:00Z", public_repos: 1, followers: 0, html_url: "https://github.com/Mike", avatar_url: "https://avatars.githubusercontent.com/u/44" } };
+  const repos = [{ name: "web", full_name: "octo-cat/web", language: "TypeScript", private: false, fork: false, html_url: "https://github.com/octo-cat/web", pushed_at: now, created_at: now, size: 10, description: "My site" },
+    { name: "tool", full_name: "octo-cat/tool", language: "Go", private: false, fork: false, html_url: "https://github.com/octo-cat/tool", pushed_at: now, created_at: now, size: 5, description: "" },
+    { name: "forked", full_name: "octo-cat/forked", language: "C", private: false, fork: true, html_url: "x", pushed_at: now, size: 1 }];
+  const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
+  const fake = async (u, init = {}) => {
+    u = String(u); const tok = String(init.headers?.authorization || "").replace("Bearer ", "");
+    if (u === "https://github.com/login/oauth/access_token") { const b = JSON.parse(init.body); return J({ access_token: "tok" + b.code, expires_in: 28800, refresh_token: "r" }); }
+    if (u.endsWith("/user")) return J(users[tok]);
+    if (u.includes("/repos?type=owner")) return J(users[tok].id === 42 ? repos : []);
+    if (u.includes("/stats/commit_activity")) return J(weeks);
+    if (u.includes("/events")) return J([{ type: "PushEvent", created_at: now, payload: { size: 3 } }]);
+    if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
+    if (u.includes("/applications/cid/grant")) return new Response(null, { status: 204 });
+    return J({ message: "not mocked " + u }, 404);
+  };
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  // someone already owns @mike
+  const mk = C.newIdentity(); await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(mk, "profile.manifest", { name: "M", handle: "mike", boxKey: mk.boxPublic })) });
+  const signIn = async (code) => {
+    const a = await fetch(base + "/auth/github", { redirect: "manual" });
+    assert.match(a.headers.get("location"), /^https:\/\/github\.com\/login\/oauth\/authorize\?client_id=cid/);
+    const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];
+    const cb = await fetch(base + `/auth/github/callback?code=${code}&state=${state}`, { headers: { cookie: oauth }, redirect: "manual" });
+    return { cb, cookie: (cb.headers.getSetCookie?.() || [cb.headers.get("set-cookie")]).map(c => c.split(";")[0]).filter(c => c.startsWith("cal_s=")).join("; ") };
+  };
+  assert.equal((await fetch(base + "/auth/github/callback?code=42&state=forged", { redirect: "manual" })).status, 400, "state must match the cookie");
+  const { cb, cookie } = await signIn("42");
+  assert.equal(cb.status, 302); assert.equal(cb.headers.get("location"), "/me?welcome=1"); assert.ok(cookie);
+  const pageHtml = await (await fetch(base + "/@octo-cat/", { headers: { "user-agent": "Mozilla/5.0" } })).text();
+  assert.ok(pageHtml.includes("Octo Cat") && pageHtml.includes("synced from GitHub"), "profile rendered by the plugin's renderer");
+  const city = await (await fetch(base + "/@octo-cat/city.html")).text();
+  assert.ok(city.includes('"name":"web"') && city.includes("TypeScript") && !city.includes("forked"), "city from public, non-fork repos");
+  const me = await (await fetch(base + "/me?welcome=1", { headers: { cookie } })).text();
+  assert.ok(me.includes("Welcome to Caldera") && me.includes("/t.js") && me.includes("agent-hook.mjs"));
+  assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/auth/github", "/me needs a session");
+  const post = (body, c = cookie, origin = "http://hub.test") => fetch(base + "/me", { method: "POST", headers: { cookie: c, origin, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());
+  assert.ok((await post({ do: "save", name: "Octo", headline: "I ship", summary: "", links: "", listed: "on" }, cookie, "https://evil.example")).includes("Wrong origin"));
+  assert.ok((await post({ do: "save", name: "Octo", headline: "I ship small tools", summary: "Hello", links: "Blog | https://octo.dev", listed: "on" })).includes("Republished"));
+  assert.ok((await (await fetch(base + "/@octo-cat/", { headers: { "user-agent": "Mozilla/5.0" } })).text()).includes("I ship small tools"));
+  // bots: brand-new accounts with nothing on them are refused; a taken handle gets a suffix
+  assert.equal((await signIn("43")).cb.status, 403);
+  await signIn("44"); assert.equal((await fetch(base + "/@mike-2/")).status, 200, "taken handle -> mike-2");
+  // claim into a vault: one-time code returns the key once, then the hub forgets it
+  const code = (await post({ do: "claim" })).match(/CAL-[\w-]+/)[0];
+  const claimed = await (await fetch(base + "/v1/github/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) })).json();
+  const prof = await (await fetch(base + "/v1/profiles/octo-cat")).json();
+  assert.equal(claimed.identity.id, prof.id); assert.equal(claimed.handle, "octo-cat");
+  assert.equal((await fetch(base + "/v1/github/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) })).status, 404, "single use");
+  assert.ok((await (await fetch(base + "/me", { headers: { cookie } })).text()).includes("now lives in your vault"));
+  for (const f of fs.readdirSync(d).filter(f => f.startsWith("hub.sqlite"))) assert.ok(!fs.readFileSync(path.join(d, f)).includes(claimed.identity.secret || "no-secret-field"), "key not stored in clear");
+  // delete (the @mike-2 account)
+  const s44 = (await signIn("44")).cookie;
+  assert.ok((await post({ do: "delete", sure: "on" }, s44)).includes("is deleted"));
+  assert.equal((await fetch(base + "/@mike-2/")).status, 404);
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});

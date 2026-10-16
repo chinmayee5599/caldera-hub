@@ -10,16 +10,17 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import * as C from "@caldera/core";
+import { github } from "./github";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
 export interface HubOptions { dataDir: string; port?: number; publicUrl?: string; siteDir?: string; trustProxy?: boolean;
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
-  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number }; }
+  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number }; }
 
 const MAX_BODY = 12 * 1024 * 1024;
-const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "root", "hub", "v1", "about", "login", "settings", "official", "team", "security", "obsidian"]);
+const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "root", "hub", "v1", "about", "login", "settings", "official", "team", "security", "obsidian", "me", "auth", "setup"]);
 const SECURITY_HEADERS = { "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin", "x-frame-options": "DENY" };
 // User-uploaded profile pages run in a sandbox: unique origin, no access to the hub's origin, no forms, no top navigation.
 const PROFILE_CSP = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
@@ -481,6 +482,9 @@ export function createHub(opts: HubOptions) {
     r.n++; return r.n <= L.newProfilesPerDay;
   }
 
+  const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
+    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch });
+
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
@@ -493,6 +497,7 @@ export function createHub(opts: HubOptions) {
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
+      if (/^\/(auth\/github|me$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
 
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
       if (req.method === "GET" && p === "/v1/gardens/recent") return json(res, 200, { notes: recentGardenNotes(Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 60))) });
@@ -779,7 +784,7 @@ export function createHub(opts: HubOptions) {
   // ---------------------------------------------------------------- private owner address
   // Listens on 127.0.0.1 only; meant to sit behind `tailscale serve`, which sets Tailscale-User-Login for the
   // connecting tailnet user (clients can't reach this port directly, so they can't forge the header).
-  const privateServer = http.createServer((req, res) => {
+  const privateServer = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     res.setHeader("cache-control", "no-store"); res.setHeader("x-robots-tag", "noindex, nofollow");
     try {
@@ -787,6 +792,7 @@ export function createHub(opts: HubOptions) {
       const login = String(req.headers["tailscale-user-login"] || "").toLowerCase();
       const mine = owners[login];
       if (!mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("Private Caldera address: only the profile owner's Tailscale account can open it."); }
+      if (url.pathname.startsWith("/setup/github") && await GH.privateRoute(req, res, url)) return;
       const m = url.pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
       if (!m) { res.writeHead(302, { location: `/@${mine}/` }); return res.end(); }
       if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }

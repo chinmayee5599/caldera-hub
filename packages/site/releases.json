@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.12.0",
+      "date": "2026-10-16",
+      "title": "Sign up with GitHub",
+      "items": [
+        "No Obsidian? Sign up on caldera.social with GitHub: your page and your city are built from your GitHub and refresh every 6 hours. Edit it, add your sites and agents, or add private repos as padlocked buildings.",
+        "Already on Obsidian later? Move the profile into your vault: get a code on your account page and use Settings > Import a GitHub sign-up. Same handle, same page; your vault takes over the key."
+      ]
+    },
+    {
       "version": "0.11.0",
       "date": "2026-10-16",
       "title": "The Underground: your vault under the city",
