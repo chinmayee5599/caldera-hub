@@ -23,6 +23,16 @@ const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "
 const SECURITY_HEADERS = { "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin", "x-frame-options": "DENY" };
 // User-uploaded profile pages run in a sandbox: unique origin, no access to the hub's origin, no forms, no top navigation.
 const PROFILE_CSP = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+// The city page may also poll the hub for live traffic on the owner's sites (same hub only).
+const cityCsp = (...origins: string[]) => PROFILE_CSP + `; connect-src 'self' ${origins.filter(Boolean).join(" ")}`.trimEnd();
+const originOf = (u?: string) => { try { return u ? new URL(u).origin : ""; } catch { return ""; } };
+const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+// Live-traffic snippet for the owner's own sites: <script async src="https://caldera.social/t.js" data-site="KEY"></script>
+// Counts page views (and single-page navigations); caldera("signup") / caldera("buy") mark conversions. No cookies.
+const TRACK_JS = `(function(){var s=document.currentScript;if(!s)return;var k=s.getAttribute('data-site');if(!k)return;var base=s.src.replace(/\\/t\\.js.*$/,'');
+function send(kind){var u=base+'/v1/t/'+encodeURIComponent(k)+'.gif?k='+(kind||'view')+'&r='+Math.random().toString(36).slice(2);try{if(navigator.sendBeacon&&navigator.sendBeacon(u))return}catch(e){}var i=new Image();i.src=u}
+window.caldera=function(kind){send(kind==='signup'||kind==='buy'?kind:'view')};send('view');var last=location.pathname;
+function nav(){if(location.pathname!==last){last=location.pathname;send('view')}}var ps=history.pushState;history.pushState=function(){var r=ps.apply(this,arguments);nav();return r};addEventListener('popstate',nav)})();`;
 const DAY = 86_400_000;
 
 /** Platform bar injected at the top of every hosted profile: logo back to the hub + a sign-up call to action.
@@ -93,6 +103,9 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS page_views (handle TEXT, path TEXT, ts TEXT, visitor TEXT);
     CREATE TABLE IF NOT EXISTS owner_private (owner TEXT PRIMARY KEY, blob TEXT, built TEXT, ts TEXT);
     CREATE INDEX IF NOT EXISTS views_by_handle ON page_views(handle, ts);
+    CREATE TABLE IF NOT EXISTS traffic_sites (key TEXT PRIMARY KEY, owner TEXT, project TEXT, public INTEGER, secret TEXT, ts TEXT);
+    CREATE TABLE IF NOT EXISTS traffic (key TEXT, ts TEXT, kind TEXT, visitor TEXT);
+    CREATE INDEX IF NOT EXISTS traffic_by_key ON traffic(key, ts);
   `);
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
@@ -324,6 +337,8 @@ export function createHub(opts: HubOptions) {
   function erase(id: string) {
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
+    for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
+    q("DELETE FROM traffic_sites WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
@@ -369,6 +384,42 @@ export function createHub(opts: HubOptions) {
     if (!html.includes("Heatmap sizing (2026-10-12)") && html.includes('class="heat-box"')) html = html.replace(/<\/head>/i, HEAT_FIX + "</head>");   // pages built before 0.5.1
     return html;
   }
+
+  // ---------------------------------------------------------------- live traffic on the owner's own sites
+  // Sites are registered by the owner (one key per city district). Visits arrive from the t.js pixel or, for server-side
+  // events, from the owner's own feed with the site's secret. Visitors are a salted daily hash, like profile views.
+  const sitesOf = (owner: string) => q("SELECT key, project, public FROM traffic_sites WHERE owner=?").all(owner) as { key: string; project: string; public: number }[];
+  const keyBuckets = new Map<string, { n: number; reset: number }>();
+  function record(key: string, kind: string, visitor: string, ts = now()) {
+    const t = Date.now(); let b = keyBuckets.get(key);
+    if (!b || b.reset < t) { b = { n: 0, reset: t + 60_000 }; keyBuckets.set(key, b); }
+    if (++b.n > 1200) return false;   // a flood on one site can't fill the database
+    q("INSERT INTO traffic VALUES (?,?,?,?)").run(key, ts, kind, visitor);
+    if (Math.random() < 0.002) q("DELETE FROM traffic WHERE ts < ?").run(new Date(Date.now() - 35 * DAY).toISOString());
+    return true;
+  }
+  /** Per-district live numbers. full=false is the public projection: coarse activity levels only, unlisted projects merged. */
+  function liveStats(owner: string, full: boolean) {
+    const sites = sitesOf(owner); if (!sites.length) return null;
+    const t5 = new Date(Date.now() - 5 * 60_000).toISOString(), t24 = new Date(Date.now() - DAY).toISOString(), t3 = new Date(Date.now() - 3 * 60_000).toISOString();
+    const by = new Map(sites.map(s => [s.key, s]));
+    const name = (k: string) => { const s = by.get(k)!; return full || s.public ? s.project : "Private"; };
+    const ds: Record<string, { now: number; views: number; visitors: number; signups: number; buys: number }> = {};
+    const d = (k: string) => ds[name(k)] ||= { now: 0, views: 0, visitors: 0, signups: 0, buys: 0 };
+    const keys = sites.map(s => s.key), qs = keys.map(() => "?").join(",");
+    for (const r of q(`SELECT key, COUNT(DISTINCT visitor) n FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key`).all(...keys, t5) as any[]) d(r.key).now += r.n;
+    for (const r of q(`SELECT key, kind, COUNT(*) n, COUNT(DISTINCT visitor) u FROM traffic WHERE key IN (${qs}) AND ts > ? GROUP BY key, kind`).all(...keys, t24) as any[]) {
+      const x = d(r.key); if (r.kind === "view") { x.views += r.n; x.visitors += r.u; } else if (r.kind === "signup") x.signups += r.n; else if (r.kind === "buy") x.buys += r.n;
+    }
+    const level = (n: number) => n <= 0 ? 0 : n < 3 ? 1 : n < 10 ? 2 : n < 30 ? 3 : 4;
+    if (!full) return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])) };
+    const events = (q(`SELECT key, ts, kind FROM traffic WHERE key IN (${qs}) AND ts > ? ORDER BY ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts }));
+    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events };
+  }
+  const hasLive = (owner: string) => !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, new Date(Date.now() - 7 * DAY).toISOString());
+  const liveScript = (cfg: object) => `<script>window.CALDERA_LIVE=${JSON.stringify(cfg).replace(/</g, "\\u003c")}</script>`;
+  const injectLive = (html: string, cfg: object) => /<\/head>/i.test(html) ? html.replace(/<\/head>/i, liveScript(cfg) + "</head>") : liveScript(cfg) + html;
+  const liveToken = (handle: string, day = new Date().toISOString().slice(0, 10)) => crypto.createHmac("sha256", PRIV_KEY).update("live:" + handle + ":" + day).digest("hex").slice(0, 24);
 
   // ---------------------------------------------------------------- auth (signed nonce, no passwords)
   function authed(req: http.IncomingMessage): string | null {
@@ -428,6 +479,10 @@ export function createHub(opts: HubOptions) {
       if (req.method === "GET" && (p === "/gardens" || p === "/gardens/")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
         return res.end(gardensPage(recentGardenNotes(80), opts.publicUrl || "https://caldera.social"));
+      }
+      if (req.method === "GET" && p === "/t.js") {
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
+        return res.end(TRACK_JS);
       }
       if (req.method === "GET" && opts.siteDir && !p.startsWith("/v1/") && !p.startsWith("/@")) {
         let rel = p === "/" ? "index.html" : decodeURIComponent(p.slice(1));
@@ -493,6 +548,7 @@ export function createHub(opts: HubOptions) {
           }
           let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
           html = liveBlocks(m[1], rel, html);
+          if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) { html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); } }
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
         }
@@ -547,6 +603,63 @@ export function createHub(opts: HubOptions) {
         for (const [k, v] of Object.entries(pages || {})) if (k === "city.html" && typeof v === "string" && v.length < 4_000_000) priv[k] = v;
         q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv })), String(built || now()).slice(0, 40), now());
         return json(res, 200, { ok: true, url: privateFor(pr.handle) });
+      }
+
+      // live traffic: the owner registers their sites (one key per district); the hub hands back each site's server secret
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/sites$/);
+      if (req.method === "POST" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const { sites } = await readBody(req) as { sites?: { key?: string; project?: string; public?: boolean }[] };
+        if (!Array.isArray(sites) || sites.length > 60) return json(res, 400, { error: "send up to 60 sites" });
+        const keep = new Set<string>();
+        for (const s of sites) {
+          const key = String(s.key || ""), project = String(s.project || "").trim().slice(0, 80);
+          if (!/^[a-z0-9]{12,32}$/.test(key) || !project) continue;
+          const row = q("SELECT owner FROM traffic_sites WHERE key=?").get(key) as any;
+          if (row && row.owner !== m[1]) continue;   // someone else's key
+          if (row) q("UPDATE traffic_sites SET project=?, public=? WHERE key=?").run(project, s.public ? 1 : 0, key);
+          else q("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run(key, m[1], project, s.public ? 1 : 0, crypto.randomBytes(18).toString("hex"), now());
+          keep.add(key);
+        }
+        for (const r of sitesOf(m[1])) if (!keep.has(r.key)) { q("DELETE FROM traffic_sites WHERE key=?").run(r.key); q("DELETE FROM traffic WHERE key=?").run(r.key); }
+        return json(res, 200, { sites: q("SELECT key, project, public, secret FROM traffic_sites WHERE owner=?").all(m[1]) });
+      }
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/live$/);
+      if (req.method === "GET" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        return json(res, 200, liveStats(m[1], true) || { at: now(), private: true, districts: {}, events: [] });
+      }
+      m = p.match(/^\/v1\/live\/([a-z0-9-]+)$/);
+      if (req.method === "GET" && m) {
+        const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
+        return json(res, 200, liveStats(pr.id, false) || { at: now(), districts: {} });
+      }
+      // the pixel: GET /v1/t/KEY.gif?k=view|signup|buy (also POST, for sendBeacon)
+      m = p.match(/^\/v1\/t\/([a-z0-9]{12,32})(?:\.gif)?$/);
+      if ((req.method === "GET" || req.method === "POST") && m) {
+        const ua = String(req.headers["user-agent"] || ""), kind = ["signup", "buy"].includes(url.searchParams.get("k") || "") ? url.searchParams.get("k")! : "view";
+        if (ua && !BOT_UA.test(ua) && q("SELECT 1 FROM traffic_sites WHERE key=?").get(m[1])) {
+          const day = new Date().toISOString().slice(0, 10);
+          try { record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16)); } catch { /* never break the site */ }
+        }
+        res.writeHead(200, { "content-type": "image/gif", "cache-control": "no-store", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
+        return res.end(PIXEL);
+      }
+      // server-side events from the owner's own feed: POST /v1/t/KEY/events  { events: [{ k, ts, v }] }  with the site secret
+      m = p.match(/^\/v1\/t\/([a-z0-9]{12,32})\/events$/);
+      if (req.method === "POST" && m) {
+        const site = q("SELECT secret FROM traffic_sites WHERE key=?").get(m[1]) as any;
+        const given = Buffer.from(String(req.headers.authorization || "").replace(/^Bearer /, "")), want = Buffer.from(String(site?.secret || "x"));
+        if (!site || given.length !== want.length || !crypto.timingSafeEqual(given, want)) return json(res, 401, { error: "bad site key or secret" });
+        const { events } = await readBody(req) as { events?: { k?: string; ts?: string; v?: string }[] };
+        if (!Array.isArray(events) || events.length > 1000) return json(res, 400, { error: "send up to 1000 events" });
+        const lo = Date.now() - DAY, hi = Date.now() + 60_000, day = new Date().toISOString().slice(0, 10); let n = 0;
+        for (const e of events) {
+          const t = Date.parse(String(e.ts || "")); if (!(t > lo && t < hi)) continue;
+          const kind = ["view", "signup", "buy"].includes(String(e.k)) ? String(e.k) : "view";
+          if (record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + String(e.v || "")).digest("hex").slice(0, 16), new Date(t).toISOString())) n++;
+        }
+        return json(res, 200, { ok: true, recorded: n });
       }
 
       m = p.match(/^\/v1\/inbox\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
@@ -631,6 +744,12 @@ export function createHub(opts: HubOptions) {
       if (!m) { res.writeHead(302, { location: `/@${mine}/` }); return res.end(); }
       if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }
       if (!m[2]) { res.writeHead(301, { location: `/@${mine}/${url.search}` }); return res.end(); }
+      if (m[2] === "/live.json") {   // the private city polls this; the token in the page stops other sites reading it through your browser
+        const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
+        if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
+        res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        return res.end(JSON.stringify(liveStats(pr0.id, url.searchParams.get("view") !== "public") || { at: now(), districts: {} }));
+      }
       const dir = path.join(opts.dataDir, "profiles", mine);
       let rel = m[2].slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
       const file = path.join(dir, path.normalize(rel));
@@ -650,6 +769,7 @@ export function createHub(opts: HubOptions) {
         + `<span style="color:#8B6CF6;font-weight:600">&#128274; Private address</span><span style="display:inline-flex;background:#221D33;border-radius:9px;padding:2px">${tab(!pub, "My view", "?view=mine")}${tab(pub, "Public view", "?view=public")}</span>`
         + `<span>${row ? `Private sections pushed from Obsidian ${ago(row.built)}.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian."} Only your Tailscale account can open this.</span></div>`;
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
+      if (rel === "city.html" && pr && sitesOf(pr.id).length) { html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl)); }
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }

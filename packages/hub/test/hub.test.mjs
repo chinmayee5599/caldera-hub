@@ -253,3 +253,48 @@ test("private owner address: tailnet login gates it, layer encrypted at rest, pu
   assert.ok((await (await pget("/@pia/", "me@example.com")).text()).includes("SECRET-LAYER"), "layer still served alongside pages");
   h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("live traffic: owner registers sites, pixel + secret-signed events count, public sees levels only, private sees numbers", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const h = createHub({ dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "rae" } });
+  const base = "http://127.0.0.1:" + await h.listen(0), pbase = "http://127.0.0.1:" + await h.listenPrivate(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const rae = C.newIdentity(), sly = C.newIdentity();
+  const city = Buffer.from("<html><head></head><body>CITY</body></html>").toString("base64");
+  for (const [id, hd] of [[rae, "rae"], [sly, "sly"]]) await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: hd, handle: hd, boxKey: id.boxPublic }), files: { "index.html": city, "city.html": city } });
+  const K1 = "aaaaaaaaaaaa11", K2 = "bbbbbbbbbbbb22";
+  assert.equal((await post(`/v1/owner/${rae.id}/sites`, { sites: [{ key: K1, project: "Shop", public: true }] })).status, 401);
+  const reg = await post(`/v1/owner/${rae.id}/sites`, { sites: [{ key: K1, project: "Shop", public: true }, { key: K2, project: "Secret Lab", public: false }, { key: "bad", project: "x" }] }, await login(rae));
+  assert.equal(reg.status, 200); assert.equal(reg.body.sites.length, 2);
+  const secret2 = reg.body.sites.find(s => s.key === K2).secret;
+  assert.equal((await post(`/v1/owner/${sly.id}/sites`, { sites: [{ key: K1, project: "Stolen" }] }, await login(sly))).body.sites.length, 0, "can't take another owner's key");
+  assert.ok(!(await (await fetch(base + "/@rae/city.html")).text()).includes("CALDERA_LIVE"), "no live layer until traffic arrives");
+  const ua = { "user-agent": "Mozilla/5.0 (Macintosh) Safari" };
+  for (let i = 0; i < 3; i++) { const r = await fetch(base + `/v1/t/${K1}.gif`, { headers: ua }); assert.equal(r.headers.get("content-type"), "image/gif"); }
+  await fetch(base + `/v1/t/${K1}.gif`, { headers: { "user-agent": "Googlebot/2.1" } });
+  await fetch(base + `/v1/t/${K1}.gif?k=signup`, { headers: ua });
+  assert.equal((await post(`/v1/t/${K2}/events`, { events: [{ k: "view", ts: new Date().toISOString(), v: "x" }] }, "wrong")).status, 401);
+  const ev = await post(`/v1/t/${K2}/events`, { events: [{ k: "view", ts: new Date().toISOString(), v: "a" }, { k: "view", ts: new Date().toISOString(), v: "b" }, { k: "buy", ts: new Date().toISOString(), v: "a" }, { k: "view", ts: "2001-01-01T00:00:00Z", v: "c" }] }, secret2);
+  assert.equal(ev.body.recorded, 3);
+  const pub = await (await fetch(base + "/v1/live/rae")).json();
+  assert.deepEqual(Object.keys(pub.districts).sort(), ["Private", "Shop"]); assert.equal(pub.districts.Shop.level, 1);
+  assert.ok(!JSON.stringify(pub).includes("Secret Lab") && pub.events === undefined && pub.districts.Shop.views === undefined, "public: levels only, unlisted merged");
+  const page = await fetch(base + "/@rae/city.html");
+  assert.ok((await page.text()).includes('window.CALDERA_LIVE={"url":"/v1/live/rae"'));
+  assert.match(page.headers.get("content-security-policy"), /connect-src 'self'/);
+  assert.equal((await fetch(base + "/v1/owner/" + rae.id + "/live")).status, 401);
+  const priv = await (await fetch(base + `/v1/owner/${rae.id}/live`, { headers: { authorization: "Bearer " + await login(rae) } })).json();
+  assert.equal(priv.districts.Shop.views, 3); assert.equal(priv.districts.Shop.signups, 1); assert.equal(priv.districts["Secret Lab"].buys, 1); assert.equal(priv.districts["Secret Lab"].now, 2);
+  assert.ok(priv.events.length === 7 && priv.events.some(e => e.d === "Secret Lab" && e.k === "buy"));
+  // private address: the city carries a tokenised live.json; without the token it's refused
+  await post(`/v1/owner/${rae.id}/private`, { html: "x", pages: { "city.html": "<html><head></head><body>PCITY</body></html>" } }, await login(rae));
+  const pget = (p) => fetch(pbase + p, { headers: { "tailscale-user-login": "me@example.com" } });
+  const ptext = await (await pget("/@rae/city.html")).text(), url = ptext.match(/"url":"(live\.json\?t=[0-9a-f]+)"/)[1];
+  assert.ok(ptext.includes("PCITY") && ptext.includes('"mode":"private"'));
+  assert.equal((await pget("/@rae/live.json")).status, 403);
+  assert.equal((await (await pget("/@rae/" + url)).json()).districts["Secret Lab"].buys, 1);
+  assert.equal((await (await pget("/@rae/" + url + "&view=public")).json()).districts["Secret Lab"], undefined);
+  assert.ok((await (await fetch(base + "/t.js")).text()).includes("data-site"));
+  h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
+});
