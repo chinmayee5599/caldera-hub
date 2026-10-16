@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.10.3",
+      "date": "2026-10-16",
+      "title": "Easier updates",
+      "items": ["When a newer Caldera is out, What's new tells you which version you have and opens Community plugins so you can update in one click."]
+    },
+    {
       "version": "0.10.2",
       "date": "2026-10-16",
       "title": "Full-screen city",
