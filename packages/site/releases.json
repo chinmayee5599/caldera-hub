@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.10.1",
+      "date": "2026-10-16",
+      "title": "Tidier Agent HQ",
+      "items": ["Agents parked at Agent HQ no longer pile their labels on top of each other: the pad says how many are waiting on you, and you tap a drone for details."]
+    },
+    {
       "version": "0.10.0",
       "date": "2026-10-16",
       "title": "Your AI agents, flying over the city",
