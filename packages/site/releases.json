@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.9.1",
+      "date": "2026-10-16",
+      "title": "Every car is a real visitor",
+      "items": [
+        "Once your sites send live traffic, the city's cars are your visitors: one car for each person on that site right now. It pulls out of their district when they arrive and fades away when they leave.",
+        "The live panel no longer scrolls: busy districts get a row, quiet ones share a single line, and a hint shows if no visits have arrived yet."
+      ]
+    },
+    {
       "version": "0.9.0",
       "date": "2026-10-16",
       "title": "Live traffic in your city",
