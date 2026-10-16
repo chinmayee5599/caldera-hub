@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.10.0",
+      "date": "2026-10-16",
+      "title": "Your AI agents, flying over the city",
+      "items": [
+        "Every Claude Code agent you run becomes a drone over the repo it's working in: a beam into the roof while it edits, circling while it thinks, parked at Agent HQ blinking amber when it's waiting on you.",
+        "Tap a drone to see what it's working on, its last step and tokens today (My view and your private address only). Your public city shows anonymous drones, never what they're doing.",
+        "Set it up in Settings > AI agents on your city: copy the prompt into Claude Code on each computer. A tiny hook reports the repo and a short task title; task details are encrypted on the hub."
+      ]
+    },
+    {
       "version": "0.9.1",
       "date": "2026-10-16",
       "title": "Every car is a real visitor",

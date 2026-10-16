@@ -106,6 +106,8 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS traffic_sites (key TEXT PRIMARY KEY, owner TEXT, project TEXT, public INTEGER, secret TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS traffic (key TEXT, ts TEXT, kind TEXT, visitor TEXT);
     CREATE INDEX IF NOT EXISTS traffic_by_key ON traffic(key, ts);
+    CREATE TABLE IF NOT EXISTS agent_keys (key TEXT PRIMARY KEY, owner TEXT UNIQUE, secret TEXT, repos TEXT, ts TEXT);
+    CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
   `);
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
@@ -338,7 +340,7 @@ export function createHub(opts: HubOptions) {
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
-    q("DELETE FROM traffic_sites WHERE owner=?").run(id);
+    q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
@@ -399,8 +401,25 @@ export function createHub(opts: HubOptions) {
     return true;
   }
   /** Per-district live numbers. full=false is the public projection: coarse activity levels only, unlisted projects merged. */
+  /** Agents working for the owner right now (reported in the last 15 minutes). Public: district + state only. */
+  const AGENT_TTL = 15 * 60_000;
+  const repoHash = (r: string) => crypto.createHash("sha256").update(String(r).toLowerCase()).digest("hex").slice(0, 16);
+  function agentsOf(owner: string, full: boolean, pubProjects: Set<string>) {
+    const k = q("SELECT repos FROM agent_keys WHERE owner=?").get(owner) as any; let map: Record<string, string> = {};
+    try { map = JSON.parse(k?.repos || "{}"); } catch { /* none */ }
+    const rows = q("SELECT * FROM agents WHERE owner=? AND ts > ? ORDER BY ts DESC LIMIT 40").all(owner, new Date(Date.now() - AGENT_TTL).toISOString()) as any[];
+    return rows.map(r => {
+      const project = r.repo ? map[r.repo] || "" : "", ago = Math.round((Date.now() - Date.parse(r.ts)) / 1000);
+      const state = ago > 300 && (r.state === "working" || r.state === "thinking") ? "idle" : r.state;   // went quiet without saying so
+      if (!full) return { id: crypto.createHash("sha256").update(owner + r.id).digest("hex").slice(0, 10), d: pubProjects.has(project) ? project : project ? "Private" : "", state };
+      let x: any = {}; try { x = JSON.parse(unseal(r.task)); } catch { /* unreadable */ }
+      return { id: r.id, d: project, repo: x.repo || "", label: x.label || "", machine: x.machine || "", state, task: x.task || "", did: x.did || "", tokens: r.tokens, ago };
+    });
+  }
   function liveStats(owner: string, full: boolean) {
-    const sites = sitesOf(owner); if (!sites.length) return null;
+    const sites = sitesOf(owner), pubSet = new Set(sites.filter(s => s.public).map(s => s.project));
+    const agents = agentsOf(owner, full, pubSet);
+    if (!sites.length) return agents.length ? (full ? { at: now(), private: true, districts: {}, events: [], agents } : { at: now(), districts: {}, agents }) : null;
     const t5 = new Date(Date.now() - 5 * 60_000).toISOString(), t24 = new Date(Date.now() - DAY).toISOString(), t3 = new Date(Date.now() - 3 * 60_000).toISOString();
     const by = new Map(sites.map(s => [s.key, s]));
     const name = (k: string) => { const s = by.get(k)!; return full || s.public ? s.project : "Private"; };
@@ -412,11 +431,12 @@ export function createHub(opts: HubOptions) {
       const x = d(r.key); if (r.kind === "view") { x.views += r.n; x.visitors += r.u; } else if (r.kind === "signup") x.signups += r.n; else if (r.kind === "buy") x.buys += r.n;
     }
     const level = (n: number) => n <= 0 ? 0 : n < 3 ? 1 : n < 10 ? 2 : n < 30 ? 3 : 4;
-    if (!full) return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])) };
+    if (!full) return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents };
     const events = (q(`SELECT key, ts, kind FROM traffic WHERE key IN (${qs}) AND ts > ? ORDER BY ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts }));
-    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events };
+    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events, agents };
   }
-  const hasLive = (owner: string) => !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, new Date(Date.now() - 7 * DAY).toISOString());
+  const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
+    return !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, wk) || !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk); };
   const liveScript = (cfg: object) => `<script>window.CALDERA_LIVE=${JSON.stringify(cfg).replace(/</g, "\\u003c")}</script>`;
   const injectLive = (html: string, cfg: object) => /<\/head>/i.test(html) ? html.replace(/<\/head>/i, liveScript(cfg) + "</head>") : liveScript(cfg) + html;
   const liveToken = (handle: string, day = new Date().toISOString().slice(0, 10)) => crypto.createHmac("sha256", PRIV_KEY).update("live:" + handle + ":" + day).digest("hex").slice(0, 24);
@@ -609,7 +629,7 @@ export function createHub(opts: HubOptions) {
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/sites$/);
       if (req.method === "POST" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
-        const { sites } = await readBody(req) as { sites?: { key?: string; project?: string; public?: boolean }[] };
+        const { sites, repos } = await readBody(req) as { sites?: { key?: string; project?: string; public?: boolean }[]; repos?: Record<string, string> };
         if (!Array.isArray(sites) || sites.length > 60) return json(res, 400, { error: "send up to 60 sites" });
         const keep = new Set<string>();
         for (const s of sites) {
@@ -622,7 +642,13 @@ export function createHub(opts: HubOptions) {
           keep.add(key);
         }
         for (const r of sitesOf(m[1])) if (!keep.has(r.key)) { q("DELETE FROM traffic_sites WHERE key=?").run(r.key); q("DELETE FROM traffic WHERE key=?").run(r.key); }
-        return json(res, 200, { sites: q("SELECT key, project, public, secret FROM traffic_sites WHERE owner=?").all(m[1]) });
+        // agents: one key per owner; the repo -> district map arrives hashed (the hub never needs private repo names to place a drone)
+        const rmap: Record<string, string> = {};
+        for (const [h, pj] of Object.entries(repos && typeof repos === "object" ? repos : {}).slice(0, 2000)) if (/^[0-9a-f]{16}$/.test(h)) rmap[h] = String(pj).slice(0, 80);
+        let ak = q("SELECT key, secret FROM agent_keys WHERE owner=?").get(m[1]) as any;
+        if (!ak) { ak = { key: crypto.randomBytes(9).toString("hex"), secret: crypto.randomBytes(18).toString("hex") }; q("INSERT INTO agent_keys VALUES (?,?,?,?,?)").run(ak.key, m[1], ak.secret, JSON.stringify(rmap), now()); }
+        else if (repos) q("UPDATE agent_keys SET repos=? WHERE owner=?").run(JSON.stringify(rmap), m[1]);
+        return json(res, 200, { sites: q("SELECT key, project, public, secret FROM traffic_sites WHERE owner=?").all(m[1]), agent: { key: ak.key, secret: ak.secret } });
       }
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/live$/);
       if (req.method === "GET" && m) {
@@ -644,6 +670,27 @@ export function createHub(opts: HubOptions) {
         }
         res.writeHead(200, { "content-type": "image/gif", "cache-control": "no-store", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
         return res.end(PIXEL);
+      }
+      // agents report what they're doing: POST /v1/agents/KEY  { agents: [{ id, label, machine, repo, state, task, did, tokens }] }
+      m = p.match(/^\/v1\/agents\/([0-9a-f]{18})$/);
+      if (req.method === "POST" && m) {
+        const ak = q("SELECT owner, secret FROM agent_keys WHERE key=?").get(m[1]) as any;
+        const given = Buffer.from(String(req.headers.authorization || "").replace(/^Bearer /, "")), want = Buffer.from(String(ak?.secret || "x"));
+        if (!ak || given.length !== want.length || !crypto.timingSafeEqual(given, want)) return json(res, 401, { error: "bad agent key or secret" });
+        const { agents } = await readBody(req) as { agents?: any[] };
+        if (!Array.isArray(agents) || agents.length > 50) return json(res, 400, { error: "send up to 50 agents" });
+        const STATES = ["working", "thinking", "waiting", "idle", "done"], cut = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
+        let n = 0;
+        for (const a of agents) {
+          const id = cut(a?.id, 40); if (!/^[\w.:-]{4,40}$/.test(id)) continue;
+          if (a.state === "gone") { q("DELETE FROM agents WHERE owner=? AND id=?").run(ak.owner, id); continue; }
+          // details (label, machine, repo, task, last step) are sealed at rest; only the repo's hash stays readable, to place the drone
+          const detail = seal(JSON.stringify({ label: cut(a.label, 60), machine: cut(a.machine, 40), repo: cut(a.repo, 80), task: cut(a.task, 90), did: cut(a.did, 90) }));
+          q("INSERT OR REPLACE INTO agents VALUES (?,?,?,?,?,?,?,?,?,?)").run(ak.owner, id, "", "", a.repo ? repoHash(cut(a.repo, 80)) : "", STATES.includes(a.state) ? a.state : "working",
+            detail, "", Math.max(0, Math.min(1e12, Number(a.tokens) || 0)), now()); n++;
+        }
+        q("DELETE FROM agents WHERE ts < ?").run(new Date(Date.now() - DAY).toISOString());
+        return json(res, 200, { ok: true, recorded: n });
       }
       // server-side events from the owner's own feed: POST /v1/t/KEY/events  { events: [{ k, ts, v }] }  with the site secret
       m = p.match(/^\/v1\/t\/([a-z0-9]{12,32})\/events$/);
@@ -769,7 +816,7 @@ export function createHub(opts: HubOptions) {
         + `<span style="color:#8B6CF6;font-weight:600">&#128274; Private address</span><span style="display:inline-flex;background:#221D33;border-radius:9px;padding:2px">${tab(!pub, "My view", "?view=mine")}${tab(pub, "Public view", "?view=public")}</span>`
         + `<span>${row ? `Private sections pushed from Obsidian ${ago(row.built)}.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian."} Only your Tailscale account can open this.</span></div>`;
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
-      if (rel === "city.html" && pr && sitesOf(pr.id).length) { html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl)); }
+      if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) { html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl)); }
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }

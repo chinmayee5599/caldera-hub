@@ -1,4 +1,5 @@
 import { test, before, after } from "node:test";
+import crypto from "node:crypto";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -297,4 +298,33 @@ test("live traffic: owner registers sites, pixel + secret-signed events count, p
   assert.equal((await (await pget("/@rae/" + url + "&view=public")).json()).districts["Secret Lab"], undefined);
   assert.ok((await (await fetch(base + "/t.js")).text()).includes("data-site"));
   h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("agents: owner key from site sync, secret-signed reports, public sees district + state only", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const h = createHub({ dataDir: d });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const tia = C.newIdentity(), hash = r => crypto.createHash("sha256").update(r.toLowerCase()).digest("hex").slice(0, 16);
+  const page = Buffer.from("<html><head></head><body>CITY</body></html>").toString("base64");
+  await post(`/v1/profiles/${tia.id}/bundle`, { manifest: C.sign(tia, "profile.manifest", { name: "Tia", handle: "tia", boxKey: tia.boxPublic }), files: { "index.html": page, "city.html": page } });
+  const reg = await post(`/v1/owner/${tia.id}/sites`, { sites: [{ key: "cccccccccccc33", project: "Shop", public: true }, { key: "dddddddddddd44", project: "Vault", public: false }], repos: { [hash("shop-web")]: "Shop", [hash("secret-bot")]: "Vault" } }, await login(tia));
+  const { key, secret } = reg.body.agent; assert.match(key, /^[0-9a-f]{18}$/);
+  assert.equal((await post(`/v1/agents/${key}`, { agents: [{ id: "s1", state: "working" }] }, "nope")).status, 401);
+  const r = await post(`/v1/agents/${key}`, { agents: [
+    { id: "sess-1", label: "Claude · laptop", machine: "laptop", repo: "shop-web", state: "working", task: "Fix checkout", did: "Edit cart.ts", tokens: 1200 },
+    { id: "sess-2", label: "Claude · box", machine: "box", repo: "secret-bot", state: "thinking", task: "Tune the SECRET strategy" },
+    { id: "sess-3", repo: "unknown-thing", state: "waiting" }, { id: "x", state: "working" }] }, secret);
+  assert.equal(r.body.recorded, 3);
+  const pub = await (await fetch(base + "/v1/live/tia")).json();
+  assert.deepEqual(pub.agents.map(a => a.d).sort(), ["", "Private", "Shop"]);
+  const ps = JSON.stringify(pub); for (const w of ["secret-bot", "SECRET", "Vault", "laptop", "Fix checkout", "sess-1"]) assert.ok(!ps.includes(w), "public leaks " + w);
+  const priv = await (await fetch(base + `/v1/owner/${tia.id}/live`, { headers: { authorization: "Bearer " + await login(tia) } })).json();
+  for (const f of fs.readdirSync(d).filter(f => f.startsWith("hub.sqlite"))) assert.ok(!fs.readFileSync(path.join(d, f)).includes("SECRET strategy"), "agent tasks sealed at rest");
+  const a1 = priv.agents.find(a => a.id === "sess-1"); assert.equal(a1.d, "Shop"); assert.equal(a1.repo, "shop-web"); assert.equal(a1.task, "Fix checkout"); assert.equal(priv.agents.find(a => a.id === "sess-2").d, "Vault");
+  assert.ok((await (await fetch(base + "/@tia/city.html", { headers: { "user-agent": "Mozilla/5.0" } })).text()).includes("CALDERA_LIVE"), "agents alone light up the city");
+  await post(`/v1/agents/${key}`, { agents: [{ id: "sess-3", state: "gone" }] }, secret);
+  assert.equal((await (await fetch(base + "/v1/live/tia")).json()).agents.length, 2);
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
