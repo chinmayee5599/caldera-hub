@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.12.2",
+      "date": "2026-10-16",
+      "title": "Fold the panels away",
+      "items": ["Tap the Underground or LIVE panel on the city to fold it down to one line, and tap again to open it. On phones they start folded."]
+    },
+    {
       "version": "0.12.1",
       "date": "2026-10-16",
       "title": "Room for your whole fleet",
