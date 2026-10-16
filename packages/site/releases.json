@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.10.2",
+      "date": "2026-10-16",
+      "title": "Full-screen city",
+      "items": ["New Full screen button on the city map (Esc or Exit to leave). Works on the public page, your private address and the My profile tab.", "On phones, the live panel folds down to one line; tap it to open."]
+    },
+    {
       "version": "0.10.1",
       "date": "2026-10-16",
       "title": "Tidier Agent HQ",
