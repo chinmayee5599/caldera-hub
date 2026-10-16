@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.11.0",
+      "date": "2026-10-16",
+      "title": "The Underground: your vault under the city",
+      "items": [
+        "New Underground button on the city: the ground turns to glass and your Obsidian vault appears below as a glowing network. Notes are nodes (bigger = more notes link to them), links are tunnels, and depth is age.",
+        "Notes about a project hang under its district, with roots up into its buildings, so you can see which projects have deep knowledge behind them.",
+        "Tap a note to see its links and open it. Notes you edit pulse light through their connections. Unconnected notes are counted so you can link them up.",
+        "Visitors only see the shape: no titles, except notes you've published to your garden."
+      ]
+    },
+    {
       "version": "0.10.3",
       "date": "2026-10-16",
       "title": "Easier updates",
