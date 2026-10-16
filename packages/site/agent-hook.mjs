@@ -24,6 +24,20 @@ function repoOf(dir) {
   } catch { return ""; }
 }
 
+const ASK = /(want me to|should i|shall i|do you want|would you like|let me know|which (one|option|do you)|can you (confirm|run|send|approve|paste|check)|needs? (you|your)|waiting (on|for) you|your call|approve|ok to|okay to)/i;
+function asks(text) { const paras = String(text || "").trim().slice(-500).split(/\n\s*\n/).filter(p => p.trim()); const last = paras[paras.length - 1] || ""; return last.includes("?") || ASK.test(last); }
+function lastReply(file) {   // the last assistant text in the session transcript (reads only its tail)
+  try {
+    const fd = fs.openSync(file, "r"), size = fs.fstatSync(fd).size, n = Math.min(size, 400_000), buf = Buffer.alloc(n);
+    fs.readSync(fd, buf, 0, n, size - n); fs.closeSync(fd);
+    for (const ln of buf.toString("utf8").split("\n").reverse()) {
+      try { const e = JSON.parse(ln); const c = e.type === "assistant" && e.message?.content;
+        if (Array.isArray(c)) { const t = c.filter(x => x.type === "text").map(x => x.text).join("\n"); if (t.trim()) return t; } } catch {}
+    }
+  } catch {}
+  return "";
+}
+
 let input = "";
 process.stdin.on("data", c => { input += c; if (input.length > 2e6) done(); });
 process.stdin.on("end", async () => {
@@ -46,7 +60,9 @@ process.stdin.on("end", async () => {
         const f = inp.file_path || inp.path; if (f && path.isAbsolute(String(f))) { const r = repoOf(path.dirname(String(f))); if (r) me.repo = r; }
         break;
       }
-      case "Stop": case "Notification": state = "waiting"; break;
+      // "waiting" only when the agent actually asks you something or needs a permission; a finished turn is "done"
+      case "Stop": state = asks(lastReply(ev.transcript_path)) ? "waiting" : "done"; break;
+      case "Notification": if (!/permission|approve|needs your/i.test(String(ev.message || ""))) { fs.writeFileSync(STATE, JSON.stringify(st)); return done(); } state = "waiting"; break;
       case "SessionEnd": state = "gone"; break;
     }
     if (!me.repo && ev.cwd) me.repo = repoOf(ev.cwd);
