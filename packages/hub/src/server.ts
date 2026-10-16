@@ -408,7 +408,7 @@ export function createHub(opts: HubOptions) {
   function agentsOf(owner: string, full: boolean, pubProjects: Set<string>) {
     const k = q("SELECT repos FROM agent_keys WHERE owner=?").get(owner) as any; let map: Record<string, string> = {};
     try { map = JSON.parse(k?.repos || "{}"); } catch { /* none */ }
-    const rows = q("SELECT * FROM agents WHERE owner=? AND ts > ? ORDER BY ts DESC LIMIT 40").all(owner, new Date(Date.now() - AGENT_TTL).toISOString()) as any[];
+    const rows = q("SELECT * FROM agents WHERE owner=? AND ts > ? ORDER BY ts DESC LIMIT 80").all(owner, new Date(Date.now() - AGENT_TTL).toISOString()) as any[];
     return rows.map(r => {
       const project = r.repo ? map[r.repo] || "" : "", ago = Math.round((Date.now() - Date.parse(r.ts)) / 1000);
       const state = ago > 300 && (r.state === "working" || r.state === "thinking") ? "idle" : r.state;   // went quiet without saying so
