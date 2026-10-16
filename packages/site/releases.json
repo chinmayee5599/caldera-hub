@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.8.3",
+      "date": "2026-10-16",
+      "title": "Your city, on the Grid",
+      "items": [
+        "New default look for your city: Grid mode. Black glass towers outlined in neon (one color per language), glowing window strips, a lit grid floor, and light cycles racing the streets with light trails.",
+        "Your tallest building sends a beam of light into the sky.",
+        "Prefer daylight? The button cycles Grid, Day, Dusk and Night."
+      ]
+    },
+    {
       "version": "0.8.2",
       "date": "2026-10-16",
       "title": "A much better-looking city",
