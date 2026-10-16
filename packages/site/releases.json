@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.8.1",
+      "date": "2026-10-16",
+      "title": "Your whole city, private repos locked",
+      "items": [
+        "Your public city now shows every repo, so visitors see the real size of what you're building.",
+        "Private repos are locked glass buildings with a padlock: no name, language, commit history, link or exact numbers. Tapping one just says it's private.",
+        "Projects that aren't on your public profile don't show their names; their buildings sit in one district called Private."
+      ]
+    },
+    {
       "version": "0.8.0",
       "date": "2026-10-16",
       "title": "Caldera City: your GitHub as a city",
