@@ -246,5 +246,10 @@ test("private owner address: tailnet login gates it, layer encrypted at rest, pu
   assert.ok(mine.includes("SECRET-LAYER") && mine.includes("Private address"));
   assert.ok(!(await (await pget("/@pia/?view=public", "me@example.com")).text()).includes("SECRET-LAYER"));
   assert.equal((await pget("/", "me@example.com")).headers.get("location"), "/@pia/");
+  await post(`/v1/owner/${pia.id}/private`, { html: SECRET, pages: { "city.html": "<html><body>PRIVATE-CITY</body></html>", "../evil.html": "x" } }, await login(pia));
+  assert.ok((await (await pget("/@pia/city.html", "me@example.com")).text()).includes("PRIVATE-CITY"));
+  assert.equal((await pget("/@pia/evil.html", "me@example.com")).status, 404);
+  assert.equal((await fetch(base + "/@pia/city.html")).status, 404, "public hub has no private city");
+  assert.ok((await (await pget("/@pia/", "me@example.com")).text()).includes("SECRET-LAYER"), "layer still served alongside pages");
   h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
 });

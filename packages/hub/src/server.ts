@@ -541,9 +541,11 @@ export function createHub(opts: HubOptions) {
       if (req.method === "POST" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
         const pr = profile(m[1]); if (!pr?.handle || !privateFor(pr.handle)) return json(res, 403, { error: "no private address is set up for this profile on this hub" });
-        const { html, built } = await readBody(req) as { html?: string; built?: string };
+        const { html, built, pages } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown> };
         if (typeof html !== "string" || html.length > 3_000_000) return json(res, 400, { error: "bad private layer" });
-        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(html), String(built || now()).slice(0, 40), now());
+        const priv: Record<string, string> = {};   // private versions of whole pages (only the city, for now)
+        for (const [k, v] of Object.entries(pages || {})) if (k === "city.html" && typeof v === "string" && v.length < 4_000_000) priv[k] = v;
+        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv })), String(built || now()).slice(0, 40), now());
         return json(res, 200, { ok: true, url: privateFor(pr.handle) });
       }
 
@@ -632,22 +634,22 @@ export function createHub(opts: HubOptions) {
       const dir = path.join(opts.dataDir, "profiles", mine);
       let rel = m[2].slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
       const file = path.join(dir, path.normalize(rel));
-      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end("not found"); }
-      res.removeHeader("x-frame-options");
-      const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "content-security-policy": PROFILE_CSP };
-      if (path.extname(file).toLowerCase() !== ".html") { res.writeHead(200, headers); return fs.createReadStream(file).pipe(res); }
-      let html = liveBlocks(mine, rel, fs.readFileSync(file, "utf8"));
       const pr = byHandle(mine), row = pr ? q("SELECT blob, built FROM owner_private WHERE owner=?").get(pr.id) as any : null;
       const pub = url.searchParams.get("view") === "public";
+      let priv: { layer: string; pages: Record<string, string> } = { layer: "", pages: {} };
+      if (row) { try { const s = unseal(row.blob); priv = s.startsWith('{"layer"') ? JSON.parse(s) : { layer: s, pages: {} }; } catch { priv = { layer: "<p>Couldn't read the private layer. Push again from Obsidian.</p>", pages: {} }; } }
+      const own = !pub && priv.pages[rel];
+      if (!own && (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory())) { res.writeHead(404); return res.end("not found"); }
+      res.removeHeader("x-frame-options");
+      const headers = { "content-type": own ? "text/html; charset=utf-8" : MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "content-security-policy": PROFILE_CSP };
+      if (!own && path.extname(file).toLowerCase() !== ".html") { res.writeHead(200, headers); return fs.createReadStream(file).pipe(res); }
+      let html = own || liveBlocks(mine, rel, fs.readFileSync(file, "utf8"));
       const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
       const tab = (on: boolean, label: string, href: string) => `<a href="${href}" style="padding:5px 12px;border-radius:7px;text-decoration:none;${on ? "background:#8B6CF6;color:#fff" : "color:#B8B8C2"}">${label}</a>`;
       const bar = `<div style="position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 16px;background:#16131F;border-bottom:1px solid #3A2F5C;font:500 13px/1.3 'IBM Plex Sans',Arial,sans-serif;color:#B8B8C2">`
         + `<span style="color:#8B6CF6;font-weight:600">&#128274; Private address</span><span style="display:inline-flex;background:#221D33;border-radius:9px;padding:2px">${tab(!pub, "My view", "?view=mine")}${tab(pub, "Public view", "?view=public")}</span>`
         + `<span>${row ? `Private sections pushed from Obsidian ${ago(row.built)}.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian."} Only your Tailscale account can open this.</span></div>`;
-      if (rel === "index.html" && !pub && row) {
-        let layer = ""; try { layer = unseal(row.blob); } catch { layer = "<p>Couldn't read the private layer. Push again from Obsidian.</p>"; }
-        html = html.replace("<!--caldera:owner-->", layer);
-      }
+      if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }

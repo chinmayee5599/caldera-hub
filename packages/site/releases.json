@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.8.0",
+      "date": "2026-10-16",
+      "title": "Caldera City: your GitHub as a city",
+      "items": [
+        "A new City page next to your profile turns your GitHub into a little isometric city. Each project is a district and each repo a building: taller means more commits this year, lit windows mean commits this week, and a crane means it's being built right now. Cars are commit traffic.",
+        "Your Obsidian notes are the houses: every note that links to a project's note becomes a house in that district. Tap a building for its 12-week commit history, last push and the notes about it.",
+        "Private repos stay private: visitors see public repos and the projects already on your profile. Your full city, every repo included, shows only in the My profile tab (and on your private address).",
+        "Set it up by asking your AI agent to write Caldera/city.json (the setup prompt now explains how), then publish. Drag, scroll or pinch to explore; there's a day/night switch."
+      ]
+    },
+    {
       "version": "0.7.1",
       "date": "2026-10-16",
       "title": "Your private view in a browser, over Tailscale",
