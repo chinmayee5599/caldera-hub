@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.12.3",
+      "date": "2026-10-16",
+      "title": "Agent HQ parking grid, and no more stale pages",
+      "items": ["Parked agents line up in a tidy grid on the Agent HQ pad instead of a long row.", "Fixed: after an update or reload, the previous version of Caldera could keep publishing your page in the background with its old look. Old copies now stop, and the hub ignores pages from an older Caldera than the last one you used."]
+    },
+    {
       "version": "0.12.2",
       "date": "2026-10-16",
       "title": "Fold the panels away",
