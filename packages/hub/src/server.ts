@@ -13,7 +13,10 @@ import * as C from "@caldera/core";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
-export interface HubOptions { dataDir: string; port?: number; publicUrl?: string; siteDir?: string; trustProxy?: boolean; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number }; }
+export interface HubOptions { dataDir: string; port?: number; publicUrl?: string; siteDir?: string; trustProxy?: boolean;
+  /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
+   *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
+  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number }; }
 
 const MAX_BODY = 12 * 1024 * 1024;
 const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "root", "hub", "v1", "about", "login", "settings", "official", "team", "security", "obsidian"]);
@@ -88,11 +91,22 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS garden_links (owner TEXT, src_handle TEXT, src_slug TEXT, src_title TEXT, dst_handle TEXT, dst_slug TEXT);
     CREATE INDEX IF NOT EXISTS garden_dst ON garden_links(dst_handle, dst_slug);
     CREATE TABLE IF NOT EXISTS page_views (handle TEXT, path TEXT, ts TEXT, visitor TEXT);
+    CREATE TABLE IF NOT EXISTS owner_private (owner TEXT PRIMARY KEY, blob TEXT, built TEXT, ts TEXT);
     CREATE INDEX IF NOT EXISTS views_by_handle ON page_views(handle, ts);
   `);
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
   const VIEW_SALT = crypto.randomBytes(16).toString("hex");
+  // Private owner layer at rest: AES-256-GCM with a key file that never leaves this server.
+  const keyFile = path.join(opts.dataDir, "private.key");
+  if (!fs.existsSync(keyFile)) fs.writeFileSync(keyFile, crypto.randomBytes(32), { mode: 0o600 });
+  const PRIV_KEY = fs.readFileSync(keyFile);
+  const seal = (s: string) => { const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", PRIV_KEY, iv);
+    const ct = Buffer.concat([c.update(s, "utf8"), c.final()]); return Buffer.concat([iv, c.getAuthTag(), ct]).toString("base64"); };
+  const unseal = (b: string) => { const buf = Buffer.from(b, "base64"), d = crypto.createDecipheriv("aes-256-gcm", PRIV_KEY, buf.subarray(0, 12));
+    d.setAuthTag(buf.subarray(12, 28)); return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString("utf8"); };
+  const owners = opts.tailnetOwners || {};
+  const privateFor = (handle: string) => opts.privateUrl && Object.values(owners).includes(handle) ? `${opts.privateUrl.replace(/\/$/, "")}/@${handle}/` : undefined;
   const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
   const now = () => new Date().toISOString();
@@ -310,6 +324,7 @@ export function createHub(opts: HubOptions) {
   function erase(id: string) {
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
+    q("DELETE FROM owner_private WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
@@ -341,6 +356,18 @@ export function createHub(opts: HubOptions) {
     return rows.map(p => ({ id: p.id, handle: p.handle, name: p.name, week: weekScore(p.manifest), gravity: gravityOf(p.id) }))
       .sort((a, b) => b.week - a.week || b.gravity - a.gravity)
       .map((r, i) => ({ rank: i + 1, ...r }));
+  }
+
+  /** Hub-side live blocks on hosted pages: links from other gardens, the garden home, layout fixes for old builds. */
+  function liveBlocks(handle: string, rel: string, html: string): string {
+    const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
+    if (note) html = html.replace("<!--caldera:xlinks-->", xlinksBlock(handle, note[1]));
+    if (rel === "garden.html") {   // garden home: live gravity/credits/asks/links block (marker from 0.6.0; older builds: before the stage filter)
+      const gh = gardenHomeBlock(handle);
+      html = html.includes("<!--caldera:gardenhome-->") ? html.replace("<!--caldera:gardenhome-->", gh) : html.replace('<div class="g-filter"', gh + '<div class="g-filter"');
+    }
+    if (!html.includes("Heatmap sizing (2026-10-12)") && html.includes('class="heat-box"')) html = html.replace(/<\/head>/i, HEAT_FIX + "</head>");   // pages built before 0.5.1
+    return html;
   }
 
   // ---------------------------------------------------------------- auth (signed nonce, no passwords)
@@ -465,13 +492,7 @@ export function createHub(opts: HubOptions) {
             try { q("INSERT INTO page_views VALUES (?,?,?,?)").run(m[1], rel, now(), visitor); } catch { /* counting never breaks a page */ }
           }
           let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
-          const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
-          if (note) html = html.replace("<!--caldera:xlinks-->", xlinksBlock(m[1], note[1]));
-          if (rel === "garden.html") {   // garden home: live gravity/credits/asks/links block (marker from 0.6.0; older builds: before the stage filter)
-            const gh = gardenHomeBlock(m[1]);
-            html = html.includes("<!--caldera:gardenhome-->") ? html.replace("<!--caldera:gardenhome-->", gh) : html.replace('<div class="g-filter"', gh + '<div class="g-filter"');
-          }
-          if (!html.includes("Heatmap sizing (2026-10-12)") && html.includes('class="heat-box"')) html = html.replace(/<\/head>/i, HEAT_FIX + "</head>");   // pages built before 0.5.1
+          html = liveBlocks(m[1], rel, html);
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
         }
@@ -512,7 +533,18 @@ export function createHub(opts: HubOptions) {
         const friends = (q("SELECT a, b, ts FROM friends WHERE (a=? OR b=?) AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], m[1], since) as any[]).map(r => ({ handle: hn(r.a === m![1] ? r.b : r.a), ts: r.ts }));
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
-        return json(res, 200, { since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks });
+        const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
+        return json(res, 200, { since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
+      }
+      // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
+      if (req.method === "POST" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const pr = profile(m[1]); if (!pr?.handle || !privateFor(pr.handle)) return json(res, 403, { error: "no private address is set up for this profile on this hub" });
+        const { html, built } = await readBody(req) as { html?: string; built?: string };
+        if (typeof html !== "string" || html.length > 3_000_000) return json(res, 400, { error: "bad private layer" });
+        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(html), String(built || now()).slice(0, 40), now());
+        return json(res, 200, { ok: true, url: privateFor(pr.handle) });
       }
 
       m = p.match(/^\/v1\/inbox\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
@@ -582,7 +614,48 @@ export function createHub(opts: HubOptions) {
     }
   });
 
-  return { server, db, admin, listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))) };
+  // ---------------------------------------------------------------- private owner address
+  // Listens on 127.0.0.1 only; meant to sit behind `tailscale serve`, which sets Tailscale-User-Login for the
+  // connecting tailnet user (clients can't reach this port directly, so they can't forge the header).
+  const privateServer = http.createServer((req, res) => {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    res.setHeader("cache-control", "no-store"); res.setHeader("x-robots-tag", "noindex, nofollow");
+    try {
+      const url = new URL(req.url || "/", "http://private");
+      const login = String(req.headers["tailscale-user-login"] || "").toLowerCase();
+      const mine = owners[login];
+      if (!mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("Private Caldera address: only the profile owner's Tailscale account can open it."); }
+      const m = url.pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
+      if (!m) { res.writeHead(302, { location: `/@${mine}/` }); return res.end(); }
+      if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }
+      if (!m[2]) { res.writeHead(301, { location: `/@${mine}/${url.search}` }); return res.end(); }
+      const dir = path.join(opts.dataDir, "profiles", mine);
+      let rel = m[2].slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
+      const file = path.join(dir, path.normalize(rel));
+      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end("not found"); }
+      res.removeHeader("x-frame-options");
+      const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "content-security-policy": PROFILE_CSP };
+      if (path.extname(file).toLowerCase() !== ".html") { res.writeHead(200, headers); return fs.createReadStream(file).pipe(res); }
+      let html = liveBlocks(mine, rel, fs.readFileSync(file, "utf8"));
+      const pr = byHandle(mine), row = pr ? q("SELECT blob, built FROM owner_private WHERE owner=?").get(pr.id) as any : null;
+      const pub = url.searchParams.get("view") === "public";
+      const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
+      const tab = (on: boolean, label: string, href: string) => `<a href="${href}" style="padding:5px 12px;border-radius:7px;text-decoration:none;${on ? "background:#8B6CF6;color:#fff" : "color:#B8B8C2"}">${label}</a>`;
+      const bar = `<div style="position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 16px;background:#16131F;border-bottom:1px solid #3A2F5C;font:500 13px/1.3 'IBM Plex Sans',Arial,sans-serif;color:#B8B8C2">`
+        + `<span style="color:#8B6CF6;font-weight:600">&#128274; Private address</span><span style="display:inline-flex;background:#221D33;border-radius:9px;padding:2px">${tab(!pub, "My view", "?view=mine")}${tab(pub, "Public view", "?view=public")}</span>`
+        + `<span>${row ? `Private sections pushed from Obsidian ${ago(row.built)}.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian."} Only your Tailscale account can open this.</span></div>`;
+      if (rel === "index.html" && !pub && row) {
+        let layer = ""; try { layer = unseal(row.blob); } catch { layer = "<p>Couldn't read the private layer. Push again from Obsidian.</p>"; }
+        html = html.replace("<!--caldera:owner-->", layer);
+      }
+      html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
+      res.writeHead(200, headers); return res.end(html);
+    } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
+  });
+
+  return { server, privateServer, db, admin,
+    listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
+    listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
 
 // CLI: node dist/server.js  (env: CALDERA_DATA, PORT, CALDERA_PUBLIC_URL)
@@ -602,6 +675,10 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
       .then(warn("email")).catch(err => console.error("email notify error", String(err)));
   } : undefined;
   const hub = createHub({ dataDir: process.env.CALDERA_DATA || "./data", port: Number(process.env.PORT || 8787), publicUrl: process.env.CALDERA_PUBLIC_URL || "",
-    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent });
+    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent,
+    // CALDERA_TAILNET_OWNERS="you@example.com:handle,..."  (Tailscale login -> Caldera handle)
+    privatePort: Number(process.env.CALDERA_PRIVATE_PORT) || undefined, privateUrl: process.env.CALDERA_PRIVATE_URL || undefined,
+    tailnetOwners: Object.fromEntries((process.env.CALDERA_TAILNET_OWNERS || "").split(",").map(s => s.trim().split(":")).filter(x => x.length === 2 && x[0] && x[1]).map(([l, h]) => [l.toLowerCase(), h.toLowerCase()])) });
   hub.listen().then(p => console.log(`Caldera Hub listening on :${p}`));
+  if (process.env.CALDERA_PRIVATE_PORT) hub.listenPrivate().then(p => console.log(`Caldera private owner address on 127.0.0.1:${p}`));
 }

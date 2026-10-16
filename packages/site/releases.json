@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.7.1",
+      "date": "2026-10-16",
+      "title": "Your private view in a browser, over Tailscale",
+      "items": [
+        "Self-hosting a hub on your Tailscale network? Turn on 'Private web address (Tailscale)' in Caldera settings and your private sections open in a browser on any of your Tailscale devices, with a My view / Public view switch. Only your own Tailscale account can open it, and it's stored encrypted.",
+        "The views chart in My view now always shows the last 14 days."
+      ]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-10-15",
       "title": "Your profile, inside Obsidian",

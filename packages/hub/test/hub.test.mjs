@@ -220,3 +220,31 @@ test("owner activity: counts real visits (not bots, not the owner's own view), o
   assert.equal((await get(`/v1/owner/${o.id}/activity?since=2000-01-01`, await login(o))).body.totalViews, 0, "views erased");
   h3.server.close(); fs.rmSync(d3, { recursive: true, force: true });
 });
+
+test("private owner address: tailnet login gates it, layer encrypted at rest, public hub never serves it", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const h = createHub({ dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "pia" } });
+  const base = "http://127.0.0.1:" + await h.listen(0), pbase = "http://127.0.0.1:" + await h.listenPrivate(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const pia = C.newIdentity(), quin = C.newIdentity();
+  const page = Buffer.from("<html><body><h1>Pia</h1><!--caldera:owner--></body></html>").toString("base64");
+  await post(`/v1/profiles/${pia.id}/bundle`, { manifest: C.sign(pia, "profile.manifest", { name: "Pia", handle: "pia", boxKey: pia.boxPublic }), files: { "index.html": page } });
+  await post(`/v1/profiles/${quin.id}/bundle`, { manifest: C.sign(quin, "profile.manifest", { name: "Quin", handle: "quin", boxKey: quin.boxPublic }), files: { "index.html": page } });
+  const SECRET = "<div id=owner>SECRET-LAYER</div>";
+  assert.equal((await post(`/v1/owner/${pia.id}/private`, { html: SECRET })).status, 401);
+  assert.equal((await post(`/v1/owner/${quin.id}/private`, { html: SECRET }, await login(quin))).status, 403, "no private address for unmapped profiles");
+  const ok = await post(`/v1/owner/${pia.id}/private`, { html: SECRET, built: new Date().toISOString() }, await login(pia));
+  assert.equal(ok.status, 200); assert.equal(ok.body.url, "https://box.tailnet.ts.net:8443/@pia/");
+  for (const f of fs.readdirSync(d).filter(f => f.startsWith("hub.sqlite"))) assert.ok(!fs.readFileSync(path.join(d, f)).includes("SECRET-LAYER"), "encrypted at rest: " + f);
+  assert.ok(!(await (await fetch(base + "/@pia/")).text()).includes("SECRET-LAYER"), "public hub never shows it");
+  const pget = (p, who) => fetch(pbase + p, { headers: who ? { "tailscale-user-login": who } : {}, redirect: "manual" });
+  assert.equal((await pget("/@pia/")).status, 403, "no tailnet identity");
+  assert.equal((await pget("/@pia/", "stranger@example.com")).status, 403);
+  assert.equal((await pget("/@quin/", "me@example.com")).status, 403, "only your own profile");
+  const mine = await (await pget("/@pia/", "ME@example.com")).text();
+  assert.ok(mine.includes("SECRET-LAYER") && mine.includes("Private address"));
+  assert.ok(!(await (await pget("/@pia/?view=public", "me@example.com")).text()).includes("SECRET-LAYER"));
+  assert.equal((await pget("/", "me@example.com")).headers.get("location"), "/@pia/");
+  h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
+});
