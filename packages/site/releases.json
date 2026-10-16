@@ -1,6 +1,12 @@
 {
   "releases": [
     {
+      "version": "0.12.1",
+      "date": "2026-10-16",
+      "title": "Room for your whole fleet",
+      "items": ["Agent HQ now parks a whole fleet in neat rows (up to 80 agents), idle drones glow dimmer, and the pad counts how many are parked and how many are waiting on you."]
+    },
+    {
       "version": "0.12.0",
       "date": "2026-10-16",
       "title": "Sign up with GitHub",
