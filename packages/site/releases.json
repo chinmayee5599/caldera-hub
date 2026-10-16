@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.8.2",
+      "date": "2026-10-16",
+      "title": "A much better-looking city",
+      "items": [
+        "Your city got a full visual upgrade: it now sits on a little island with a river, sidewalks, lane markings and parks.",
+        "Buildings have real shading and shadows. Big projects become stepped skyscrapers, with rooftop details: water towers, solar panels, roof gardens, a helipad, and a blinking antenna on your tallest.",
+        "Street lamps glow at night, cars have headlights, and the crane arms slowly swing. The sky switches between day, dusk and night, with clouds or stars.",
+        "It's lighter to run, so it stays smooth on phones."
+      ]
+    },
+    {
       "version": "0.8.1",
       "date": "2026-10-16",
       "title": "Your whole city, private repos locked",
