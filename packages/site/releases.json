@@ -1,22 +1,37 @@
 {
   "releases": [
     {
+      "version": "0.12.4",
+      "date": "2026-10-16",
+      "title": "A city for everyone with a GitHub",
+      "items": [
+        "Add your GitHub username in settings (or a GitHub line in Links) and your public repos become your city, grouped by language and refreshed every 6 hours. Until now the city needed a Caldera/city.json written by your own tools."
+      ]
+    },
+    {
       "version": "0.12.3",
       "date": "2026-10-16",
       "title": "Agent HQ parking grid, and no more stale pages",
-      "items": ["Parked agents line up in a tidy grid on the Agent HQ pad instead of a long row.", "Fixed: after an update or reload, the previous version of Caldera could keep publishing your page in the background with its old look. Old copies now stop, and the hub ignores pages from an older Caldera than the last one you used."]
+      "items": [
+        "Parked agents line up in a tidy grid on the Agent HQ pad instead of a long row.",
+        "Fixed: after an update or reload, the previous version of Caldera could keep publishing your page in the background with its old look. Old copies now stop, and the hub ignores pages from an older Caldera than the last one you used."
+      ]
     },
     {
       "version": "0.12.2",
       "date": "2026-10-16",
       "title": "Fold the panels away",
-      "items": ["Tap the Underground or LIVE panel on the city to fold it down to one line, and tap again to open it. On phones they start folded."]
+      "items": [
+        "Tap the Underground or LIVE panel on the city to fold it down to one line, and tap again to open it. On phones they start folded."
+      ]
     },
     {
       "version": "0.12.1",
       "date": "2026-10-16",
       "title": "Room for your whole fleet",
-      "items": ["Agent HQ now parks a whole fleet in neat rows (up to 80 agents), idle drones glow dimmer, and the pad counts how many are parked and how many are waiting on you."]
+      "items": [
+        "Agent HQ now parks a whole fleet in neat rows (up to 80 agents), idle drones glow dimmer, and the pad counts how many are parked and how many are waiting on you."
+      ]
     },
     {
       "version": "0.12.0",
@@ -42,19 +57,26 @@
       "version": "0.10.3",
       "date": "2026-10-16",
       "title": "Easier updates",
-      "items": ["When a newer Caldera is out, What's new tells you which version you have and opens Community plugins so you can update in one click."]
+      "items": [
+        "When a newer Caldera is out, What's new tells you which version you have and opens Community plugins so you can update in one click."
+      ]
     },
     {
       "version": "0.10.2",
       "date": "2026-10-16",
       "title": "Full-screen city",
-      "items": ["New Full screen button on the city map (Esc or Exit to leave). Works on the public page, your private address and the My profile tab.", "On phones, the live panel folds down to one line; tap it to open."]
+      "items": [
+        "New Full screen button on the city map (Esc or Exit to leave). Works on the public page, your private address and the My profile tab.",
+        "On phones, the live panel folds down to one line; tap it to open."
+      ]
     },
     {
       "version": "0.10.1",
       "date": "2026-10-16",
       "title": "Tidier Agent HQ",
-      "items": ["Agents parked at Agent HQ no longer pile their labels on top of each other: the pad says how many are waiting on you, and you tap a drone for details."]
+      "items": [
+        "Agents parked at Agent HQ no longer pile their labels on top of each other: the pad says how many are waiting on you, and you tap a drone for details."
+      ]
     },
     {
       "version": "0.10.0",
