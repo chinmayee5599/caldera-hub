@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.13.0",
+      "date": "2026-10-17",
+      "title": "Your city up top, and one prompt for everything",
+      "items": [
+        "Your city now sits at the top of your profile: a small skyline of your repos, lit windows where you shipped this week. Click it to walk the full city.",
+        "One AI setup prompt instead of three. It connects every source it can find on your computer (calendar, email, AI usage, code, documents, your GitHub city), schedules one routine to keep your page fresh, and drafts your page text and garden for your OK. It's safe to paste again: it upgrades what's there and fills in what's missing.",
+        "My view shows what feeds your page: each source, connected or not, with a one-click copy of the setup prompt. When Caldera can track something new, it tells you to paste the prompt again."
+      ],
+      "howto": "Open My Caldera profile (ribbon icon), look at 'What feeds your page', and click Copy the setup prompt. Paste it into Claude Code, Codex or Cursor."
+    },
+    {
       "version": "0.12.5",
       "date": "2026-10-17",
       "title": "Friend requests you can't miss",

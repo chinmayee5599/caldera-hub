@@ -1,8 +1,8 @@
 // Fills the static site from single sources:
-//   @caldera/core prompts  -> index.html (setup + richer) and guide.html (edit)
+//   @caldera/core prompts  -> index.html (the one setup prompt) and guide.html (edit)
 //   site/releases.json     -> changelog.html (rendered at rest) and releases.xml (RSS)
 import fs from "node:fs";
-import { agentPrompt, richerPrompt, editPrompt } from "../../caldera/packages/core/dist/index.js";
+import { agentPrompt, editPrompt } from "../../caldera/packages/core/dist/index.js";
 
 const site = new URL("../packages/site/", import.meta.url);
 const HUB = "https://caldera.social";
@@ -10,7 +10,7 @@ const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(
 const fill = (html, marker, content) => html.replace(new RegExp(`<!-- ${marker}_START -->[\\s\\S]*?<!-- ${marker}_END -->`), `<!-- ${marker}_START -->${content}<!-- ${marker}_END -->`);
 const update = (file, fn) => { const p = new URL(file, site); fs.writeFileSync(p, fn(fs.readFileSync(p, "utf8"))); };
 
-update("index.html", h => fill(fill(h, "AGENT_PROMPT", esc(agentPrompt({ hubUrl: HUB }))), "RICHER_PROMPT", esc(richerPrompt({ hubUrl: HUB }))));
+update("index.html", h => fill(h, "AGENT_PROMPT", esc(agentPrompt({ hubUrl: HUB }))));
 update("guide.html", h => fill(h, "EDIT_PROMPT", esc(editPrompt({ hubUrl: HUB }))));
 
 const { releases } = JSON.parse(fs.readFileSync(new URL("releases.json", site), "utf8"));
