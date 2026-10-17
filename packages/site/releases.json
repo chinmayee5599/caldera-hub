@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.16.1",
+      "date": "2026-10-17",
+      "title": "Review fix",
+      "items": [
+        "A small fix so Caldera passes the Obsidian directory review. Same features as 0.16.0: sign in from your phone, and Finish your page."
+      ]
+    },
+    {
       "version": "0.16.0",
       "date": "2026-10-17",
       "title": "Sign in from your phone, and finish your page",
