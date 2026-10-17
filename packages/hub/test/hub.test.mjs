@@ -411,3 +411,19 @@ test("an older Caldera can't overwrite what a newer one published (bundle and pr
   assert.equal((await post(`/v1/owner/${vee.id}/private`, { html: "old" }, tk)).status, 409);
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("friend requests: the hub lists open requests both ways until accepted", async () => {
+  const bo = ana;   // reuses a test profile: the hub caps new profiles per address per day
+  assert.equal((await get(`/v1/requests/${bo.id}`)).status, 401);
+  const r1 = await post("/v1/envelopes", C.sign(eve, "friend.request", { to: bo.id, note: "first" }));
+  const r2 = await post("/v1/envelopes", C.sign(eve, "friend.request", { to: bo.id, note: "again" }));
+  const tb = await login(bo), te = await login(eve);
+  let inc = (await get(`/v1/requests/${bo.id}`, tb)).body.incoming;
+  assert.equal(inc.length, 1, "one row per sender"); assert.equal(inc[0].note, "again"); assert.equal(inc[0].request, r2.body.request);
+  assert.equal((await get(`/v1/requests/${eve.id}`, te)).body.outgoing[0].handle, "ana");
+  // a client that lost its local copy still sees it; accepting the older request works too
+  assert.equal((await post("/v1/envelopes", C.sign(bo, "friend.accept", { request: r1.body.request, to: eve.id }))).status, 200);
+  assert.equal((await get(`/v1/requests/${bo.id}`, tb)).body.incoming.length, 0);
+  assert.equal((await get(`/v1/requests/${eve.id}`, te)).body.outgoing.length, 0);
+  assert.equal((await get(`/v1/friends/${eve.id}`)).body.friends[0].handle, "ana");
+});

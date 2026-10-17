@@ -725,6 +725,22 @@ export function createHub(opts: HubOptions) {
         return json(res, 200, { ok: true, recorded: n });
       }
 
+      // open friend requests, both ways: the source of truth for the plugin's "Friend requests" list (a request
+      // never depends on the client having kept it); one row per person, newest request wins
+      m = p.match(/^\/v1\/requests\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
+      if (req.method === "GET" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const open = (rows: any[], other: (e: C.Envelope) => string) => {
+          const by = new Map<string, any>();
+          for (const r of rows) { const e = JSON.parse(r.json) as C.Envelope<any>, o = other(e); if (areFriends(m![1], o)) continue;
+            const pr = profile(o) as any; by.set(o, { request: r.hash, id: o, handle: pr?.handle || null, name: pr?.name || null, note: String(e.body?.note || "").slice(0, 200), ts: e.ts }); }
+          return [...by.values()].reverse();
+        };
+        const inc = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND recipient=? ORDER BY ts").all(m[1]) as any[];
+        const out = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND sender=? ORDER BY ts").all(m[1]) as any[];
+        return json(res, 200, { incoming: open(inc, e => e.from), outgoing: open(out, e => e.body.to) });
+      }
+
       m = p.match(/^\/v1\/inbox\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
       if (req.method === "GET" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });

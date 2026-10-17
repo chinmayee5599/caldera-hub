@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.12.5",
+      "date": "2026-10-17",
+      "title": "Friend requests you can't miss",
+      "items": [
+        "Fixed: a friend request could disappear before you saw it, if Obsidian closed at the wrong moment or an old copy of Caldera was still running. Open requests now live on the hub until you answer them, so they always come back.",
+        "The Caldera panel shows requests you've sent that are still waiting, and you can ignore a request you don't want.",
+        "Clearer messages when a request is accepted, and a check so you can't re-request someone who's already your friend."
+      ]
+    },
+    {
       "version": "0.12.4",
       "date": "2026-10-16",
       "title": "A city for everyone with a GitHub",
