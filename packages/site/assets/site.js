@@ -51,3 +51,37 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     box.hidden = false;
   }).catch(function () {});
 })();
+/* invites + groups survive the trip to "Sign up with GitHub": ?invite=<handle> / ?group=<slug> are kept for 30 days */
+(function () {
+  var qs = new URLSearchParams(location.search), keep = {};
+  ["invite", "group"].forEach(function (k) {
+    var v = (qs.get(k) || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+    try { if (v) localStorage.setItem("cal_" + k, JSON.stringify({ v: v, t: Date.now() })); var s = JSON.parse(localStorage.getItem("cal_" + k) || "null");
+      if (s && Date.now() - s.t < 30 * 864e5) keep[k] = s.v; } catch (e) { if (v) keep[k] = v; }
+  });
+  if (!keep.invite && !keep.group) return;
+  document.querySelectorAll('a[href^="/auth/github"]').forEach(function (a) {
+    var u = new URL(a.getAttribute("href"), location.origin);
+    Object.keys(keep).forEach(function (k) { u.searchParams.set(k, keep[k]); });
+    a.setAttribute("href", u.pathname + u.search);
+  });
+})();
+/* homepage: people who joined this week */
+(function () {
+  var box = document.getElementById("newcomers"), list = document.getElementById("nc-list"); if (!box || !list) return;
+  fetch("/v1/directory?sort=new").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    if (!d) return;
+    var wk = Date.now() - 7 * 864e5, fresh = (d.profiles || []).filter(function (p) { return Date.parse(p.created) > wk; });
+    if (!fresh.length) return;
+    fresh.slice(0, 8).forEach(function (p) {
+      var a = document.createElement("a"); a.className = "nc"; a.href = "/@" + p.handle + "/";
+      if (p.avatar) { var im = document.createElement("img"); im.src = p.avatar; im.alt = ""; im.loading = "lazy"; a.appendChild(im); }
+      else { var i = document.createElement("span"); i.className = "nc-i"; i.textContent = (p.name || p.handle).trim().charAt(0).toUpperCase(); a.appendChild(i); }
+      var t = document.createElement("span"), b = document.createElement("b"), s = document.createElement("small");
+      b.textContent = p.name || "@" + p.handle; s.textContent = "@" + p.handle + (p.headline ? " \u00b7 " + p.headline : "");
+      t.appendChild(b); t.appendChild(s); a.appendChild(t); list.appendChild(a);
+    });
+    document.getElementById("nc-count").textContent = fresh.length + (fresh.length === 1 ? " person joined" : " people joined");
+    box.hidden = false;
+  }).catch(function () {});
+})();

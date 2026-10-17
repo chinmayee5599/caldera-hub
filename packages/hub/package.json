@@ -10,7 +10,8 @@
     "test": "npm run build && node --no-warnings --test test/*.test.mjs"
   },
   "dependencies": {
-    "@caldera/core": "file:../../../caldera/packages/core"
+    "@caldera/core": "file:../../../caldera/packages/core",
+    "@resvg/resvg-js": "^2.6.2"
   },
   "author": "mjonesone, LLC"
 }

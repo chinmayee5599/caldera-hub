@@ -23,9 +23,16 @@ export interface GhCtx {
   dataDir: string; publicUrl: string; privateUrl?: string;
   json: (res: http.ServerResponse, status: number, body: unknown) => void; readBody: (req: http.IncomingMessage) => Promise<any>;
   allowNewProfile: (req: http.IncomingMessage) => boolean; byHandle: (h: string) => any; reserved: Set<string>;
+  /** growth helpers from the hub: suggestions, open requests, referrals */
+  social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
+    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
+/** Daily summary email hooks for the /me page (implemented in the hub's email module). */
+export interface EmailHooks { status: (owner: string) => { email: string; confirmed: boolean } | null; subscribe: (owner: string, email: string) => Promise<string>; unsubscribe: (owner: string) => void }
+const GROUP = /^[a-z0-9][a-z0-9-]{1,29}$/;
+const groupsFrom = (s: unknown) => [...new Set(String(s || "").toLowerCase().split(/[\s,]+/).map(g => g.replace(/^#/, "")).filter(g => GROUP.test(g)))].slice(0, 8);
 type App = { id: number; slug: string; client_id: string; client_secret: string; pem: string; html_url?: string; owner?: { login: string } };
 const DAY = 86_400_000;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -162,7 +169,7 @@ export function github(ctx: GhCtx) {
     for (const [k, v] of Object.entries(renderProfile(p))) files[k] = v;
     const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity;
     const manifest = C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: p.headline, photos: { avatar }, links, sections: Object.keys(p.sections).filter(k => p.sections[k]),
-      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github" });
+      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs });
     const r = ctx.accept(manifest); if (r.status !== 200) throw new Error(r.body?.error || "couldn't publish");
     const dir = path.join(ctx.dataDir, "profiles", handle);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(path.join(dir, "img"), { recursive: true }); fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
@@ -198,15 +205,18 @@ export function github(ctx: GhCtx) {
 3. In ~/.claude/settings.json, add hooks (keep existing ones) that run \`node ~/.caldera/agent-hook.mjs\` for UserPromptSubmit, PostToolUse, Stop, Notification and SessionEnd.
 4. Test: echo '{"hook_event_name":"UserPromptSubmit","session_id":"caldera-test-1","cwd":"'$PWD'","prompt":"Testing the Caldera agent hook"}' | node ~/.caldera/agent-hook.mjs, then send SessionEnd for the same session.` : "";
     const claim = a.claim_code && a.claim_expires > Date.now() ? a.claim_code : "";
+    const growth = growthCards(a, edits);
     page(res, 200, "Your Caldera", `${note ? `<div class="card">${note}</div>` : ""}
 <div class="who"><img src="${esc(url)}img/avatar.png" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
 <div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
 <form method="post" class="row" style="margin-top:10px"><input type="hidden" name="do" value="refresh"><button class="btn small" type="submit">Refresh from GitHub now</button></form></div>
+${growth}
 <form method="post" class="card"><input type="hidden" name="do" value="save"><b>Edit your page</b>
 <label for="n">Name</label><input type="text" id="n" name="name" maxlength="80" value="${esc(edits.name || pr?.name || "")}">
 <label for="h">Headline</label><input type="text" id="h" name="headline" maxlength="160" value="${esc(edits.headline || pr?.headline || "")}">
 <label for="s">About you</label><textarea id="s" name="summary" maxlength="1200">${esc(edits.summary || "")}</textarea>
 <label for="l">Extra links <span class="mut">(one per line: Label | https://...)</span></label><textarea id="l" name="links">${esc(edits.links || "")}</textarea>
+<label for="g">Groups <span class="mut">(comma separated, like <code>producthunt</code>; each one is a town at caldera.social/g/name)</span></label><input type="text" id="g" name="groups" maxlength="200" value="${esc((edits.groups || []).join(", "))}">
 <label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
 <div class="card"><b>Private repos</b><p class="mut">Your city shows public repos. To add private ones as padlocked buildings (size and activity only, never names or code), install the Caldera GitHub app on the repos you choose. It can only read repository metadata.</p>
@@ -220,13 +230,50 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
 <form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>`);
   }
 
+  /** Growth cards on /me: this week's visitors, share + invite, friends (requests, current, suggestions), daily email. */
+  function growthCards(a: any, edits: any): string {
+    const soc = ctx.social, me = a.profile_id as string, url = `${pub}/@${a.handle}/`, invite = `${pub}/?invite=${encodeURIComponent(a.handle)}`;
+    const wk = new Date(Date.now() - 7 * DAY).toISOString();
+    const v = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(a.handle, wk) as any;
+    const brought = soc?.invitedCount(me) || 0, rq = soc ? soc.openRequests(me) : { incoming: [], outgoing: [] };
+    const friends = q("SELECT p.id, p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? ORDER BY f.ts DESC").all(me) as any[];
+    const sug = soc ? soc.suggest(me, 3) : [];
+    const who = (h: string, n: string) => `<a href="${esc(pub)}/@${esc(h)}/">${esc(n || "@" + h)}</a> <span class="mut">@${esc(h)}</span>`;
+    const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
+    const text = encodeURIComponent(`My page on Caldera: a living profile, with my code as a city. ${url}`);
+    const em = soc?.email?.status(me);
+    return `<div class="card"><b>This week</b><p style="margin:.4em 0 0">${v.u ? `<b>${v.u}</b> ${v.u === 1 ? "person" : "people"} visited your page (${v.n} views).` : "No visitors yet this week. Share your page to get the first ones."}${brought ? ` You've brought in <b>${brought}</b> ${brought === 1 ? "person" : "people"}.` : ""}</p></div>
+<div class="card"><b>Share your page</b><p class="mut">This is the picture people see when you post your link.</p><img src="${esc(url)}card.png" alt="Your link preview" style="width:100%;max-width:600px;border-radius:10px;border:1px solid var(--line,#2A2440);display:block;margin:6px 0 10px">
+<div class="row"><a class="btn small" href="https://x.com/intent/post?text=${text}" target="_blank" rel="noopener">Post on X</a><a class="btn small" href="https://bsky.app/intent/compose?text=${text}" target="_blank" rel="noopener">Bluesky</a><a class="btn small" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a></div>
+<p style="margin:12px 0 4px"><b>Invite a friend</b> <span class="mut">(you get ${25} help credits when they join)</span></p><pre id="inv">${esc(invite)}</pre><button class="btn small" type="button" data-copy-text="inv">Copy invite link</button></div>
+<div class="card"><b>Friends</b>
+${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
+${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name)).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
+${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
+${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
+${soc?.email ? `<div class="card"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
+${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
+  }
+
   // ------------------------------------------------------------------ routes
   /** Public hub routes. Returns true when handled. */
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
     const p = url.pathname;
     if (req.method === "GET" && p === "/auth/github") {
       const a = app(); if (!a) { page(res, 503, "Coming soon", `<h1>Sign up with GitHub is almost ready</h1><p>Install the <a href="/#install">Obsidian plugin</a> in the meantime.</p>`); return true; }
-      if (account(req)) { redirect(res, "/me"); return true; }
+      const inv = (url.searchParams.get("invite") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31), grp = groupsFrom(url.searchParams.get("group"))[0];
+      const signed = account(req);
+      if (signed) {
+        if (grp && !signed.claimed) {   // already here: join the group and republish
+          const ed = JSON.parse(signed.edits || "{}"); ed.groups = [...new Set([...(ed.groups || []), grp])];
+          q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(ed), signed.gh_id);
+          try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(signed.gh_id)); } catch { /* next refresh */ }
+          redirect(res, `/me?joined=${grp}`); return true;
+        }
+        redirect(res, "/me"); return true;
+      }
+      if (inv) setCookie(res, "cal_inv", inv, 30 * 86400);
+      if (grp) setCookie(res, "cal_grp", grp, 30 * 86400);
       const state = crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(a.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}`); return true;
     }
@@ -247,12 +294,19 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
           page(res, 403, "Not yet", `<h1>We can't create a profile for this GitHub account yet</h1><p>To keep bots out, GitHub sign-up needs an account that's at least 30 days old with at least one public repo or follower. You can still <a href="/#install">use Caldera with Obsidian</a>.</p>`); return true;
         }
         if (!ctx.allowNewProfile(req)) { page(res, 429, "Slow down", "<h1>Too many new profiles from this network today</h1><p>Try again tomorrow.</p>"); return true; }
-        const id = C.newIdentity(), handle = handleFor(me.login);
+        const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);
+        const edits0: any = grp0.length ? { groups: grp0 } : {};
+        if (typeof me.email === "string" && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(me.email)) edits0.ghEmail = me.email.slice(0, 200);   // public GitHub email: only a suggestion for the summary-email field
         q(`INSERT INTO gh_accounts (gh_id, login, profile_id, handle, key_sealed, token_sealed, edits, cache, created) VALUES (?,?,?,?,?,?,?,?,?)`)
-          .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), "{}", "{}", new Date().toISOString());
+          .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), JSON.stringify(edits0), "{}", new Date().toISOString());
         acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id);
         startSession(res, me.id);
+        if (ck.cal_inv) setCookie(res, "cal_inv", "", 0);
+        if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);
         try { await build(acct); } catch (e: any) { console.error("github first build", e.message); }
+        // joined from a friend's invite: thank the inviter, and send them a friend request from the new member
+        const inviter = ck.cal_inv ? ctx.social?.recordReferral(id.id, ck.cal_inv, "github") : null;
+        if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
         redirect(res, "/me?welcome=1"); return true;
       } catch (e: any) { page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true; }
     }
@@ -270,7 +324,8 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
       const acct = account(req);
       if (!acct) { redirect(res, "/auth/github"); return true; }
       if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
-      if (req.method === "GET") { mePage(res, acct, url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Edit it below, add your sites and agents to your city, or move it into Obsidian later.` : ""); return true; }
+      if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
+        mePage(res, acct, url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : ""); return true; }
       if (req.method === "POST") {
         const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
@@ -283,11 +338,22 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
           setCookie(res, "cal_s", "", 0); page(res, 200, "Deleted", "<h1>Your Caldera profile is deleted</h1><p>Your page, city and data are gone, and Caldera's access to your GitHub account is revoked.</p>"); return true;
         }
         if (act === "save") {
-          const edits = { name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on" };
+          const prev = JSON.parse(acct.edits || "{}");
+          const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on", groups: groupsFrom(f.get("groups")) };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
         if (act === "claim") { const code = "CAL-" + crypto.randomBytes(9).toString("base64url"); q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(code, Date.now() + 30 * 60_000, acct.gh_id); }
-        let note = act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "";
+        let pre = "";
+        if (act === "accept" || act === "add") {   // friends, signed with the hosted profile's key
+          const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity, to = String(f.get("to") || "");
+          const r = act === "accept" ? ctx.accept(C.sign(id, "friend.accept", { request: String(f.get("req") || ""), to }))
+            : /^cal:[1-9A-HJ-NP-Za-km-z]+$/.test(to) && q("SELECT 1 FROM profiles WHERE id=?").get(to) ? ctx.accept(C.sign(id, "friend.request", { to, note: "" })) : { status: 404, body: { error: "unknown profile" } };
+          const h = (q("SELECT handle FROM profiles WHERE id=?").get(to) as any)?.handle;
+          pre = r.status === 200 ? (act === "accept" ? `You and @${esc(h)} are now friends.` : `Friend request sent to @${esc(h)}.`) : `Couldn't do that: ${esc(r.body?.error || "error")}`;
+        }
+        if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
+        if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
+        let note = pre || (act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "");
         if (act === "save" || act === "refresh") { try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note); return true;
       }

@@ -226,3 +226,19 @@ section h2 { line-height: 1.12; }
 .invited-garden { margin-top: 6px; font-size: 14px; line-height: 1.5; }
 .invited-garden a { white-space: nowrap; }
 .invited-garden .all { margin-left: 2px; }
+
+/* New this week (2026-10-17) */
+.newcomers { margin: -32px 0 72px; }
+.newcomers[hidden] { display: none; }
+.nc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 14px; }
+.nc-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 600; color: var(--text-strong); margin: 0; }
+.nc-head a { margin-left: auto; font-size: 14px; }
+.nc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.nc { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-raised); color: var(--text); min-width: 0; }
+.nc:hover { border-color: var(--accent); }
+.nc img, .nc .nc-i { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
+.nc .nc-i { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.nc span { min-width: 0; display: flex; flex-direction: column; }
+.nc b { color: var(--text-strong); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc small { color: var(--text-muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) { .nc-list .nc:nth-child(n+5) { display: none; } }

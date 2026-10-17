@@ -11,13 +11,17 @@ import path from "node:path";
 import crypto from "node:crypto";
 import * as C from "@caldera/core";
 import { github } from "./github";
+import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
+import { emailer, type Mail } from "./email";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
 export interface HubOptions { dataDir: string; port?: number; publicUrl?: string; siteDir?: string; trustProxy?: boolean;
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
-  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number }; }
+  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
+  /** daily summary emails: Resend key (production) or a send hook (tests); schedule starts the daily job */
+  email?: { resendKey?: string; send?: (m: Mail) => Promise<void>; schedule?: boolean }; }
 
 const MAX_BODY = 12 * 1024 * 1024;
 const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "root", "hub", "v1", "about", "login", "settings", "official", "team", "security", "obsidian", "me", "auth", "setup"]);
@@ -110,6 +114,8 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS client_versions (owner TEXT, kind TEXT, v TEXT, PRIMARY KEY (owner, kind));
     CREATE TABLE IF NOT EXISTS agent_keys (key TEXT PRIMARY KEY, owner TEXT UNIQUE, secret TEXT, repos TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
+    CREATE TABLE IF NOT EXISTS referrals (invitee TEXT PRIMARY KEY, inviter TEXT, ts TEXT, via TEXT);
+    CREATE INDEX IF NOT EXISTS referrals_by_inviter ON referrals(inviter);
   `);
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
@@ -137,6 +143,55 @@ export function createHub(opts: HubOptions) {
   const listed = (pr: any) => body(pr).listed !== false && !modOf(pr.handle, pr.id);
   const areFriends = (a: string, b: string) => !!q("SELECT 1 FROM friends WHERE a=? AND b=?").get(a, b);
   const balance = (id: string) => (q("SELECT COALESCE(SUM(delta),0) AS s FROM ledger WHERE who=?").get(id) as any).s as number;
+
+  // ---------------------------------------------------------------- growth: referrals, open requests, suggestions
+  const INVITE_REWARD = 25;
+  const invitedCount = (id: string) => (q("SELECT COUNT(*) n FROM referrals WHERE inviter=?").get(id) as any).n as number;
+  /** Someone joined from an invite link: remember who brought them (once), and thank the inviter with help credits. */
+  function recordReferral(invitee: string, inviterHandle: unknown, via: string): string | null {
+    const h = String(inviterHandle || "").toLowerCase().replace(/^@/, "");
+    if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(h)) return null;
+    const inv = byHandle(h); if (!inv || inv.id === invitee || modOf(inv.handle, inv.id)) return null;
+    if (q("SELECT 1 FROM referrals WHERE invitee=?").get(invitee)) return null;
+    q("INSERT INTO referrals VALUES (?,?,?,?)").run(invitee, inv.id, now(), via.slice(0, 20));
+    const who = profile(invitee)?.handle;
+    q("INSERT INTO ledger VALUES (?,?,?,?,?)").run(inv.id, INVITE_REWARD, `invited ${who ? "@" + who : "a friend"}`, invitee, now());
+    return inv.id as string;
+  }
+  /** Open friend requests both ways (one row per person, newest wins), skipping people who are already friends. */
+  function openRequests(id: string) {
+    const open = (rows: any[], other: (e: C.Envelope) => string) => {
+      const by = new Map<string, any>();
+      for (const r of rows) { const e = JSON.parse(r.json) as C.Envelope<any>, o = other(e); if (areFriends(id, o)) continue;
+        const pr = profile(o) as any; by.set(o, { request: r.hash, id: o, handle: pr?.handle || null, name: pr?.name || null, note: String(e.body?.note || "").slice(0, 200), ts: e.ts }); }
+      return [...by.values()].reverse();
+    };
+    const inc = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND recipient=? ORDER BY ts").all(id) as any[];
+    const out = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND sender=? ORDER BY ts").all(id) as any[];
+    return { incoming: open(inc, e => e.from), outgoing: open(out, e => e.body.to) };
+  }
+  const STOP = new Set("the and for with that this from your you are was have has into about what when where who how all can will just more than then them they their our out not but get got use using also over under each make made like into onto very much many some any its it's i'm on in of to a an at by as is be or my me we us on github vault notes obsidian building builder".split(" "));
+  const words = (s: unknown) => new Set(String(s || "").toLowerCase().split(/[^a-z0-9+#.]+/).map(w => w.replace(/^\.+|\.+$/g, "")).filter(w => w.length > 2 && !STOP.has(w)));
+  const interests = (pr: any) => { const b = body(pr);
+    return { topics: new Set<string>([...(b.topics || []).map((t: any) => String(Array.isArray(t) ? t[0] : t).toLowerCase()), ...(b.languages || []).map((l: any) => String(l).toLowerCase())]),
+      words: words(`${pr.headline || ""} ${b.summary || ""}`), groups: new Set<string>((b.groups || []).map((g: any) => String(g))) }; };
+  /** People worth meeting: shared topics, languages and groups first, then shared words in the headline, with a nudge for
+   *  people who just joined (they have nobody yet) and people active this week. Never friends or pending requests. */
+  function suggestFor(id: string, n = 3) {
+    const me = profile(id); if (!me) return [];
+    const skip = new Set<string>([id, ...(q("SELECT b FROM friends WHERE a=?").all(id) as any[]).map(r => r.b)]);
+    const rq = openRequests(id); for (const r of [...rq.incoming, ...rq.outgoing]) skip.add(r.id);
+    const mine = interests(me), wk = Date.now() - 7 * DAY;
+    return (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(p => !skip.has(p.id) && listed(p)).map(p => {
+      const it = interests(p), shared = [...it.topics].filter(t => mine.topics.has(t)), grp = [...it.groups].filter(g => mine.groups.has(g)), sw = [...it.words].filter(w => mine.words.has(w));
+      const isNew = Date.parse(p.created) > wk, week = weekScore(p.manifest);
+      const score = 3 * shared.length + 4 * grp.length + Math.min(3, sw.length) + (isNew ? 1.5 : 0) + Math.min(2, week / 150) + gravityOf(p.id) / 10;
+      const nice = (t: string) => t.length <= 3 ? t.toUpperCase() : t;
+      const why = grp.length ? `Also in ${grp[0]}` : shared.length ? `Also into ${shared.slice(0, 2).map(nice).join(", ")}` : sw.length ? `Also mentions ${sw.slice(0, 2).join(", ")}` : isNew ? "New this week" : week ? "Active this week" : "On Caldera";
+      const b = body(p), avatar = b.photos?.avatar ? `/@${p.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null;
+      return { id: p.id, handle: p.handle, name: p.name, headline: p.headline, avatar, why, score };
+    }).sort((a, b) => b.score - a.score).slice(0, n);
+  }
 
   function storeEnvelope(e: C.Envelope, recipient: string | null) {
     const hash = C.envelopeHash(e);
@@ -179,6 +234,7 @@ export function createHub(opts: HubOptions) {
           .run(e.from, handle || null, b.boxKey || "", b.name || "", b.headline || "", JSON.stringify(e), e.ts, existing?.created || now());
         storeEnvelope(e, null);
         indexGarden(e.from, handle, b.garden);
+        if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
         if (!existing) emit({ type: "signup", handle, name: b.name || "", total: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
         return { status: 200, body: { ok: true, id: e.from, handle } };
       }
@@ -319,7 +375,7 @@ export function createHub(opts: HubOptions) {
 .gh-cta{margin:14px 0 10px;padding:12px 14px;border-radius:var(--radius-md);background:var(--accent-soft);font-size:var(--text-sm);color:var(--text);display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}.gh-cta span{flex:1 1 260px}.gh-btn{display:inline-block;padding:7px 14px;border-radius:var(--radius-round,999px);background:var(--accent);color:var(--bg,#fff);font-weight:600;text-decoration:none;white-space:nowrap}.gh-btn:hover{filter:brightness(1.08);text-decoration:none}</style>
 <h2>How this garden works</h2>
 <p>A garden is more than notes. It is a small economy of help between Obsidian vaults: notes link across gardens, friends give gravity, and asks pay out help credits.</p>
-<div class="gh-tiles">${tile(String(notes), "notes planted", "Public notes, each signed and dated")}${tile(String(links.n || 0), "links in", `From ${links.w || 0} other garden${links.w === 1 ? "" : "s"}`)}${tile(grav.toFixed(1), "gravity", "Goodwill from friends")}${tile(String(bal), "help credits", held ? `${held} held in open bounties` : "Spendable on bounties")}${tile(String(friends), "friends", "Vaults connected")}${tile(rank ? `#${rank}` : "-", "this week", "Activity leaderboard")}</div>
+<div class="gh-tiles">${tile(String(notes), "notes planted", "Public notes, each signed and dated")}${tile(String(links.n || 0), "links in", `From ${links.w || 0} other garden${links.w === 1 ? "" : "s"}`)}${tile(grav.toFixed(1), "gravity", "Goodwill from friends")}${tile(String(bal), "help credits", held ? `${held} held in open bounties` : "Spendable on bounties")}${tile(String(friends), "friends", "Vaults connected")}${tile(rank ? `#${rank}` : "-", "this week", "Activity leaderboard")}${tile(String(invitedCount(id)), "brought in", "People who joined from their invite")}</div>
 <div class="gh-cols">
 <div><h3>Gravity (goodwill)</h3><p>Friends give gravity to say "you helped". It is positive only, fades with a 30-day half-life so it reflects recent help, and a gift from someone with more gravity counts a little more (1x to 2x, capped).</p>${givers.length ? `<ul>${givers.map(g => `<li>@${e(g.handle || "friend")}${g.reason ? `: ${e(g.reason)}` : ""}</li>`).join("")}</ul>` : `<p class="mut">No gravity yet. Be the first.</p>`}</div>
 <div><h3>Help credits and asks</h3><p>Everyone starts with 100 credits. An ask can carry a bounty; the credits are held until the asker awards them to whoever helped, and come back after 30 days if nobody does. Credits have no cash value.</p>${asks.length ? `<ul>${asks.map(a => `<li>${e(a.title)}${a.bounty ? ` <span class="mut">(${a.bounty} credits)</span>` : ""}</li>`).join("")}</ul>` : `<p class="mut">No open asks right now.</p>`}</div>
@@ -336,11 +392,38 @@ export function createHub(opts: HubOptions) {
       .map(r => ({ handle: r.handle, name: r.name, slug: r.slug, title: r.title, stage: r.stage, license: r.license, updated: r.updated, excerpt: r.excerpt, words: r.words }));
   }
 
+  // ---------------------------------------------------------------- link previews + group towns
+  const hubUrl = () => (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+  const cityOf = (handle: string) => { try { return cityArt(fs.readFileSync(path.join(opts.dataDir, "profiles", handle, "index.html"), "utf8")); } catch { return null; } };
+  const cardDir = path.join(opts.dataDir, "cards");
+  /** PNG card for link previews, cached until the profile is published again. */
+  async function profileCard(pr: any): Promise<Buffer> {
+    const f = path.join(cardDir, pr.handle + ".png"), idx = path.join(opts.dataDir, "profiles", pr.handle, "index.html");
+    const fresh = Math.max(Date.parse(pr.updated) || 0, fs.existsSync(idx) ? fs.statSync(idx).mtimeMs : 0);
+    if (fs.existsSync(f) && fs.statSync(f).mtimeMs >= fresh) return fs.readFileSync(f);
+    const png = await toPng(cardSvg({ handle: pr.handle, name: pr.name, headline: pr.headline, host: hubUrl().replace(/^https?:\/\//, ""), city: cityOf(pr.handle) }));
+    fs.mkdirSync(cardDir, { recursive: true }); fs.writeFileSync(f, png);
+    return png;
+  }
+  function previewTags(handle: string, rel: string): string {
+    const pr = byHandle(handle); if (!pr) return "";
+    const v = String(Date.parse(pr.updated) || 0).slice(-8), base = `${hubUrl()}/@${handle}/`;
+    const city = rel === "city.html";
+    return ogTags({ url: base + (city ? "city.html" : ""), image: `${base}card.png?v=${v}`,
+      title: city ? `${pr.name || "@" + handle}'s city on Caldera` : `${pr.name || "@" + handle} on Caldera`,
+      description: pr.headline || "A living profile built from an Obsidian vault and code, on Caldera." });
+  }
+  function groupMembers(slug: string) {
+    return (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY created").all() as any[])
+      .filter(p => listed(p) && Array.isArray(body(p).groups) && body(p).groups.includes(slug))
+      .map(p => ({ handle: p.handle as string, name: p.name as string, headline: p.headline as string, city: cityOf(p.handle) }));
+  }
+
   const emit = (ev: Parameters<NonNullable<HubOptions["onEvent"]>>[0]) => { try { opts.onEvent?.(ev); } catch { /* never let a notifier break a request */ } };
 
   function erase(id: string) {
     const pr = profile(id);
-    if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
+    if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id);
@@ -491,8 +574,29 @@ export function createHub(opts: HubOptions) {
     r.n++; return r.n <= L.newProfilesPerDay;
   }
 
+  /** What happened to one person since `since`, for their daily summary email. */
+  function digestFor(owner: string, since: string) {
+    const pr = profile(owner); if (!pr?.handle) return null;
+    const h = pr.handle as string, d1 = new Date(Date.now() - DAY).toISOString(), d7 = new Date(Date.now() - 7 * DAY).toISOString();
+    const v1 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor) u FROM page_views WHERE handle=? AND ts > ?").get(h, since > d1 ? since : d1) as any;   // since the last email, at most a day
+    const v7 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(h, d7) as any;
+    const hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
+    return { handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
+      requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
+      friends: q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ?").all(owner, since) as any[],
+      gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
+      links: (q("SELECT COUNT(*) n FROM garden_links WHERE dst_handle=? AND src_handle<>?").get(h, h) as any).n,
+      invited: q("SELECT p.handle FROM referrals r JOIN profiles p ON p.id=r.invitee WHERE r.inviter=? AND r.ts > ?").all(owner, since) as any[],
+      credits: (q("SELECT COALESCE(SUM(delta),0) s FROM ledger WHERE who=? AND reason LIKE 'invited%' AND ts > ?").get(owner, since) as any).s,
+      suggestions: suggestFor(owner, 3).map(x => ({ handle: x.handle, name: x.name, why: x.why })),
+      newMembers: (q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created > ? AND id<>? ORDER BY created DESC").all(d7, owner) as any[]).filter(listed).map(p => ({ handle: p.handle, name: p.name })) };
+  }
+  const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor });
+  if (opts.email?.schedule) mail.schedule();
+
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
-    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch });
+    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
 
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
@@ -514,6 +618,11 @@ export function createHub(opts: HubOptions) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
         return res.end(gardensPage(recentGardenNotes(80), opts.publicUrl || "https://caldera.social"));
       }
+      { const g = p.match(/^\/g\/([a-z0-9][a-z0-9-]{1,29})\/?$/);
+        if (req.method === "GET" && g) {
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
+          return res.end(groupPage({ slug: g[1], hub: opts.publicUrl || "https://caldera.social", members: groupMembers(g[1]) }));
+        } }
       if (req.method === "GET" && p === "/t.js") {
         res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
         return res.end(TRACK_JS);
@@ -568,6 +677,11 @@ export function createHub(opts: HubOptions) {
       if (req.method === "GET" && m) {
         if (modOf(m[1])) { res.writeHead(410, { "content-type": "text/plain" }); return res.end("This profile is not available."); }
         const dir = path.join(opts.dataDir, "profiles", m[1]);
+        if (m[2] === "/card.png") {   // the link-preview picture: the city (or initials), name, headline
+          const pr = byHandle(m[1]); if (!pr) { res.writeHead(404); return res.end("not found"); }
+          try { const png = await profileCard(pr); res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=3600" }); return res.end(png); }
+          catch (e: any) { console.error("card", m[1], e?.message); res.writeHead(302, { location: "/og.jpg" }); return res.end(); }
+        }
         let rel = (m[2] || "/").slice(1) || "index.html";
         if (rel.endsWith("/")) rel += "index.html";
         const file = path.join(dir, path.normalize(rel));
@@ -583,6 +697,7 @@ export function createHub(opts: HubOptions) {
           }
           let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
           html = liveBlocks(m[1], rel, html);
+          if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) { html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); } }
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
@@ -605,6 +720,25 @@ export function createHub(opts: HubOptions) {
         const token = crypto.randomBytes(24).toString("hex");
         q("INSERT INTO tokens VALUES (?,?,?)").run(hashToken(token), env.from, Date.now() + 3600_000);  // only the hash is stored
         return json(res, 200, { token, expires_in: 3600 });
+      }
+
+      // daily summary email: owner subscribes (double opt-in), confirm + one-click unsubscribe links from the emails
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/email$/);
+      if (m && (req.method === "GET" || req.method === "POST")) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        if (req.method === "GET") return json(res, 200, mail.status(m[1]) || { email: null, confirmed: false });
+        const { email } = await readBody(req) as { email?: string | null };
+        if (!email) { mail.unsubscribe(m[1]); return json(res, 200, { ok: true, off: true }); }
+        try { return json(res, 200, { ok: true, message: await mail.subscribe(m[1], String(email)) }); } catch (e: any) { return json(res, 400, { error: e.message }); }
+      }
+      // links in emails get prefetched by mail scanners: GET only shows a button, the POST does the work
+      if ((p === "/v1/email/confirm" || p === "/v1/email/unsub") && (req.method === "GET" || req.method === "POST")) {
+        const t = (url.searchParams.get("t") || "").replace(/[^\w-]/g, ""), conf = p.endsWith("confirm");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        if (req.method === "GET") return res.end(mail.page(conf ? "Confirm your daily summary" : "Unsubscribe", `<form method="post" action="${p}?t=${t}"><p>${conf ? "Send me a short Caldera summary on days something happens." : "Stop sending Caldera summary emails to this address."}</p><button class="btn" type="submit">${conf ? "Yes, subscribe me" : "Unsubscribe"}</button></form>`));
+        if (conf) { const ok = mail.confirm(t); return res.end(mail.page(ok ? "You're subscribed" : "Link expired", ok ? "<p>Your daily Caldera summary starts with the next one. It only comes on days something happens, and every email has a one-click unsubscribe.</p>" : "<p>This confirmation link isn't valid any more. Ask for a new one from Caldera.</p>")); }
+        mail.unsubToken(t);   // idempotent; also the RFC 8058 one-click POST from the List-Unsubscribe header
+        return res.end(mail.page("You're unsubscribed", "<p>No more Caldera summary emails will go to this address. You can turn them back on any time from Caldera.</p>"));
       }
 
       // Owner-only activity for the private view inside Obsidian: who looked, what they read, gravity, new friends, links in.
@@ -730,15 +864,7 @@ export function createHub(opts: HubOptions) {
       m = p.match(/^\/v1\/requests\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
       if (req.method === "GET" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
-        const open = (rows: any[], other: (e: C.Envelope) => string) => {
-          const by = new Map<string, any>();
-          for (const r of rows) { const e = JSON.parse(r.json) as C.Envelope<any>, o = other(e); if (areFriends(m![1], o)) continue;
-            const pr = profile(o) as any; by.set(o, { request: r.hash, id: o, handle: pr?.handle || null, name: pr?.name || null, note: String(e.body?.note || "").slice(0, 200), ts: e.ts }); }
-          return [...by.values()].reverse();
-        };
-        const inc = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND recipient=? ORDER BY ts").all(m[1]) as any[];
-        const out = q("SELECT hash, json FROM envelopes WHERE type='friend.request' AND sender=? ORDER BY ts").all(m[1]) as any[];
-        return json(res, 200, { incoming: open(inc, e => e.from), outgoing: open(out, e => e.body.to) });
+        return json(res, 200, openRequests(m[1]));
       }
 
       m = p.match(/^\/v1\/inbox\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
@@ -760,7 +886,7 @@ export function createHub(opts: HubOptions) {
         const rows = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed).map(pr => {
           const b = body(pr), avatar = b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null;
           return { handle: pr.handle, name: pr.name, headline: pr.headline, avatar, topics: (b.topics || []).slice(0, 3).map((t: any) => t[0]),
-            week: weekScore(pr.manifest), gravity: gravityOf(pr.id), created: pr.created, updated: pr.updated };
+            week: weekScore(pr.manifest), gravity: gravityOf(pr.id), invited: invitedCount(pr.id), created: pr.created, updated: pr.updated };
         }).filter(r => !term || [r.handle, r.name, r.headline, ...r.topics].join(" ").toLowerCase().includes(term));
         rows.sort(sort === "new" ? (a, b) => String(b.created).localeCompare(String(a.created)) : (a, b) => b.week - a.week || b.gravity - a.gravity);
         return json(res, 200, { total: rows.length, profiles: rows.slice(0, 120) });
@@ -772,6 +898,12 @@ export function createHub(opts: HubOptions) {
         return json(res, 200, { id: pr.id, handle: pr.handle, name: pr.name, headline: pr.headline, boxKey: pr.box_key, manifest: JSON.parse(pr.manifest) });
       }
 
+      m = p.match(/^\/v1\/suggest\/(cal:[1-9A-HJ-NP-Za-km-z]+|[a-z0-9-]+)$/);
+      if (req.method === "GET" && m) {
+        const pr = m[1].startsWith("cal:") ? profile(m[1]) : byHandle(m[1]);
+        if (!pr) return json(res, 404, { error: "not found" });
+        return json(res, 200, { suggestions: suggestFor(pr.id, Math.max(1, Math.min(12, Number(url.searchParams.get("n")) || 3))).map(({ score, ...r }) => r) });
+      }
       if (req.method === "GET" && p === "/v1/leaderboard") {
         const of = url.searchParams.get("scope") === "friends" ? url.searchParams.get("of") : null;
         return json(res, 200, { scope: of ? "friends" : "global", rows: leaderboard(of) });
@@ -855,7 +987,7 @@ export function createHub(opts: HubOptions) {
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
   });
 
-  return { server, privateServer, db, admin,
+  return { server, privateServer, db, admin, mail,
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
@@ -878,6 +1010,7 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
   } : undefined;
   const hub = createHub({ dataDir: process.env.CALDERA_DATA || "./data", port: Number(process.env.PORT || 8787), publicUrl: process.env.CALDERA_PUBLIC_URL || "",
     siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent,
+    email: resend ? { resendKey: resend, schedule: true } : undefined,
     // CALDERA_TAILNET_OWNERS="you@example.com:handle,..."  (Tailscale login -> Caldera handle)
     privatePort: Number(process.env.CALDERA_PRIVATE_PORT) || undefined, privateUrl: process.env.CALDERA_PRIVATE_URL || undefined,
     tailnetOwners: Object.fromEntries((process.env.CALDERA_TAILNET_OWNERS || "").split(",").map(s => s.trim().split(":")).filter(x => x.length === 2 && x[0] && x[1]).map(([l, h]) => [l.toLowerCase(), h.toLowerCase()])) });

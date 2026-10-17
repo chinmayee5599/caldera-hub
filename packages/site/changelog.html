@@ -23,8 +23,30 @@
   <h1>What's new</h1>
   <p class="lead-in">Every Caldera release. When something ships, Caldera also shows its owner a short alert inside Obsidian. Follow along with the <a href="releases.xml">RSS feed</a>.</p>
   <!-- RELEASES_START -->
+  <article class="release" id="v0.15.0">
+    <div class="release-meta"><span class="tag">0.15.0</span><time datetime="2026-10-17">2026-10-17</time><span>latest</span></div>
+    <h2>Friends, sharing and a daily summary</h2>
+    <ul><li>Share your page: after your page goes live, Caldera shows the picture people see when you post your link (your city, name and headline), with one-click posts to X, Bluesky, LinkedIn and Mastodon. Run "Share my page" any time, or use the Share button in the Caldera panel.</li><li>Every profile link now has a proper preview on social sites and in chat apps, built from your city.</li><li>People you might know: the Caldera panel suggests people with the same topics, languages or groups, with an Add button.</li><li>Invites count: when someone joins from your invite link, you get 25 help credits and a friend request from them. Your garden home shows how many people you've brought in.</li><li>Groups: add a group in settings (like producthunt) and your city joins a town of everyone in it at caldera.social/g/name. Anyone can join with one click from that page.</li><li>A short daily summary email, if you want one: who visited, friend requests, links into your garden. Double opt-in, only on days something happens, one-click unsubscribe.</li><li>A heads-up at most once a day when people visit your page or link to your garden.</li><li>Signed up with GitHub? Your account page now lists friend requests (with Accept), suggests people to add, and shows this week's visitors and your invite link.</li></ul>
+    <p class="howto">Update Caldera, then open Caldera settings &gt; Friends and sharing to add groups and your email. The share screen opens by itself after your next publish.</p>
+  </article>
+  <article class="release" id="v0.14.0">
+    <div class="release-meta"><span class="tag">0.14.0</span><time datetime="2026-10-17">2026-10-17</time></div>
+    <h2>Forgejo and Codeberg</h2>
+    <ul><li>Code on Codeberg or your own Forgejo or Gitea server? Paste your profile address in Caldera settings ("Forgejo or Codeberg profile"). Your public repos become your city and your contributions fill your code chart, refreshed every 6 hours. No token needed.</li><li>The AI setup prompt now handles Forgejo, Gitea and Codeberg too, including private repos when you give your agent a token (they show only as locked buildings to visitors).</li></ul>
+    <p class="howto">Settings &gt; Caldera &gt; Forgejo or Codeberg profile: paste https://codeberg.org/you (or your server's address), then run Caldera: Publish my profile.</p>
+  </article>
+  <article class="release" id="v0.13.2">
+    <div class="release-meta"><span class="tag">0.13.2</span><time datetime="2026-10-17">2026-10-17</time></div>
+    <h2>Everyone gets a city</h2>
+    <ul><li>No GitHub? Your city is now built from your Obsidian vault: every folder is a building, taller means more notes written this year, lit windows mean notes written this week. Folder and note names stay private on your public page.</li><li>Add your GitHub username in Caldera settings any time to build the city from your repos instead.</li></ul>
+  </article>
+  <article class="release" id="v0.13.1">
+    <div class="release-meta"><span class="tag">0.13.1</span><time datetime="2026-10-17">2026-10-17</time></div>
+    <h2>Cleaner profile header</h2>
+    <ul><li>Profiles without a cover photo no longer leave an empty gap above the name: your photo now sits right above it.</li><li>The Code chart keeps a steady width when you only have a few weeks of commits, instead of one giant bar.</li></ul>
+  </article>
   <article class="release" id="v0.13.0">
-    <div class="release-meta"><span class="tag">0.13.0</span><time datetime="2026-10-17">2026-10-17</time><span>latest</span></div>
+    <div class="release-meta"><span class="tag">0.13.0</span><time datetime="2026-10-17">2026-10-17</time></div>
     <h2>Your city up top, and one prompt for everything</h2>
     <ul><li>Your city now sits at the top of your profile: a small skyline of your repos, lit windows where you shipped this week. Click it to walk the full city.</li><li>One AI setup prompt instead of three. It connects every source it can find on your computer (calendar, email, AI usage, code, documents, your GitHub city), schedules one routine to keep your page fresh, and drafts your page text and garden for your OK. It's safe to paste again: it upgrades what's there and fills in what's missing.</li><li>My view shows what feeds your page: each source, connected or not, with a one-click copy of the setup prompt. When Caldera can track something new, it tells you to paste the prompt again.</li></ul>
     <p class="howto">Open My Caldera profile (ribbon icon), look at 'What feeds your page', and click Copy the setup prompt. Paste it into Claude Code, Codex or Cursor.</p>
