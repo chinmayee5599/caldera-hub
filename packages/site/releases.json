@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.18.1",
+      "date": "2026-10-17",
+      "title": "Floating city fix",
+      "items": [
+        "In Obsidian, Pop out my city now opens a small window that stays on top of everything in the lower-left corner of your screen, with just the city in it."
+      ]
+    },
+    {
       "version": "0.18.0",
       "date": "2026-10-17",
       "title": "Watch your city all day",
