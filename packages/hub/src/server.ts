@@ -42,13 +42,19 @@ const DAY = 86_400_000;
 
 /** Platform bar injected at the top of every hosted profile: logo back to the hub + a sign-up call to action.
  *  Inline styles/SVG only (the profile CSP allows inline styles and blocks external resources). */
-function calderaBar(hub: string, handle: string): string {
+function calderaBar(hub: string, handle: string, own?: { href: string; label: string; external?: boolean }): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
+  const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
   const logo = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
+  // the owner, signed in on this browser: a way back to their private view instead of the sign-up pitch
+  const right = own
+    ? `<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end"><span class="cb-tag" style="color:#B8B8C2;font-size:12.5px">You're viewing your public page</span>`
+      + `<a href="${e(own.href)}"${own.external ? ' target="_blank" rel="noopener"' : ""} style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">&#128274; ${e(own.label)}</a>`
+      + `<a href="${base}/v1/own/out?h=${encodeURIComponent(handle)}" title="Sign this browser out" style="color:#8A8A93;font-size:12px;text-decoration:none">Sign out</a></span>`
+    : `<a href="${join}#install" style="display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">Get your own page</a>`;
   return `<div id="caldera-bar" style="position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif">`
     + `<a href="${join}" style="display:inline-flex;align-items:center;gap:8px;color:#F2F2F5;text-decoration:none;font:600 15px 'Source Serif 4',Georgia,serif">${logo}Caldera<span style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px" class="cb-tag">the social layer for Obsidian</span></a>`
-    + `<a href="${join}#install" style="display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">Get your own page</a>`
-    + `</div><style>@media (max-width:520px){#caldera-bar .cb-tag{display:none}}</style>`;
+    + right + `</div><style>@media (max-width:520px){#caldera-bar .cb-tag{display:none}}</style>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -113,6 +119,8 @@ export function createHub(opts: HubOptions) {
     CREATE INDEX IF NOT EXISTS traffic_by_key ON traffic(key, ts);
     CREATE TABLE IF NOT EXISTS client_versions (owner TEXT, kind TEXT, v TEXT, PRIMARY KEY (owner, kind));
     CREATE TABLE IF NOT EXISTS agent_keys (key TEXT PRIMARY KEY, owner TEXT UNIQUE, secret TEXT, repos TEXT, ts TEXT);
+    CREATE TABLE IF NOT EXISTS owner_sessions (token_hash TEXT PRIMARY KEY, owner TEXT, created TEXT, expires INTEGER);
+    CREATE TABLE IF NOT EXISTS owner_links (code_hash TEXT PRIMARY KEY, owner TEXT, expires INTEGER);
     CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
     CREATE TABLE IF NOT EXISTS referrals (invitee TEXT PRIMARY KEY, inviter TEXT, ts TEXT, via TEXT);
     CREATE INDEX IF NOT EXISTS referrals_by_inviter ON referrals(inviter);
@@ -426,7 +434,7 @@ export function createHub(opts: HubOptions) {
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
-    q("DELETE FROM owner_private WHERE owner=?").run(id);
+    q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
@@ -598,6 +606,32 @@ export function createHub(opts: HubOptions) {
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
 
+  // ---------------------------------------------------------------- the owner, signed in on their own browser
+  // A one-time link from the plugin (or the GitHub sign-in cookie for hosted profiles) marks this browser as the owner's,
+  // so their public page offers a way back to the private view. Only token hashes are stored.
+  const reqCookies = (req: http.IncomingMessage) => Object.fromEntries(String(req.headers.cookie || "").split(/;\s*/).filter(Boolean).map(c => { const i = c.indexOf("="); return i < 0 ? [c, ""] : [c.slice(0, i), (() => { try { return decodeURIComponent(c.slice(i + 1)); } catch { return ""; } })()]; }));
+  const OWN_COOKIE = "cal_own", OWN_AGE = 365 * 86400;
+  const ownCookie = (val: string, maxAge: number) => `${OWN_COOKIE}=${val}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${(opts.publicUrl || "").startsWith("https:") ? "; Secure" : ""}`;
+  function ownerLink(owner: string): string {
+    const code = crypto.randomBytes(24).toString("base64url");
+    q("DELETE FROM owner_links WHERE expires < ?").run(Date.now());
+    q("INSERT INTO owner_links VALUES (?,?,?)").run(hashToken(code), owner, Date.now() + 5 * 60_000);
+    return `${(opts.publicUrl || "").replace(/\/$/, "")}/v1/own?c=${encodeURIComponent(code)}`;
+  }
+  /** Is this request from the owner of `handle`? Returns the bar's "back to private" target, or null. */
+  function ownerBar(req: http.IncomingMessage, handle: string): { href: string; label: string; external?: boolean } | null {
+    const pr = byHandle(handle); if (!pr) return null;
+    const t = reqCookies(req)[OWN_COOKIE];
+    let mine = !!t && !!q("SELECT 1 FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now());
+    let hosted = false;
+    if (!mine) { const a = GH.account(req); if (a && !a.claimed && a.profile_id === pr.id) mine = hosted = true; }
+    if (!mine) return null;
+    const priv = privateFor(handle);
+    if (priv) return { href: priv, label: "Private view" };
+    if (hosted || q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id)) return { href: "/me", label: "Your account" };
+    return { href: "obsidian://caldera?open=private", label: "Private view in Obsidian", external: true };
+  }
+
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
@@ -689,13 +723,14 @@ export function createHub(opts: HubOptions) {
         res.removeHeader("x-frame-options");
         const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "x-robots-tag": "noindex", "content-security-policy": PROFILE_CSP, "cache-control": "no-cache" };
         if (path.extname(file).toLowerCase() === ".html") {   // every hosted page gets the Caldera bar, whatever plugin version built it
-          const ua = String(req.headers["user-agent"] || "");
-          if (ua && !BOT_UA.test(ua) && url.searchParams.get("caldera") !== "owner" && req.method === "GET") {   // the owner's own Public view passes caldera=owner
+          const ua = String(req.headers["user-agent"] || ""), own = ownerBar(req, m[1]);
+          (headers as any).vary = "Cookie";
+          if (!own && ua && !BOT_UA.test(ua) && url.searchParams.get("caldera") !== "owner" && req.method === "GET") {   // the owner's own Public view passes caldera=owner
             const day = new Date().toISOString().slice(0, 10);
             const visitor = crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16);
             try { q("INSERT INTO page_views VALUES (?,?,?,?)").run(m[1], rel, now(), visitor); } catch { /* counting never breaks a page */ }
           }
-          let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1]);
+          let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own || undefined);
           html = liveBlocks(m[1], rel, html);
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) { html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); } }
@@ -704,6 +739,30 @@ export function createHub(opts: HubOptions) {
         }
         res.writeHead(200, headers);
         return fs.createReadStream(file).pipe(res);
+      }
+
+      // one-time owner link: the plugin asks for it (signed in), the browser trades it for a long-lived owner cookie
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/link$/);
+      if (req.method === "POST" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const pr = profile(m[1]); if (!pr?.handle) return json(res, 404, { error: "publish your profile first" });
+        return json(res, 200, { url: ownerLink(m[1]), expires_in: 300 });
+      }
+      if (req.method === "GET" && p === "/v1/own") {
+        const c = url.searchParams.get("c") || "", row = c ? q("SELECT * FROM owner_links WHERE code_hash=?").get(hashToken(c)) as any : null;
+        if (row) q("DELETE FROM owner_links WHERE code_hash=?").run(row.code_hash);   // single use
+        const pr = row && row.expires > Date.now() ? profile(row.owner) : null;
+        if (!pr?.handle) { res.writeHead(400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); return res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Link expired</title><body style="font:16px system-ui;max-width:520px;margin:60px auto;padding:0 16px"><h1>That link expired</h1><p>Owner links work once, for 5 minutes. In Obsidian, run <b>Caldera: Open my public page (as owner)</b> again.</p></body>`); }
+        const t = crypto.randomBytes(32).toString("hex");
+        q("DELETE FROM owner_sessions WHERE expires < ?").run(Date.now());
+        q("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(hashToken(t), pr.id, now(), Date.now() + OWN_AGE * 1000);
+        const to = url.searchParams.get("to") || "", sub = /^[a-z0-9][a-z0-9._/-]{0,120}$/i.test(to) && !to.includes("..") ? to : "";   // a page inside their profile
+        res.writeHead(302, { location: `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
+      }
+      if (req.method === "GET" && p === "/v1/own/out") {
+        const t = reqCookies(req)[OWN_COOKIE]; if (t) q("DELETE FROM owner_sessions WHERE token_hash=?").run(hashToken(t));
+        const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+        res.writeHead(302, { location: h ? `/@${h}/` : "/", "set-cookie": ownCookie("", 0), "cache-control": "no-store" }); return res.end();
       }
 
       if (req.method === "POST" && p === "/v1/auth/challenge") {

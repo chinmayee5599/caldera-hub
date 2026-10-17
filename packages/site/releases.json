@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.15.1",
+      "date": "2026-10-17",
+      "title": "From your public page back to your private view",
+      "items": [
+        "Open your page signed in as you: \"Open my public page (as owner)\" (and Open in browser in the My profile tab) opens your page with a Private view button in the Caldera bar. On your own browser it stays that way for a year; Sign out in the bar ends it.",
+        "The Private view button goes to your private web address if your hub gives you one, otherwise it opens My view in Obsidian. GitHub sign-ups get a button to their account page.",
+        "Your own visits to your page no longer count toward your view numbers.",
+        "New command: \"Open my private view\"."
+      ]
+    },
+    {
       "version": "0.15.0",
       "date": "2026-10-17",
       "title": "Friends, sharing and a daily summary",

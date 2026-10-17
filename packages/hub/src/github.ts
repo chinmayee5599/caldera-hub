@@ -397,5 +397,5 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     return false;
   }
-  return { route, privateRoute, build, configured: () => !!app() };
+  return { route, privateRoute, build, account, configured: () => !!app() };
 }
