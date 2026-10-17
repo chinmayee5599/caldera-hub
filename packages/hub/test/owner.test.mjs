@@ -68,6 +68,18 @@ test("owner sees a Private view button on their own page only, and their visits 
   assert.doesNotMatch(await (await page("mike", "cal_own=" + "0".repeat(64))).text(), /Private view/, "forged cookie");
 });
 
+test("stale page: only the owner sees 'Last updated N days ago'", async () => {
+  hub.db.prepare("UPDATE profiles SET updated=? WHERE handle='mike'").run(new Date(Date.now() - 5 * 86400_000 - 60_000).toISOString());
+  try {
+    const { cookie } = await ownerCookie(ids.mike);
+    const mine = await (await page("mike", cookie)).text();
+    assert.match(mine, /Last updated 5 days ago/); assert.match(mine, /Private view/);
+    assert.doesNotMatch(await (await page("mike")).text(), /Last updated|days ago/, "anonymous visitors never see staleness");
+    hub.db.prepare("UPDATE profiles SET updated=? WHERE handle='mike'").run(new Date(Date.now() - 2 * 86400_000).toISOString());
+    assert.doesNotMatch(await (await page("mike", cookie)).text(), /Last updated/, "under 3 days: no notice");
+  } finally { hub.db.prepare("UPDATE profiles SET updated=? WHERE handle='mike'").run(new Date().toISOString()); }
+});
+
 test("plugin owner without a private address gets an Obsidian link; sign out clears it", async () => {
   const { cookie } = await ownerCookie(ids.ana);
   assert.match(await (await page("ana", cookie)).text(), /href="obsidian:\/\/caldera\?open=private" target="_blank"[^>]*>&#128274; Private view in Obsidian/);

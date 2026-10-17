@@ -42,13 +42,16 @@ const DAY = 86_400_000;
 
 /** Platform bar injected at the top of every hosted profile: logo back to the hub + a sign-up call to action.
  *  Inline styles/SVG only (the profile CSP allows inline styles and blocks external resources). */
-function calderaBar(hub: string, handle: string, own?: { href: string; label: string; external?: boolean }): string {
+function calderaBar(hub: string, handle: string, own?: { href: string; label: string; external?: boolean; stale?: number }): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
   const logo = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
   // the owner, signed in on this browser: a way back to their private view instead of the sign-up pitch
   const right = own
-    ? `<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end"><span class="cb-tag" style="color:#B8B8C2;font-size:12.5px">You're viewing your public page</span>`
+    ? `<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">`
+      // a page that stopped updating (Obsidian closed for days): only the owner is told, and how to fix it
+      + (own.stale ? `<span title="Your page updates while Obsidian is open. Open it to refresh the page." style="color:#F2C46D;font-size:12.5px">Last updated ${own.stale} days ago</span>`
+        : `<span class="cb-tag" style="color:#B8B8C2;font-size:12.5px">You're viewing your public page</span>`)
       + `<a href="${e(own.href)}"${own.external ? ' target="_blank" rel="noopener"' : ""} style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">&#128274; ${e(own.label)}</a>`
       + `<a href="${base}/v1/own/out?h=${encodeURIComponent(handle)}" title="Sign this browser out" style="color:#8A8A93;font-size:12px;text-decoration:none">Sign out</a></span>`
     : `<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap"><a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;text-decoration:none"><span class="cb-tag">Owner? </span>Sign in</a>`
@@ -598,6 +601,14 @@ export function createHub(opts: HubOptions) {
       friend: !!q("SELECT 1 FROM friends WHERE a=? LIMIT 1").get(owner), group: Array.isArray(b.groups) && b.groups.length > 0,
       email: mail.hasConfirmed(owner) };
   }
+  /** Days since a vault-published page last updated, when that's 3 or more (0 otherwise). Hosted GitHub pages rebuild
+   *  themselves, so they never go stale; a vault page only updates while Obsidian is open on the owner's computer. */
+  function staleDays(owner: string): number {
+    const pr = profile(owner); if (!pr?.updated) return 0;
+    if (q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner)) return 0;
+    const d = Math.floor((Date.now() - Date.parse(pr.updated)) / DAY);
+    return d >= 3 ? d : 0;
+  }
   function nudgeFor(owner: string, hosted: boolean) {
     const st = pageStateFor(owner), n = st && C.nextStep(st); if (!n) return undefined;
     const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
@@ -610,7 +621,8 @@ export function createHub(opts: HubOptions) {
     const v1 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor) u FROM page_views WHERE handle=? AND ts > ?").get(h, since > d1 ? since : d1) as any;   // since the last email, at most a day
     const v7 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(h, d7) as any;
     const hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
-    return { nudge: nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
+    const stale = hosted ? 0 : staleDays(owner);
+    return { stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
       friends: q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ?").all(owner, since) as any[],
       gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
@@ -640,17 +652,17 @@ export function createHub(opts: HubOptions) {
     return `${(opts.publicUrl || "").replace(/\/$/, "")}/v1/own?c=${encodeURIComponent(code)}`;
   }
   /** Is this request from the owner of `handle`? Returns the bar's "back to private" target, or null. */
-  function ownerBar(req: http.IncomingMessage, handle: string): { href: string; label: string; external?: boolean } | null {
+  function ownerBar(req: http.IncomingMessage, handle: string): { href: string; label: string; external?: boolean; stale?: number } | null {
     const pr = byHandle(handle); if (!pr) return null;
     const t = reqCookies(req)[OWN_COOKIE];
     let mine = !!t && !!q("SELECT 1 FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now());
     let hosted = false;
     if (!mine) { const a = GH.account(req); if (a && !a.claimed && a.profile_id === pr.id) mine = hosted = true; }
     if (!mine) return null;
-    const priv = privateFor(handle);
-    if (priv) return { href: priv, label: "Private view" };
+    const priv = privateFor(handle), stale = staleDays(pr.id) || undefined;
+    if (priv) return { href: priv, label: "Private view", stale };
     if (hosted || q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id)) return { href: "/me", label: "Your account" };
-    return { href: "obsidian://caldera?open=private", label: "Private view in Obsidian", external: true };
+    return { href: "obsidian://caldera?open=private", label: "Private view in Obsidian", external: true, stale };
   }
 
   // ---------------------------------------------------------------- owner sign-in from any device (/signin)

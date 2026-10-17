@@ -16,6 +16,8 @@ export interface DigestData {
   requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string }[];
   gravity: { handle: string; reason: string }[]; links: number; invited: { handle: string }[]; credits: number;
   suggestions: { handle: string; name: string; why: string }[]; newMembers: { handle: string; name: string }[];
+  /** days since a vault-published page last updated (3+), takes the place of the finish-your-page step */
+  stale?: number;
   /** the one "finish your page" step to suggest, if any */
   nudge?: { label: string; why: string; how: string; url: string };
 }
@@ -125,7 +127,9 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (d.suggestions.length) sec("People you might know", d.suggestions.map(s => `<p style="margin:6px 0">${who(s.handle, s.name)} <span style="color:#8A8794">${esc(s.why)}</span></p>`).join(""), d.suggestions.map(s => `@${s.handle} (${s.why}) ${hub}/@${s.handle}/`).join("\n"));
     if (d.newMembers.length) sec("New this week", `<p style="margin:0">${d.newMembers.slice(0, 8).map(m => who(m.handle, m.name)).join(" &middot; ")}</p>`, d.newMembers.slice(0, 8).map(m => "@" + m.handle).join(", "));
     if (!H.length) return null;
-    if (d.nudge) { H.push(`<p style="margin:20px 0 0;padding:12px 14px;border-radius:10px;background:#F1EDFF;color:#24222B;font-size:14px"><b>Finish your page: ${esc(d.nudge.label)}.</b> ${esc(d.nudge.why)} <a href="${esc(d.nudge.url)}" style="color:#6E4FE0">${esc(d.nudge.how)}</a></p>`);
+    if (d.stale) { H.push(`<p style="margin:20px 0 0;padding:12px 14px;border-radius:10px;background:#FFF4DC;color:#24222B;font-size:14px"><b>Your page last updated ${d.stale} days ago</b> - open Obsidian to refresh it. Your page updates itself while Obsidian is open. <a href="obsidian://caldera" style="color:#6E4FE0">Open Obsidian</a></p>`);
+      T.push(`Your page last updated ${d.stale} days ago - open Obsidian to refresh it.`); }
+    else if (d.nudge) { H.push(`<p style="margin:20px 0 0;padding:12px 14px;border-radius:10px;background:#F1EDFF;color:#24222B;font-size:14px"><b>Finish your page: ${esc(d.nudge.label)}.</b> ${esc(d.nudge.why)} <a href="${esc(d.nudge.url)}" style="color:#6E4FE0">${esc(d.nudge.how)}</a></p>`);
       T.push(`FINISH YOUR PAGE: ${d.nudge.label}. ${d.nudge.why} ${d.nudge.how}: ${d.nudge.url}`); }
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
     H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:14px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a> (you get 25 help credits when they join).</p>`);

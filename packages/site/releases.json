@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.17.0",
+      "date": "2026-10-17",
+      "title": "Set up your page without an AI",
+      "items": [
+        "New setup form: name, headline, photo, masthead, your GitHub, website, X and LinkedIn, a first note for your garden, the People listing and the daily email, all on one screen. It writes Caldera/profile.md for you, publishes, and opens the share screen. Pasting the setup prompt into your AI agent is still there as an option.",
+        "Already have a page that's still bare? Caldera offers the same form once, filled in with what your vault already has. Any time: the command \"Finish my page\", or \"Fill it in with a quick form\" on the Finish your page card in My view.",
+        "Your page updates while Obsidian is open. If it hasn't updated in 3 days, your daily summary email says so, and your own view of your public page shows \"Last updated N days ago\". Visitors never see it."
+      ],
+      "howto": "Update Caldera in Settings > Community plugins, then run \"Caldera: Finish my page\"."
+    },
+    {
       "version": "0.16.1",
       "date": "2026-10-17",
       "title": "Review fix",

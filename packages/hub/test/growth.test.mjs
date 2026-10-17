@@ -20,7 +20,7 @@ const CITY = `<a class="city-peek" href="city.html"><svg viewBox="-10 -20 300 20
 
 before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-growth-"));
-  hub = createHub({ dataDir: dir, publicUrl: "http://hub.test", limits: { newProfilesPerDay: 100 }, email: { send: async m => { sent.push(m); } } });
+  hub = createHub({ dataDir: dir, publicUrl: "http://hub.test", limits: { newProfilesPerDay: 100, writesPerMinute: 1000, perMinute: 5000 }, email: { send: async m => { sent.push(m); } } });
   base = "http://127.0.0.1:" + await hub.listen(0);
   const files = { "index.html": Buffer.from(`<html><head><title>Mike</title></head><body>${CITY}</body></html>`).toString("base64") };
   await post(`/v1/profiles/${ids.mike.id}/bundle`, { manifest: man("mike", { headline: "Building AI agents and Obsidian plugins", topics: [["ai", 5], ["typescript", 3]], groups: ["producthunt"] }), files });
@@ -104,6 +104,29 @@ test("daily email: double opt-in, sealed at rest, digest only when something hap
   assert.equal(hub.mail.status(ids.mike.id), null);
   await post("/v1/envelopes", C.sign(ids.cy, "friend.request", { to: ids.mike.id }));
   assert.equal((await hub.mail.runDigest(true)).sent, 0, "unsubscribed: nothing sent");
+});
+
+test("daily email: a vault page not updated in 3+ days gets the refresh line instead of a finish-your-page step", async () => {
+  const dee = C.newIdentity(), eve = C.newIdentity();
+  for (const [id, h] of [[dee, "stale-dee"], [eve, "stale-eve"]]) { const b = await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: h, handle: h, boxKey: id.boxPublic }), files: { "index.html": Buffer.from("<html><body>x</body></html>").toString("base64") } }); assert.equal(b.status, 200, h + " " + JSON.stringify(b.body)); }
+  const t = await login(dee);
+  assert.equal((await post(`/v1/owner/${dee.id}/email`, { email: "dee@realmail.org" }, t)).status, 200);
+  const link = sent.at(-1).text.match(/http:\/\/hub\.test(\/v1\/email\/confirm\?t=[\w-]+)/)[1];
+  await fetch(base + link, { method: "POST" });
+  hub.db.prepare("UPDATE profiles SET updated=? WHERE id=?").run(new Date(Date.now() - 4 * 86400_000 - 60_000).toISOString(), dee.id);
+  const fr = await post("/v1/envelopes", C.sign(eve, "friend.request", { to: dee.id, note: "hi" })); assert.equal(fr.status, 200, JSON.stringify(fr.body));
+  assert.equal(hub.mail.status(dee.id)?.confirmed, true, "confirmed");
+  const n = sent.length; await hub.mail.runDigest(true);
+  const d = sent.slice(n).find(m => m.to === "dee@realmail.org");
+  assert.ok(d, "digest sent");
+  assert.match(d.text, /Your page last updated 4 days ago - open Obsidian to refresh it\./); assert.match(d.html, /last updated 4 days ago/);
+  assert.doesNotMatch(d.text, /FINISH YOUR PAGE/, "the stale line takes the one nudge slot");
+  // fresh again: back to the finish-your-page step
+  hub.db.prepare("UPDATE profiles SET updated=? WHERE id=?").run(new Date().toISOString(), dee.id);
+  await post("/v1/envelopes", C.sign(eve, "friend.request", { to: dee.id, note: "again" }));
+  const m = sent.length; await hub.mail.runDigest(true);
+  const d2 = sent.slice(m).find(x => x.to === "dee@realmail.org");
+  assert.ok(d2); assert.doesNotMatch(d2.text, /last updated/); assert.match(d2.text, /FINISH YOUR PAGE/);
 });
 
 test("GitHub sign-up from an invite + group: referral, friend request to the inviter, /me friends, accept, email", async () => {
