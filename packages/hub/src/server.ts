@@ -92,6 +92,32 @@ ${notes.length ? notes.map(n => `<a class="card" href="/@${e(n.handle)}/n/${e(n.
 </main></body></html>`;
 }
 
+/** /watch/@handle: the city alone in a small window, to leave in a corner of the screen and watch all day. This page is
+ *  the hub's own (not user content), so it can open a Document Picture-in-Picture window that stays on top (Chrome, Edge)
+ *  and move the sandboxed city frame into it. Elsewhere it is just a small window with the city filling it. */
+const WATCH_CSP = "default-src 'none'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+function watchPage(name: string, src: string): string {
+  const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+  const FRAME_CSS = "html,body{margin:0;height:100%;background:#010207;overflow:hidden}iframe{display:block;border:0;width:100%;height:100%}";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${e(name)}'s city</title><meta name="robots" content="noindex"><style>${FRAME_CSS}
+body{font:12px/1.4 ui-monospace,'IBM Plex Mono',Menlo,monospace;color:#BFF8FF}
+#pin{position:fixed;top:6px;left:6px;z-index:5;padding:3px 10px;border-radius:999px;border:1px solid rgba(61,242,255,.5);background:rgba(2,6,12,.88);color:#BFF8FF;font:inherit;cursor:pointer;opacity:.0;transition:opacity .2s}
+body:hover #pin,#pin:focus{opacity:1}
+#away{display:none;position:fixed;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:8px;text-align:center;padding:16px}
+#away button{padding:4px 12px;border-radius:999px;border:1px solid rgba(61,242,255,.5);background:transparent;color:#BFF8FF;font:inherit;cursor:pointer}
+body.floating #away{display:flex}body.floating #pin{display:none}</style></head><body>
+<iframe id="c" src="${e(src)}" title="${e(name)}'s city"></iframe>
+<button id="pin" type="button" hidden title="Float the city in a small window that stays on top of everything">&#128204; Keep on top</button>
+<div id="away"><div>Your city is floating on top.</div><div style="opacity:.7">Minimize this window but keep it open: closing it closes the floating city too.</div><button id="back" type="button">Bring it back here</button></div>
+<script>(function(){var d=window.documentPictureInPicture,f=document.getElementById('c'),pin=document.getElementById('pin'),pw=null;
+if(!d)return;pin.hidden=false;
+pin.onclick=function(){d.requestWindow({width:420,height:260}).then(function(w){pw=w;var s=w.document.createElement('style');s.textContent=${JSON.stringify(FRAME_CSS)};w.document.head.appendChild(s);w.document.title=document.title;
+  w.document.body.appendChild(f);document.body.classList.add('floating');
+  w.addEventListener('pagehide',function(){document.body.insertBefore(f,document.body.firstChild);document.body.classList.remove('floating');pw=null})}).catch(function(){})};
+document.getElementById('back').onclick=function(){if(pw)pw.close()}})();</script></body></html>`;
+}
+
 export function createHub(opts: HubOptions) {
   fs.mkdirSync(path.join(opts.dataDir, "profiles"), { recursive: true });
   const db = new DatabaseSync(path.join(opts.dataDir, "hub.sqlite"));
@@ -515,7 +541,7 @@ export function createHub(opts: HubOptions) {
       return { id: r.id, d: project, repo: x.repo || "", label: x.label || "", machine: x.machine || "", state, task: x.task || "", did: x.did || "", tokens: r.tokens, ago };
     });
   }
-  function liveStats(owner: string, full: boolean) {
+  function liveStats(owner: string, full: boolean, since?: string | null) {
     const sites = sitesOf(owner), pubSet = new Set(sites.filter(s => s.public).map(s => s.project));
     const agents = agentsOf(owner, full, pubSet);
     if (!sites.length) return agents.length ? (full ? { at: now(), private: true, districts: {}, events: [], agents } : { at: now(), districts: {}, agents }) : null;
@@ -530,8 +556,23 @@ export function createHub(opts: HubOptions) {
       const x = d(r.key); if (r.kind === "view") { x.views += r.n; x.visitors += r.u; } else if (r.kind === "signup") x.signups += r.n; else if (r.kind === "buy") x.buys += r.n;
     }
     const level = (n: number) => n <= 0 ? 0 : n < 3 ? 1 : n < 10 ? 2 : n < 30 ? 3 : 4;
-    if (!full) return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents };
-    const events = (q(`SELECT key, ts, kind FROM traffic WHERE key IN (${qs}) AND ts > ? ORDER BY ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts }));
+    // a "new" view is a visitor's first on that site in 30 minutes: it drops into the city as a new arrival
+    const FRESH = `NOT EXISTS (SELECT 1 FROM traffic p WHERE p.key=t.key AND p.visitor=t.visitor AND p.kind='view' AND p.ts < t.ts AND p.ts > strftime('%Y-%m-%dT%H:%M:%fZ', t.ts, '-30 minutes'))`;
+    if (!full) {
+      // public: coarse counts per public district since the viewer's previous poll (at most 2 minutes back), private ones merged
+      let arrivals: Record<string, { v: number; s: number; b: number }> | undefined;
+      const lo = Date.parse(String(since || "")), floor = Date.now() - 120_000;
+      if (lo) {
+        arrivals = {};
+        const from = new Date(Math.max(lo, floor)).toISOString();
+        for (const r of q(`SELECT t.key, t.kind, (t.kind<>'view' OR ${FRESH}) AS fresh FROM traffic t WHERE t.key IN (${qs}) AND t.ts > ?`).all(...keys, from) as any[]) {
+          if (!r.fresh) continue; const x = arrivals[name(r.key)] ||= { v: 0, s: 0, b: 0 };
+          if (r.kind === "signup") x.s++; else if (r.kind === "buy") x.b++; else x.v++;
+        }
+      }
+      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents, ...(arrivals ? { arrivals } : {}) };
+    }
+    const events = (q(`SELECT t.key, t.ts, t.kind, (t.kind='view' AND ${FRESH}) AS fresh FROM traffic t WHERE t.key IN (${qs}) AND t.ts > ? ORDER BY t.ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts, ...(r.fresh ? { n: 1 } : {}) }));
     return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events, agents };
   }
   const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
@@ -733,6 +774,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
           return res.end(groupPage({ slug: g[1], hub: opts.publicUrl || "https://caldera.social", members: groupMembers(g[1]) }));
         } }
+      const m0 = p.match(/^\/watch\/@([a-z0-9-]+)\/?$/);
+      if (req.method === "GET" && m0) {
+        const pr = byHandle(m0[1]);
+        if (!pr || modOf(pr.handle, pr.id) || !fs.existsSync(path.join(opts.dataDir, "profiles", m0[1], "city.html"))) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("No city here."); }
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex", "content-security-policy": WATCH_CSP });
+        return res.end(watchPage(pr.name || "@" + m0[1], `/@${m0[1]}/city.html${url.search}#mini`));
+      }
       if (req.method === "GET" && p === "/t.js") {
         res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
         return res.end(TRACK_JS);
@@ -1009,7 +1057,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/live\/([a-z0-9-]+)$/);
       if (req.method === "GET" && m) {
         const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
-        return json(res, 200, liveStats(pr.id, false) || { at: now(), districts: {} });
+        return json(res, 200, liveStats(pr.id, false, url.searchParams.get("since")) || { at: now(), districts: {} });
       }
       // the pixel: GET /v1/t/KEY.gif?k=view|signup|buy (also POST, for sendBeacon)
       m = p.match(/^\/v1\/t\/([a-z0-9]{12,32})(?:\.gif)?$/);
@@ -1087,7 +1135,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const rows = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed).map(pr => {
           const b = body(pr), avatar = b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null;
           return { handle: pr.handle, name: pr.name, headline: pr.headline, avatar, topics: (b.topics || []).slice(0, 3).map((t: any) => t[0]),
-            week: weekScore(pr.manifest), gravity: gravityOf(pr.id), invited: invitedCount(pr.id), created: pr.created, updated: pr.updated };
+            week: weekScore(pr.manifest), gravity: gravityOf(pr.id), invited: invitedCount(pr.id), created: pr.created, updated: pr.updated, city: fs.existsSync(path.join(opts.dataDir, "profiles", pr.handle, "city.html")) };
         }).filter(r => !term || [r.handle, r.name, r.headline, ...r.topics].join(" ").toLowerCase().includes(term));
         rows.sort(sort === "new" ? (a, b) => String(b.created).localeCompare(String(a.created)) : (a, b) => b.week - a.week || b.gravity - a.gravity);
         return json(res, 200, { total: rows.length, profiles: rows.slice(0, 120) });
@@ -1153,6 +1201,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       const mine = owners[login];
       if (!mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("Private Caldera address: only the profile owner's Tailscale account can open it."); }
       if (url.pathname.startsWith("/setup/github") && await GH.privateRoute(req, res, url)) return;
+      if (/^\/watch(\/(@[a-z0-9-]+\/?)?)?$/.test(url.pathname)) {   // the private city, popped out (see watchPage)
+        const prw = byHandle(mine);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-security-policy": WATCH_CSP });
+        return res.end(watchPage(prw?.name || "@" + mine, `/@${mine}/city.html${url.search}#mini`));
+      }
       const m = url.pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
       if (!m) { res.writeHead(302, { location: `/@${mine}/` }); return res.end(); }
       if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }
@@ -1161,7 +1214,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
         if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
         res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
-        return res.end(JSON.stringify(liveStats(pr0.id, url.searchParams.get("view") !== "public") || { at: now(), districts: {} }));
+        return res.end(JSON.stringify(liveStats(pr0.id, url.searchParams.get("view") !== "public", url.searchParams.get("since")) || { at: now(), districts: {} }));
       }
       const dir = path.join(opts.dataDir, "profiles", mine);
       let rel = m[2].slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";

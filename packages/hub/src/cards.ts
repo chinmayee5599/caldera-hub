@@ -105,7 +105,7 @@ h1{font:600 clamp(1.7rem,4vw,2.4rem)/1.15 'Source Serif 4',Georgia,serif;color:v
 .btn.alt{background:transparent;border:1px solid var(--line);color:var(--text)}
 .town{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
 .lot{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 120%,#1d2b4a 0%,#0c1222 60%,#080b14 100%);color:var(--text)}
-.lot:hover{border-color:var(--go)}.lot svg{display:block;width:100%;height:170px;padding:10px}.nocity{height:170px;display:grid;place-items:center;color:var(--muted);font-size:13px}
+.lot:hover{border-color:var(--go)}.lot a{color:inherit;text-decoration:none}.lot a.who:hover b{text-decoration:underline}.lot svg{display:block;width:100%;height:170px;padding:10px}.nocity{height:170px;display:grid;place-items:center;color:var(--muted);font-size:13px}
 .lot .who{padding:10px 14px 12px;background:rgba(6,9,18,.75)}.lot b{display:block;color:var(--strong);font:600 1.05rem 'Source Serif 4',Georgia,serif}.lot small{display:block;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .empty{color:var(--muted);border:1px dashed var(--line);border-radius:12px;padding:28px;text-align:center}</style></head><body><main>
 <div class="top"><a class="home" href="${esc(hub)}/">Caldera</a><a href="${esc(hub)}/people">People</a></div>
@@ -113,7 +113,7 @@ h1{font:600 clamp(1.7rem,4vw,2.4rem)/1.15 'Source Serif 4',Georgia,serif;color:v
 <p class="lede">${n ? `${n} ${n === 1 ? "member" : "members"}, each shown as a city: every building is a project or a folder of notes, lit up when it was worked on this week.` : "Nobody has joined this group yet. Be the first: your city appears here as soon as you join."}</p>
 <div class="join"><span>Join ${esc(o.slug)}: your page and city show up here, and the people in the group are suggested to you as friends.</span>
 <a class="btn" href="${esc(hub)}/auth/github?group=${encodeURIComponent(o.slug)}">Join with GitHub</a><a class="btn alt" href="obsidian://caldera?group=${encodeURIComponent(o.slug)}">Join from Obsidian</a><a class="btn alt" href="${esc(hub)}/?group=${encodeURIComponent(o.slug)}#install">Get Caldera</a></div>
-${n ? `<div class="town">${o.members.map(m => `<a class="lot" href="${esc(hub)}/@${esc(m.handle)}/">${cityTile(m.city)}<span class="who"><b>${esc(m.name || "@" + m.handle)}</b><small>@${esc(m.handle)}${m.headline ? ` &middot; ${esc(m.headline)}` : ""}</small></span></a>`).join("")}</div>` : `<div class="empty">No members yet.</div>`}
+${n ? `<div class="town">${o.members.map(m => `<div class="lot">${m.city ? `<a class="lot-city" href="${esc(hub)}/@${esc(m.handle)}/city.html" title="Walk ${esc(m.name || "@" + m.handle)}'s city">${cityTile(m.city)}</a>` : cityTile(m.city)}<a class="who" href="${esc(hub)}/@${esc(m.handle)}/"><b>${esc(m.name || "@" + m.handle)}</b><small>@${esc(m.handle)}${m.headline ? ` &middot; ${esc(m.headline)}` : ""}</small></a></div>`).join("")}</div>` : `<div class="empty">No members yet.</div>`}
 </main></body></html>`;
 }
 

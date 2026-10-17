@@ -1,0 +1,40 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import * as C from "@caldera/core";
+import { createHub } from "../dist/server.js";
+
+test("arrivals: owner feed flags a visitor's first view in 30 min; public gets coarse counts since its last poll, private merged", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-arr-"));
+  const h = createHub({ dataDir: d });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const login = async id => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const rae = C.newIdentity(), city = Buffer.from("<html><body>c</body></html>").toString("base64");
+  await post(`/v1/profiles/${rae.id}/bundle`, { manifest: C.sign(rae, "profile.manifest", { name: "rae", handle: "rae", boxKey: rae.boxPublic }), files: { "index.html": city, "city.html": city } });
+  const reg = await post(`/v1/owner/${rae.id}/sites`, { sites: [{ key: "aaaaaaaaaaaa11", project: "Shop", public: true }, { key: "bbbbbbbbbbbb22", project: "Secret Lab", public: false }] }, await login(rae));
+  const sec = k => reg.body.sites.find(s => s.key === k).secret;
+  const iso = ms => new Date(Date.now() - ms).toISOString();
+  // a returning visitor (seen 10 min ago) is not a new arrival; two new ones are
+  await post("/v1/t/aaaaaaaaaaaa11/events", { events: [{ k: "view", ts: iso(600_000), v: "old" }] }, sec("aaaaaaaaaaaa11"));
+  const since = new Date(Date.now() - 1000).toISOString();
+  await new Promise(r => setTimeout(r, 20));
+  await post("/v1/t/aaaaaaaaaaaa11/events", { events: [{ k: "view", ts: iso(0), v: "old" }, { k: "view", ts: iso(0), v: "new1" }, { k: "view", ts: iso(0), v: "new2" }, { k: "signup", ts: iso(0), v: "new1" }] }, sec("aaaaaaaaaaaa11"));
+  await post("/v1/t/bbbbbbbbbbbb22/events", { events: [{ k: "view", ts: iso(0), v: "z" }, { k: "buy", ts: iso(0), v: "z" }] }, sec("bbbbbbbbbbbb22"));
+  const priv = await (await fetch(`${base}/v1/owner/${rae.id}/live`, { headers: { authorization: "Bearer " + await login(rae) } })).json();
+  const shopViews = priv.events.filter(e => e.d === "Shop" && e.k === "view");
+  assert.equal(shopViews.filter(e => e.n).length, 2, "two new arrivals, the returning visitor isn't one");
+  assert.ok(priv.events.some(e => e.d === "Secret Lab" && e.k === "view" && e.n));
+  assert.ok(priv.events.every(e => !("v" in e) && !("visitor" in e)), "no visitor ids leave the hub");
+  const first = await (await fetch(`${base}/v1/live/rae`)).json();
+  assert.equal(first.arrivals, undefined, "first poll: no backlog");
+  const pub = await (await fetch(`${base}/v1/live/rae?since=${encodeURIComponent(since)}`)).json();
+  assert.deepEqual(pub.arrivals.Shop, { v: 2, s: 1, b: 0 });
+  assert.deepEqual(pub.arrivals.Private, { v: 1, s: 0, b: 1 });
+  assert.ok(!JSON.stringify(pub).includes("Secret Lab"), "private project names never reach the public feed");
+  const old = await (await fetch(`${base}/v1/live/rae?since=2001-01-01T00:00:00Z`)).json();
+  assert.ok(old.arrivals.Shop.v <= 2, "since is clamped to 2 minutes");
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});

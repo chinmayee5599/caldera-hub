@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.18.0",
+      "date": "2026-10-17",
+      "title": "Watch your city all day",
+      "items": [
+        "Pop out: a new button on the city opens it alone in a small window you can park in a corner of your screen. In Chrome and Edge, click \"Keep on top\" and it floats over everything (picture-in-picture). It works on your public page and on your private address. In Obsidian, \"Pop out my city\" (button in My profile, or the command) opens your private city in a small window that stays on top in the lower-left corner.",
+        "The city follows your clock: night, dawn, day, dusk and evening, blending slowly through the day. The sky button cycles Auto, Grid, Dawn, Day, Dusk, Evening and Night, and your choice is remembered where your browser allows it. The city picture on your profile follows the time of day too.",
+        "Arrivals: every new visitor on one of your sites parachutes into its district, lands and walks into a building. A signup is a beam of light, confetti and a toast; a sale is a burst of gold coins. When lots arrive at once they queue, with a +N counter. Public pages show the same arrivals, without visitor details or private project names. Sound is off by default; turn it on with the speaker button.",
+        "GitHub from the city: click a public repo's name label, or double-click its building, to open it on GitHub. In the pop-out, one click opens the repo. Your GitHub profile is linked next to the city's title. Private and padlocked buildings never link.",
+        "Group towns and the People directory link each member's city, so you can go from a person to their city to their repos."
+      ],
+      "howto": "Open your city and click Pop out. In Chrome or Edge, hover the small window and click Keep on top. In Obsidian: My profile > the picture-in-picture button, or the command \"Caldera: Pop out my city\"."
+    },
+    {
       "version": "0.17.0",
       "date": "2026-10-17",
       "title": "Set up your page without an AI",
