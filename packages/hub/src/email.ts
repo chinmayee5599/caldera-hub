@@ -16,6 +16,8 @@ export interface DigestData {
   requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string }[];
   gravity: { handle: string; reason: string }[]; links: number; invited: { handle: string }[]; credits: number;
   suggestions: { handle: string; name: string; why: string }[]; newMembers: { handle: string; name: string }[];
+  /** the one "finish your page" step to suggest, if any */
+  nudge?: { label: string; why: string; how: string; url: string };
 }
 export interface EmailCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string; hub: string;
@@ -123,6 +125,8 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (d.suggestions.length) sec("People you might know", d.suggestions.map(s => `<p style="margin:6px 0">${who(s.handle, s.name)} <span style="color:#8A8794">${esc(s.why)}</span></p>`).join(""), d.suggestions.map(s => `@${s.handle} (${s.why}) ${hub}/@${s.handle}/`).join("\n"));
     if (d.newMembers.length) sec("New this week", `<p style="margin:0">${d.newMembers.slice(0, 8).map(m => who(m.handle, m.name)).join(" &middot; ")}</p>`, d.newMembers.slice(0, 8).map(m => "@" + m.handle).join(", "));
     if (!H.length) return null;
+    if (d.nudge) { H.push(`<p style="margin:20px 0 0;padding:12px 14px;border-radius:10px;background:#F1EDFF;color:#24222B;font-size:14px"><b>Finish your page: ${esc(d.nudge.label)}.</b> ${esc(d.nudge.why)} <a href="${esc(d.nudge.url)}" style="color:#6E4FE0">${esc(d.nudge.how)}</a></p>`);
+      T.push(`FINISH YOUR PAGE: ${d.nudge.label}. ${d.nudge.why} ${d.nudge.how}: ${d.nudge.url}`); }
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
     H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:14px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a> (you get 25 help credits when they join).</p>`);
     T.push(`Bring a friend: ${invite}`);
@@ -162,5 +166,16 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
   }
 
   const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} - Caldera</title><meta name="robots" content="noindex"><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"></head><body><main style="max-width:560px;margin:0 auto;padding:48px 16px"><h1 style="font-family:'Source Serif 4',Georgia,serif">${esc(title)}</h1>${body}<p><a href="/">caldera.social</a></p></main></body></html>`;
-  return { subscribe, confirm, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, hashOf };
+  /** Is `email` this owner's confirmed summary address? (Owner sign-in by email uses only confirmed addresses.) */
+  const matches = (owner: string, email: string) => { const r = row(owner); return !!r && !!r.confirmed && r.hash === hashOf(email) && !suppressed(email); };
+  const hasConfirmed = (owner: string) => { const r = row(owner); return !!r && !!r.confirmed; };
+  /** One-time owner sign-in link, to the owner's confirmed address only. */
+  async function sendSignin(owner: string, handle: string, link: string) {
+    const r = row(owner); if (!r || !r.confirmed) return; const to = addr(r); if (!to) return;
+    await send({ to, subject: ascii(`Sign in to your Caldera page (@${handle})`),
+      html: shell("Sign in on this device", `<p>Someone (hopefully you) asked to sign in as the owner of <b>@${esc(handle)}</b> on caldera.social. The link works once, for 15 minutes.</p><p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Sign in</a></p><p style="color:#8A8794;font-size:13px">Open it on the phone or computer you want to sign in. If this wasn't you, ignore this email: nothing changes until the link is used.</p>`),
+      text: `Sign in as the owner of @${handle} on caldera.social (works once, for 15 minutes):\n${link}\n\nIf this wasn't you, ignore this email.` });
+  }
+
+  return { subscribe, confirm, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, hashOf, matches, hasConfirmed, sendSignin };
 }

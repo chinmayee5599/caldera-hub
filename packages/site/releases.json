@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.16.0",
+      "date": "2026-10-17",
+      "title": "Sign in from your phone, and finish your page",
+      "items": [
+        "Sign in as the owner from any device: every page's top bar now has a small \"Owner? Sign in\" link. Get a one-time sign-in link at your daily summary address, sign in with GitHub (GitHub sign-ups), or pair the device from Obsidian with a 6-character code (\"Sign in another device\", also the key button in the My profile tab). Once signed in, your page shows the Private view button.",
+        "Finish your page: My view in Obsidian and your account page now show what's still missing (profile photo, masthead, headline, about, links, a garden note, a friend, a group, the daily email), each with a one-click way to do it.",
+        "Masthead: choose a wide cover image for the top of your page right from Caldera (\"Set my masthead\"), or copy a prompt that has your AI agent pick or make one and set it. GitHub sign-ups can upload a photo and a masthead on their account page; metadata like camera and location is stripped.",
+        "The daily summary email suggests one next step for your page when something is missing.",
+        "The setup prompt now offers a masthead as an optional step."
+      ],
+      "howto": "On your phone: open your page, tap \"Owner? Sign in\" at the top, then use the email link or show a code and type it into Obsidian (\"Sign in another device\")."
+    },
+    {
       "version": "0.15.1",
       "date": "2026-10-17",
       "title": "From your public page back to your private view",

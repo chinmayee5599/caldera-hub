@@ -146,6 +146,20 @@ test("GitHub sign-up from an invite + group: referral, friend request to the inv
   assert.match(await post({ do: "email", email: "octo@realmail.org" }), /confirmation link/);
   assert.equal(mails.length, 1);
   me = await (await fetch(b + "/me", { headers: { cookie } })).text(); assert.ok(me.includes("Check octo@realmail.org"));
+  // finish your page: masthead missing; upload one (EXIF stripped), it renders like a vault profile's cover
+  assert.match(me, /id="finish"/); assert.match(me, /<b>Masthead<\/b>/); assert.match(me, /data-upload="banner"/);
+  const ex = Buffer.from("Exif\0\0GPS-SECRET"), jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, ex.length + 2]), ex, Buffer.from([0xff, 0xda, 0x00, 0x02, 1, 2, 0xff, 0xd9])]);
+  const up = (body, o = "http://hub.test") => fetch(b + "/me/upload", { method: "POST", headers: { cookie, origin: o, "content-type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal((await up({ kind: "banner", data: Buffer.from("not an image").toString("base64") })).status, 400);
+  assert.equal((await up({ kind: "banner", data: jpg.toString("base64") }, "http://evil.test")).status, 403);
+  assert.equal((await fetch(b + "/me/upload", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 401);
+  assert.equal((await up({ kind: "banner", data: jpg.toString("base64") })).status, 200);
+  const page = await (await fetch(b + "/@octo/", { headers: { "user-agent": "Mozilla/5.0" } })).text();
+  assert.match(page, /<div class="banner"><img class="cover" src="img\/banner\.jpg"/);
+  const stored = await (await fetch(b + "/@octo/img/banner.jpg")).arrayBuffer(); assert.ok(!Buffer.from(stored).includes("GPS-SECRET"));
+  me = await (await fetch(b + "/me", { headers: { cookie } })).text(); assert.doesNotMatch(me, /<b>Masthead<\/b> <span/); assert.match(me, /Remove masthead/);
+  // the daily email nudges the next unfinished step (octo still has no group)
+  assert.equal(h.mail ? typeof h.mail.runDigest : "function", "function");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
 

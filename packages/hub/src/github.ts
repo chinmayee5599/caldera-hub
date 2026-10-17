@@ -16,6 +16,7 @@ import path from "node:path";
 import * as C from "@caldera/core";
 import { renderProfile, type ProfileData, type DailyEntry } from "../../../../caldera/packages/plugin/src/render";
 import { cityData, publicCity, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
+import { cleanImage } from "./images";
 
 export interface GhCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string;
@@ -25,7 +26,7 @@ export interface GhCtx {
   allowNewProfile: (req: http.IncomingMessage) => boolean; byHandle: (h: string) => any; reserved: Set<string>;
   /** growth helpers from the hub: suggestions, open requests, referrals */
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
-    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks };
+    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -121,6 +122,13 @@ export function github(ctx: GhCtx) {
     return h + "-" + crypto.randomBytes(2).toString("hex");
   };
 
+  // uploaded photo / masthead for a hosted profile: kept outside the page folder so every rebuild picks them up
+  const upDir = (ghId: number) => path.join(ctx.dataDir, "uploads", String(ghId));
+  const uploaded = (ghId: number, kind: "photo" | "banner"): { file: string; ext: string } | null => {
+    for (const ext of ["jpg", "png", "webp"]) { const f = path.join(upDir(ghId), `${kind}.${ext}`); if (fs.existsSync(f)) return { file: f, ext }; }
+    return null;
+  };
+
   async function build(acct: any): Promise<string> {
     const token = await tokenFor(acct), me = await gh(token, "/user") as any, edits = JSON.parse(acct.edits || "{}"), cache = JSON.parse(acct.cache || "{}");
     const own: any[] = [];
@@ -155,9 +163,13 @@ export function github(ctx: GhCtx) {
     for (const l of String(edits.links || "").split("\n")) { const [a, b] = l.split("|").map(x => x.trim()); if (a && /^https:\/\//.test(b || "")) links.push([a.slice(0, 40), b.slice(0, 300)]); }
     const files: Record<string, Buffer | string> = {};
     let avatar: string | undefined;
-    try { const r = await F(me.avatar_url + (me.avatar_url.includes("?") ? "&" : "?") + "s=240"); if (r.ok) { files["img/avatar.png"] = Buffer.from(await r.arrayBuffer()); avatar = "img/avatar.png"; } } catch { /* initials */ }
+    const upPhoto = uploaded(acct.gh_id, "photo"), upBanner = uploaded(acct.gh_id, "banner");
+    if (upPhoto) { files[`img/photo.${upPhoto.ext}`] = fs.readFileSync(upPhoto.file); avatar = `img/photo.${upPhoto.ext}`; }
+    else try { const r = await F(me.avatar_url + (me.avatar_url.includes("?") ? "&" : "?") + "s=240"); if (r.ok) { files["img/avatar.png"] = Buffer.from(await r.arrayBuffer()); avatar = "img/avatar.png"; } } catch { /* initials */ }
+    let banner: string | undefined;
+    if (upBanner) { files[`img/banner.${upBanner.ext}`] = fs.readFileSync(upBanner.file); banner = `img/banner.${upBanner.ext}`; }
     const p: ProfileData = {
-      name, handle, headline: String(edits.headline || me.bio || `${me.login} on GitHub`).slice(0, 160), theme: "dark", avatar, icon: avatar, links,
+      name, handle, headline: String(edits.headline || me.bio || `${me.login} on GitHub`).slice(0, 160), theme: "dark", avatar, banner, icon: avatar, links,
       properties: [["Location", me.location || ""], ["Company", me.company || ""], ["On GitHub since", String(me.created_at || "").slice(0, 4)]].filter(x => x[1]) as [string, string][],
       sections: { journal: false, scoreboard: true, properties: true, numbers: false, topics: false, notes: false, asks: false, social: true, links: true, sidebar: true, rail: false, city: true },
       stats: { notes: 0, words: 0, links: 0, activeDays: daily.filter(d => (d.counts as any).commits).length }, topics: [], daily, publicNotes: [], asks: [], offers: [],
@@ -168,7 +180,7 @@ export function github(ctx: GhCtx) {
     } as ProfileData;
     for (const [k, v] of Object.entries(renderProfile(p))) files[k] = v;
     const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity;
-    const manifest = C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: p.headline, photos: { avatar }, links, sections: Object.keys(p.sections).filter(k => p.sections[k]),
+    const manifest = C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: p.headline, photos: { avatar, banner }, links, sections: Object.keys(p.sections).filter(k => p.sections[k]),
       stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs });
     const r = ctx.accept(manifest); if (r.status !== 200) throw new Error(r.body?.error || "couldn't publish");
     const dir = path.join(ctx.dataDir, "profiles", handle);
@@ -207,11 +219,12 @@ export function github(ctx: GhCtx) {
     const claim = a.claim_code && a.claim_expires > Date.now() ? a.claim_code : "";
     const growth = growthCards(a, edits);
     page(res, 200, "Your Caldera", `${note ? `<div class="card">${note}</div>` : ""}
-<div class="who"><img src="${esc(url)}img/avatar.png" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
+<div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
 <div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
 <form method="post" class="row" style="margin-top:10px"><input type="hidden" name="do" value="refresh"><button class="btn small" type="submit">Refresh from GitHub now</button></form></div>
+${finishCard(a)}
 ${growth}
-<form method="post" class="card"><input type="hidden" name="do" value="save"><b>Edit your page</b>
+<form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Edit your page</b>
 <label for="n">Name</label><input type="text" id="n" name="name" maxlength="80" value="${esc(edits.name || pr?.name || "")}">
 <label for="h">Headline</label><input type="text" id="h" name="headline" maxlength="160" value="${esc(edits.headline || pr?.headline || "")}">
 <label for="s">About you</label><textarea id="s" name="summary" maxlength="1200">${esc(edits.summary || "")}</textarea>
@@ -230,6 +243,30 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
 <form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>`);
   }
 
+  const photoPath = (pr: any) => { try { return String(JSON.parse(pr.manifest).body.photos?.avatar || "img/avatar.png").replace(/^\.?\//, ""); } catch { return "img/avatar.png"; } };
+
+  /** "Finish your page" on /me: the shared checklist, with uploads for the photo and masthead. */
+  function finishCard(a: any): string {
+    const st = ctx.social?.pageState?.(a.profile_id); if (!st) return "";
+    const items = C.pageChecklist(st), left = items.filter(i => !i.done);
+    const up = (kind: "photo" | "banner", label: string, ghost = false) => `<label class="btn small${ghost ? " ghost" : ""}" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${label}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${kind}" style="display:none"></label>`;
+    const action: Record<string, string> = {
+      photo: up("photo", "Upload a photo"), banner: `${up("banner", "Upload a masthead")} <span class="mut">Wide, about 3:1 (1800x600), up to 3 MB.</span>`,
+      headline: `<a href="#edit">Edit your headline</a>`, summary: `<a href="#edit">Write two sentences</a>`, links: `<a href="#edit">Add links</a>`,
+      friend: `<a href="#friends">Add a friend</a>`, group: `<a href="#edit">Join a group</a> <span class="mut">(try <code>producthunt</code>)</span>`, email: `<a href="#email">Turn it on</a>`,
+    };
+    const removable = uploaded(a.gh_id, "banner") ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="remove-banner"><button class="btn small ghost" type="submit">Remove masthead</button></form>` : "";
+    return `<div class="card" id="finish"><b>Finish your page</b> <span class="mut">${items.length - left.length} of ${items.length} done</span>
+<div style="height:6px;border-radius:99px;background:var(--line,#2A2440);margin:8px 0 12px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round((items.length - left.length) / items.length * 100)}%;background:#8B6CF6"></i></div>
+${left.length ? left.map(i => `<div style="margin:10px 0"><b>${esc(i.label)}</b> <span class="mut">${esc(i.why)}</span><div class="row" style="margin-top:6px">${action[i.id] || ""}</div></div>`).join("") : `<p class="mut">Your page is complete. Nice.</p>`}
+<p class="mut" style="margin-top:10px">Done: ${items.filter(i => i.done).map(i => esc(i.label)).join(" &middot; ") || "nothing yet"}. Replace your photo or masthead any time.</p><div class="row">${up("photo", "New photo", true)} ${up("banner", "New masthead", true)} ${removable}</div>
+<p class="mut" id="up-status" role="status"></p></div>
+<script>document.querySelectorAll('[data-upload]').forEach(function(inp){inp.addEventListener('change',function(){var f=inp.files&&inp.files[0];if(!f)return;var st=document.getElementById('up-status');
+if(f.size>3*1024*1024){st.textContent='That image is over 3 MB. Try a smaller one.';return}st.textContent='Uploading and republishing...';var r=new FileReader();r.onload=function(){
+fetch('/me/upload',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:inp.getAttribute('data-upload'),data:String(r.result).split(',')[1]})}).then(function(x){return x.json()}).then(function(j){
+if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'}else st.textContent=j.error||'Upload failed.'}).catch(function(){st.textContent='Upload failed.'})};r.readAsDataURL(f)})})</script>`;
+  }
+
   /** Growth cards on /me: this week's visitors, share + invite, friends (requests, current, suggestions), daily email. */
   function growthCards(a: any, edits: any): string {
     const soc = ctx.social, me = a.profile_id as string, url = `${pub}/@${a.handle}/`, invite = `${pub}/?invite=${encodeURIComponent(a.handle)}`;
@@ -246,12 +283,12 @@ ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 min
 <div class="card"><b>Share your page</b><p class="mut">This is the picture people see when you post your link.</p><img src="${esc(url)}card.png" alt="Your link preview" style="width:100%;max-width:600px;border-radius:10px;border:1px solid var(--line,#2A2440);display:block;margin:6px 0 10px">
 <div class="row"><a class="btn small" href="https://x.com/intent/post?text=${text}" target="_blank" rel="noopener">Post on X</a><a class="btn small" href="https://bsky.app/intent/compose?text=${text}" target="_blank" rel="noopener">Bluesky</a><a class="btn small" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a></div>
 <p style="margin:12px 0 4px"><b>Invite a friend</b> <span class="mut">(you get ${25} help credits when they join)</span></p><pre id="inv">${esc(invite)}</pre><button class="btn small" type="button" data-copy-text="inv">Copy invite link</button></div>
-<div class="card"><b>Friends</b>
+<div class="card" id="friends"><b>Friends</b>
 ${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
 ${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name)).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
 ${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
 ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
-${soc?.email ? `<div class="card"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
+${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
 ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
   }
 
@@ -320,12 +357,24 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       }
       redirect(res, "/me"); return true;
     }
+    if (req.method === "POST" && p === "/me/upload") {
+      const acct = account(req); if (!acct || acct.claimed) { ctx.json(res, 401, { error: "Sign in with GitHub first." }); return true; }
+      const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { ctx.json(res, 403, { error: "wrong origin" }); return true; }
+      const b = await ctx.readBody(req).catch(() => null) as any, kind = b?.kind === "banner" ? "banner" : b?.kind === "photo" ? "photo" : null;
+      if (!kind || typeof b.data !== "string") { ctx.json(res, 400, { error: "Choose an image." }); return true; }
+      const img = cleanImage(Buffer.from(b.data, "base64")); if (!img.ok) { ctx.json(res, 400, { error: img.error }); return true; }
+      const dir = upDir(acct.gh_id); fs.mkdirSync(dir, { recursive: true });
+      for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(dir, `${kind}.${ext}`), { force: true });
+      fs.writeFileSync(path.join(dir, `${kind}.${img.ext}`), img.data);
+      try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch (e: any) { ctx.json(res, 502, { error: "Saved, but republishing failed: " + e.message }); return true; }
+      ctx.json(res, 200, { ok: true }); return true;
+    }
     if (p === "/me") {
       const acct = account(req);
       if (!acct) { redirect(res, "/auth/github"); return true; }
       if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
-        mePage(res, acct, url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : ""); return true; }
+        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : ""); return true; }
       if (req.method === "POST") {
         const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
@@ -334,7 +383,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (act === "logout") { const t = cookies(req).cal_s; if (t) q("DELETE FROM gh_sessions WHERE token=?").run(hashTok(t)); setCookie(res, "cal_s", "", 0); redirect(res, "/"); return true; }
         if (act === "delete" && f.get("sure")) {
           const a = app(); try { if (a) { const t = JSON.parse(ctx.unseal(acct.token_sealed)).access; await F(`https://api.github.com/applications/${a.client_id}/grant`, { method: "DELETE", headers: { authorization: "Basic " + Buffer.from(a.client_id + ":" + a.client_secret).toString("base64"), accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "caldera-hub" }, body: JSON.stringify({ access_token: t }) }); } } catch { /* revoke is best effort */ }
-          ctx.erase(acct.profile_id); q("DELETE FROM gh_sessions WHERE gh_id=?").run(acct.gh_id); q("DELETE FROM gh_accounts WHERE gh_id=?").run(acct.gh_id);
+          ctx.erase(acct.profile_id); fs.rmSync(upDir(acct.gh_id), { recursive: true, force: true }); q("DELETE FROM gh_sessions WHERE gh_id=?").run(acct.gh_id); q("DELETE FROM gh_accounts WHERE gh_id=?").run(acct.gh_id);
           setCookie(res, "cal_s", "", 0); page(res, 200, "Deleted", "<h1>Your Caldera profile is deleted</h1><p>Your page, city and data are gone, and Caldera's access to your GitHub account is revoked.</p>"); return true;
         }
         if (act === "save") {
@@ -342,6 +391,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on", groups: groupsFrom(f.get("groups")) };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
+        if (act === "remove-banner") { for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(upDir(acct.gh_id), `banner.${ext}`), { force: true }); }
         if (act === "claim") { const code = "CAL-" + crypto.randomBytes(9).toString("base64url"); q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(code, Date.now() + 30 * 60_000, acct.gh_id); }
         let pre = "";
         if (act === "accept" || act === "add") {   // friends, signed with the hosted profile's key
@@ -354,7 +404,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
         let note = pre || (act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "");
-        if (act === "save" || act === "refresh") { try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
+        if (act === "save" || act === "refresh" || act === "remove-banner") { try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note); return true;
       }
     }

@@ -51,7 +51,8 @@ function calderaBar(hub: string, handle: string, own?: { href: string; label: st
     ? `<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end"><span class="cb-tag" style="color:#B8B8C2;font-size:12.5px">You're viewing your public page</span>`
       + `<a href="${e(own.href)}"${own.external ? ' target="_blank" rel="noopener"' : ""} style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">&#128274; ${e(own.label)}</a>`
       + `<a href="${base}/v1/own/out?h=${encodeURIComponent(handle)}" title="Sign this browser out" style="color:#8A8A93;font-size:12px;text-decoration:none">Sign out</a></span>`
-    : `<a href="${join}#install" style="display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">Get your own page</a>`;
+    : `<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap"><a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;text-decoration:none"><span class="cb-tag">Owner? </span>Sign in</a>`
+      + `<a href="${join}#install" style="display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">Get your own page</a></span>`;
   return `<div id="caldera-bar" style="position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif">`
     + `<a href="${join}" style="display:inline-flex;align-items:center;gap:8px;color:#F2F2F5;text-decoration:none;font:600 15px 'Source Serif 4',Georgia,serif">${logo}Caldera<span style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px" class="cb-tag">the social layer for Obsidian</span></a>`
     + right + `</div><style>@media (max-width:520px){#caldera-bar .cb-tag{display:none}}</style>`;
@@ -120,6 +121,8 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS client_versions (owner TEXT, kind TEXT, v TEXT, PRIMARY KEY (owner, kind));
     CREATE TABLE IF NOT EXISTS agent_keys (key TEXT PRIMARY KEY, owner TEXT UNIQUE, secret TEXT, repos TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS owner_sessions (token_hash TEXT PRIMARY KEY, owner TEXT, created TEXT, expires INTEGER);
+    CREATE TABLE IF NOT EXISTS signin_links (code_hash TEXT PRIMARY KEY, owner TEXT, expires INTEGER);
+    CREATE TABLE IF NOT EXISTS pair_codes (poll_hash TEXT PRIMARY KEY, code_hash TEXT, owner TEXT, expires INTEGER, approved INTEGER);
     CREATE TABLE IF NOT EXISTS owner_links (code_hash TEXT PRIMARY KEY, owner TEXT, expires INTEGER);
     CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
     CREATE TABLE IF NOT EXISTS referrals (invitee TEXT PRIMARY KEY, inviter TEXT, ts TEXT, via TEXT);
@@ -434,7 +437,7 @@ export function createHub(opts: HubOptions) {
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
-    q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id);
+    q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id); q("DELETE FROM signin_links WHERE owner=?").run(id); q("DELETE FROM pair_codes WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
@@ -583,13 +586,31 @@ export function createHub(opts: HubOptions) {
   }
 
   /** What happened to one person since `since`, for their daily summary email. */
+  /** "Finish your page" state for any profile, from what the hub can see (manifest, friends, garden, email). */
+  function pageStateFor(owner: string): C.PageState | null {
+    const pr = profile(owner); if (!pr?.handle) return null;
+    const b = body(pr), acct = q("SELECT edits FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner) as any;
+    let ed: any = {}; try { ed = JSON.parse(acct?.edits || "{}"); } catch { /* none */ }
+    const links = Array.isArray(b.links) ? b.links.length : 0;
+    return { photo: !!b.photos?.avatar, banner: !!b.photos?.banner, headline: !!String(b.headline || "").trim() && !/ on GitHub$/.test(String(b.headline)),
+      summary: acct ? !!String(ed.summary || "").trim() : undefined, links: acct ? links > 1 : links > 0,
+      garden: acct ? undefined : !!(q("SELECT COUNT(*) n FROM garden_notes WHERE owner=?").get(owner) as any).n,
+      friend: !!q("SELECT 1 FROM friends WHERE a=? LIMIT 1").get(owner), group: Array.isArray(b.groups) && b.groups.length > 0,
+      email: mail.hasConfirmed(owner) };
+  }
+  function nudgeFor(owner: string, hosted: boolean) {
+    const st = pageStateFor(owner), n = st && C.nextStep(st); if (!n) return undefined;
+    const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+    return { label: n.label.toLowerCase(), why: n.why, how: hosted ? "Do it on your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/me#finish` : "obsidian://caldera?open=finish" };
+  }
+
   function digestFor(owner: string, since: string) {
     const pr = profile(owner); if (!pr?.handle) return null;
     const h = pr.handle as string, d1 = new Date(Date.now() - DAY).toISOString(), d7 = new Date(Date.now() - 7 * DAY).toISOString();
     const v1 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor) u FROM page_views WHERE handle=? AND ts > ?").get(h, since > d1 ? since : d1) as any;   // since the last email, at most a day
     const v7 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(h, d7) as any;
     const hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
-    return { handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
+    return { nudge: nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
       friends: q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ?").all(owner, since) as any[],
       gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
@@ -604,7 +625,7 @@ export function createHub(opts: HubOptions) {
 
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
-    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
 
   // ---------------------------------------------------------------- the owner, signed in on their own browser
   // A one-time link from the plugin (or the GitHub sign-in cookie for hosted profiles) marks this browser as the owner's,
@@ -632,6 +653,49 @@ export function createHub(opts: HubOptions) {
     return { href: "obsidian://caldera?open=private", label: "Private view in Obsidian", external: true };
   }
 
+  // ---------------------------------------------------------------- owner sign-in from any device (/signin)
+  // Three ways in, each ending in the same owner cookie: a one-time email link (only to the page's confirmed summary
+  // address), GitHub (hosted profiles), or a 6-character code shown here and approved from the owner's Obsidian.
+  const startOwner = (owner: string) => { const t = crypto.randomBytes(32).toString("hex");
+    q("DELETE FROM owner_sessions WHERE expires < ?").run(Date.now());
+    q("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(hashToken(t), owner, now(), Date.now() + OWN_AGE * 1000); return ownCookie(t, OWN_AGE); };
+  const tries = new Map<string, { n: number; reset: number }>();
+  const tooMany = (key: string, max: number, windowMs = 3600_000) => { const t = Date.now(); let b = tries.get(key);
+    if (!b || b.reset < t) { b = { n: 0, reset: t + windowMs }; tries.set(key, b); } if (tries.size > 20_000) tries.clear(); return ++b.n > max; };
+  const PAIR_ABC = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const pairCode = () => Array.from(crypto.randomBytes(6), x => PAIR_ABC[x % PAIR_ABC.length]).join("");
+  const normCode = (c: unknown) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const signinPage = (res: http.ServerResponse, status: number, title: string, inner: string, script = "") => {
+    res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer" });
+    res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} - Caldera</title><meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>
+.si{max-width:560px;margin:0 auto;padding:32px 16px 64px}.si h1{font-family:'Source Serif 4',Georgia,serif;font-size:1.9rem;margin:.2em 0 .3em}.si .lede{color:var(--text-muted,#9A9AA6);margin:0 0 18px}
+.si .card{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0}.si .card h2{font-size:1.05rem;margin:0 0 4px}.si .mut{color:var(--text-muted,#9A9AA6);font-size:.93em}
+.si input[type=email]{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px 12px;font:inherit;margin:8px 0 10px}
+.si .code{font:500 2rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.18em;padding:10px 0}.si .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.si button.btn{cursor:pointer}</style></head>
+<body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/gardens">Gardens</a><a href="/guide">Guide</a></nav></header><main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
+  };
+  const hostedOf = (owner: string) => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
+  function signinHome(res: http.ServerResponse, pr: any, note = "") {
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    const h = pr.handle as string, hosted = hostedOf(pr.id), hasEmail = mail.hasConfirmed(pr.id);
+    const emailCard = `<div class="card"><h2>Email me a sign-in link</h2>${hasEmail
+      ? `<p class="mut">Type the email your daily Caldera summary goes to. We'll send a link that works once, for 15 minutes.</p><form method="post" action="/signin/email"><input type="hidden" name="h" value="${e(h)}"><input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com"><button class="btn small" type="submit">Send the link</button></form>`
+      : `<p class="mut">This page has no confirmed summary email yet, so there's nowhere to send a link. ${hosted ? "Sign in with GitHub instead, and add your email on your account page for next time." : "Pair this device from Obsidian below, then turn on the daily summary email in Caldera settings for next time."}</p>`}</div>`;
+    const ghCard = hosted ? `<div class="card"><h2>Sign in with GitHub</h2><p class="mut">This page was made with GitHub. Sign in with the same GitHub account.</p><a class="btn small" href="/auth/github">Sign in with GitHub</a></div>` : "";
+    const pairCard = hosted ? "" : `<div class="card" id="pair"><h2>Pair from Obsidian</h2><p class="mut">On a computer with your vault: in Obsidian, open the command palette and run <b>Caldera: Sign in another device</b> (or the key button in the My profile tab), then type the code shown here.</p>
+<div id="pair-box"><button class="btn small" type="button" id="pair-go">Show a code</button></div></div>`;
+    const js = hosted ? "" : `(function(){var b=document.getElementById('pair-go');if(!b)return;b.addEventListener('click',function(){b.disabled=true;
+fetch('/signin/pair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({h:${JSON.stringify(h)}})}).then(function(r){return r.json()}).then(function(j){var box=document.getElementById('pair-box');
+if(!j.code){box.textContent=j.error||'Could not make a code. Try again in a minute.';return}
+box.innerHTML='<div class="code"></div><p class="mut">Waiting for Obsidian. The code works for 10 minutes.</p>';box.firstChild.textContent=j.code.slice(0,3)+' '+j.code.slice(3);
+var t=setInterval(function(){fetch('/signin/pair/status?p='+encodeURIComponent(j.poll)).then(function(r){return r.json()}).then(function(s){
+if(s.state==='approved'){clearInterval(t);var f=document.createElement('form');f.method='post';f.action='/signin/pair/done';var i=document.createElement('input');i.type='hidden';i.name='p';i.value=j.poll;f.appendChild(i);document.body.appendChild(f);f.submit()}
+else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired. Reload to get a new one.'}}).catch(function(){})},2000)}).catch(function(){b.disabled=false})})})();`;
+    signinPage(res, 200, "Sign in", `${note ? `<div class="card">${note}</div>` : ""}<h1>Sign in as @${e(h)}</h1><p class="lede">For the owner of this page: sign this browser in, so your public page shows a way back to your private view. It stays signed in for a year.</p>${ghCard}${emailCard}${pairCard}<p class="mut"><a href="/@${e(h)}/">Back to the page</a></p>`, js);
+  }
+
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
@@ -644,7 +708,7 @@ export function createHub(opts: HubOptions) {
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
-      if (/^\/(auth\/github|me$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
+      if (/^\/(auth\/github|me$|me\/upload$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
 
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
       if (req.method === "GET" && p === "/v1/gardens/recent") return json(res, 200, { notes: recentGardenNotes(Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 60))) });
@@ -765,6 +829,72 @@ export function createHub(opts: HubOptions) {
         res.writeHead(302, { location: h ? `/@${h}/` : "/", "set-cookie": ownCookie("", 0), "cache-control": "no-store" }); return res.end();
       }
 
+      if (p === "/signin" || p.startsWith("/signin/")) {
+        const form = async () => { const chunks: Buffer[] = []; let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 8192) break; chunks.push(c as Buffer); } return new URLSearchParams(Buffer.concat(chunks).toString("utf8")); };
+        const origin = String(req.headers.origin || ""), pubOrigin = originOf(opts.publicUrl);
+        if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin) return json(res, 403, { error: "wrong origin" });
+        const ip = ipOf(req);
+        if (req.method === "GET" && p === "/signin") {
+          const pr = byHandle((url.searchParams.get("h") || "").toLowerCase()); if (!pr || modOf(pr.handle, pr.id)) { signinPage(res, 404, "Sign in", `<h1>No such page</h1><p><a href="/people">Find people</a></p>`); return; }
+          signinHome(res, pr); return;
+        }
+        if (req.method === "POST" && p === "/signin/email") {
+          const f = await form(), pr = byHandle(String(f.get("h") || "").toLowerCase()), email = String(f.get("email") || "").trim().slice(0, 200);
+          if (!pr || modOf(pr.handle, pr.id)) { signinPage(res, 404, "Sign in", `<h1>No such page</h1>`); return; }
+          if (tooMany("email-ip:" + ip, 10) || tooMany("email-h:" + pr.handle, 5)) { signinHome(res, pr, "Too many tries. Wait an hour, or pair from Obsidian."); return; }
+          if (mail.matches(pr.id, email)) {   // only the page's confirmed summary address ever gets a link; the answer is the same either way
+            const code = crypto.randomBytes(24).toString("base64url");
+            q("DELETE FROM signin_links WHERE expires < ?").run(Date.now());
+            q("INSERT INTO signin_links VALUES (?,?,?)").run(hashToken(code), pr.id, Date.now() + 15 * 60_000);
+            const link = `${(opts.publicUrl || "").replace(/\/$/, "")}/signin/link?c=${encodeURIComponent(code)}`;
+            void mail.sendSignin(pr.id, pr.handle, link).catch((e: any) => console.error("signin mail", e?.message));
+          }
+          signinHome(res, pr, "If that's the email on this page, a sign-in link is on its way. It works once, for 15 minutes. Check your spam folder too."); return;
+        }
+        if (p === "/signin/link") {   // GET shows a button (mail scanners only GET); POST uses the link, once
+          const c = req.method === "POST" ? String((await form()).get("c") || "") : url.searchParams.get("c") || "";
+          const row = c ? q("SELECT * FROM signin_links WHERE code_hash=?").get(hashToken(c)) as any : null;
+          const pr = row && row.expires > Date.now() ? profile(row.owner) : null;
+          if (!pr?.handle) { signinPage(res, 400, "Link expired", `<h1>That link expired</h1><p class="mut">Sign-in links work once, for 15 minutes. Ask for a new one from the "Owner? Sign in" link at the top of your page.</p>`); return; }
+          const e = (v: string) => v.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+          if (req.method === "GET") { signinPage(res, 200, "Sign in", `<h1>Sign in as @${e(pr.handle)}</h1><p class="lede">Sign this browser in as the owner of the page. It stays signed in for a year; "Sign out" in the bar at the top of your page ends it.</p><form method="post" action="/signin/link"><input type="hidden" name="c" value="${e(c)}"><button class="btn" type="submit">Sign in on this device</button></form>`); return; }
+          q("DELETE FROM signin_links WHERE code_hash=?").run(row.code_hash);
+          res.writeHead(303, { location: `/@${pr.handle}/`, "set-cookie": startOwner(pr.id), "cache-control": "no-store" }); return res.end();
+        }
+        if (req.method === "POST" && p === "/signin/pair") {
+          const b = await readBody(req).catch(() => ({})) as any, pr = byHandle(String(b?.h || "").toLowerCase());
+          if (!pr || modOf(pr.handle, pr.id) || hostedOf(pr.id)) return json(res, 404, { error: "Pairing is for pages made in Obsidian." });
+          if (tooMany("pair-ip:" + ip, 20)) return json(res, 429, { error: "Too many codes from this network. Wait a bit." });
+          const code = pairCode(), poll = crypto.randomBytes(24).toString("base64url");
+          q("DELETE FROM pair_codes WHERE expires < ?").run(Date.now());
+          q("INSERT INTO pair_codes VALUES (?,?,?,?,?)").run(hashToken(poll), hashToken(code), pr.id, Date.now() + 10 * 60_000, 0);
+          return json(res, 200, { code, poll, expires_in: 600 });
+        }
+        if (req.method === "GET" && p === "/signin/pair/status") {
+          const row = q("SELECT approved, expires FROM pair_codes WHERE poll_hash=?").get(hashToken(url.searchParams.get("p") || "")) as any;
+          res.setHeader("cache-control", "no-store");
+          return json(res, 200, { state: !row || row.expires < Date.now() ? "expired" : row.approved ? "approved" : "waiting" });
+        }
+        if (req.method === "POST" && p === "/signin/pair/done") {
+          const pp = String((await form()).get("p") || ""), row = pp ? q("SELECT * FROM pair_codes WHERE poll_hash=?").get(hashToken(pp)) as any : null;
+          const pr = row && row.approved && row.expires > Date.now() ? profile(row.owner) : null;
+          if (row) q("DELETE FROM pair_codes WHERE poll_hash=?").run(row.poll_hash);   // single use
+          if (!pr?.handle) { signinPage(res, 400, "Code expired", `<h1>That code expired</h1><p class="mut">Go back and get a new one.</p>`); return; }
+          res.writeHead(303, { location: `/@${pr.handle}/`, "set-cookie": startOwner(pr.id), "cache-control": "no-store" }); return res.end();
+        }
+      }
+      // the owner approves a pairing code from Obsidian (signed in with the vault's key): only codes made for their own page
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/pair$/);
+      if (req.method === "POST" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        if (tooMany("approve:" + m[1], 30)) return json(res, 429, { error: "too many tries" });
+        const { code } = await readBody(req) as { code?: string }, c = normCode(code);
+        const row = c.length === 6 ? q("SELECT * FROM pair_codes WHERE code_hash=? AND owner=? AND expires > ? AND approved=0").get(hashToken(c), m[1], Date.now()) as any : null;
+        if (!row) return json(res, 404, { error: "No waiting code like that for your page. Codes work for 10 minutes; get a fresh one on the sign-in page." });
+        q("UPDATE pair_codes SET approved=1 WHERE poll_hash=?").run(row.poll_hash);
+        return json(res, 200, { ok: true, handle: profile(m[1])?.handle });
+      }
+
       if (req.method === "POST" && p === "/v1/auth/challenge") {
         const { id } = await readBody(req); const nonce = crypto.randomBytes(24).toString("base64");
         q("INSERT INTO challenges VALUES (?,?,?)").run(id, nonce, Date.now() + 5 * 60_000);
@@ -818,7 +948,7 @@ export function createHub(opts: HubOptions) {
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
-        return json(res, 200, { since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
+        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
       }
       // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
