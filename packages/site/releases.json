@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.2",
+      "date": "2026-10-18",
+      "title": "See where your points come from",
+      "items": [
+        "Each bar on the scoreboard is split by source: GitHub commits, AI sessions, meetings and email, and Obsidian notes and docs.",
+        "Under the chart, this week's points for each source."
+      ]
+    },
+    {
       "version": "0.25.1",
       "date": "2026-10-18",
       "title": "Now updates itself",
