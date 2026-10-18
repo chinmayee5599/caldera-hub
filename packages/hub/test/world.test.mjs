@@ -39,8 +39,10 @@ test("/v1/world: listed members only, public repos keep names, everything else i
   const repos = w.city.districts.flatMap(d => d.repos);
   assert.ok(repos.some(r => r.name === "open-thing" && r.url === "https://github.com/x/open-thing"));
   for (const r of repos.filter(r => r.locked)) { assert.equal(r.name, ""); assert.equal(r.url, undefined); assert.deepEqual(r.weeks, []); }
-  assert.deepEqual(w.city.districts.map(d => d.name).sort(), ["@ana", "@mike"]);
-  assert.ok(w.links.some(l => l.includes("@ana") && l.includes("@mike") && l[2] === 1), "the founder's welcome friendship is a (faint) highway");
+  assert.deepEqual([...new Set(w.city.districts.map(d => d.nb))].sort(), ["@ana", "@mike"], "one neighborhood per listed member");
+  assert.deepEqual(w.city.districts.map(d => d.name).sort(), ["@ana/Proj", "@mike/Proj"], "members keep their public district names");
+  assert.ok(w.city.districts.every(d => d.label === "Proj"));
+  assert.ok(w.links.some(l => l.includes("@ana") && l.includes("@mike") && l[2] === 1), "the founder's welcome friendship is a (faint) ray");
 });
 
 test("/world page: renderer in world mode, names escaped, strict policy, live feed folds per member", async () => {

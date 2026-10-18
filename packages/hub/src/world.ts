@@ -36,14 +36,29 @@ export function buildWorld(members: WorldMemberIn[], friendships: [string, strin
   const order = [...members].sort((a, b) => Number(isNew(a)) - Number(isNew(b))
     || (a.groups[0] || "￿").localeCompare(b.groups[0] || "￿")
     || b.busy - a.busy || a.handle.localeCompare(b.handle));
+  // each member keeps their own districts (the same public projects their own city shows; private ones are already
+  // merged into one "Private" district there), so the world can label them. Buildings are capped per member.
   let left = MAX_BUILDINGS;
-  const districts = order.map(m => {
-    const key = "@" + m.handle;
-    const all = (m.city?.districts || []).flatMap(d => d.repos || []).map(r => cleanRepo(r, key));
-    all.sort((a, b) => (b.week * 20 + b.commits) - (a.week * 20 + a.commits));
-    const repos = all.slice(0, Math.max(0, Math.min(MAX_PER_MEMBER, left))); left -= repos.length;
-    return { name: key, notes: Math.min(16, Math.max(0, m.notes)), repos };
-  });
+  const districts: { name: string; label: string; nb: string; notes: number; repos: CityRepo[] }[] = [];
+  for (const m of order) {
+    const key = "@" + m.handle, src = m.city?.districts || [];
+    const ranked = src.flatMap((d, di) => (d.repos || []).map(r => ({ di, r: cleanRepo(r, key) })));
+    ranked.sort((a, b) => (b.r.week * 20 + b.r.commits) - (a.r.week * 20 + a.r.commits));
+    const keep = ranked.slice(0, Math.max(0, Math.min(MAX_PER_MEMBER, left))); left -= keep.length;
+    const notesLeft = { n: Math.min(16, Math.max(0, m.notes)) };
+    src.forEach((d, di) => {
+      const repos = keep.filter(k => k.di === di).map(k => k.r);
+      if (!repos.length) return;
+      const label = str(d.name, 60) || "Private";   // the member's own public city already names only public projects
+      const k = key + "/" + label;
+      const prev = districts.find(x => x.name === k);
+      for (const r of repos) r.project = k;
+      if (prev) { prev.repos.push(...repos); return; }
+      const notes = Math.min(notesLeft.n, Math.max(0, Number((d as any).notes) || 0)); notesLeft.n -= notes;
+      districts.push({ name: k, label, nb: key, notes, repos });
+    });
+    if (!src.length || !keep.length) districts.push({ name: key + "/Notes", label: "Notes", nb: key, notes: Math.min(16, Math.max(0, m.notes)) || 4, repos: [] });
+  }
   const listed = new Set(members.map(m => m.handle)), seen = new Set<string>(), links: [string, string, number][] = [];
   for (const [a, b] of friendships) {
     if (!listed.has(a) || !listed.has(b) || a === b) continue;
@@ -97,19 +112,19 @@ export function worldPage(w: World, o: { hub: string; nav: string }): string {
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="canonical" href="${esc(hub)}/world">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>${CITY_CSS}
-.w-main{max-width:1280px;margin:0 auto;padding:18px 16px 48px}.w-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin:6px 0 12px}
-.w-head h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(1.6rem,3.2vw,2.3rem);margin:0;color:var(--text-strong,#F7F7FA)}.w-head p{margin:0;color:var(--text-muted,#8A8A93);max-width:70ch}
-.w-main .c-stage{height:min(78vh,820px);min-height:440px}@media (max-width:600px){.w-main .c-stage{height:72vh;min-height:380px}}
+.w-main{max-width:none;margin:0;padding:10px 20px 32px}.w-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px;margin:2px 0 8px}@media (max-width:600px){.w-main{padding:8px 16px 28px}}
+.w-head h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(1.3rem,2.2vw,1.7rem);margin:0;color:var(--text-strong,#F7F7FA)}.w-head p{margin:0;color:var(--text-muted,#8A8A93);max-width:90ch;font-size:14px}
+@media (max-width:600px){.w-main .c-tools{flex-wrap:wrap;justify-content:flex-end;left:8px;right:8px;gap:4px}.w-main .c-tools button{padding:5px 8px}}.w-main .c-stage{height:calc(100vh - 150px);height:calc(100svh - 150px);min-height:460px}@media (max-width:600px){.w-main .c-stage{height:calc(100svh - 190px);min-height:400px}}
 .w-foot{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;color:var(--text-muted,#8A8A93)}.w-foot a{color:var(--accent-text,#B9A6FF)}
-.w-legend i{display:inline-block;width:18px;height:4px;border-radius:2px;background:#454752;vertical-align:middle;margin-right:6px;box-shadow:inset 0 0 0 1px rgba(255,214,120,.6)}</style></head><body>
+.w-legend i{display:inline-block;width:18px;height:4px;border-radius:2px;background:linear-gradient(90deg,#B98CFF,#FFC46B,#B98CFF);vertical-align:middle;margin-right:6px;box-shadow:0 0 6px rgba(200,160,255,.8)}</style></head><body>
 ${o.nav}
 <main class="w-main">
-<div class="w-head"><h1>The world</h1><p>Every member's city on one map: ${n} neighborhood${n === 1 ? "" : "s"}, ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"}. Friendships are the highways between them. Click a name to fly there, click it again to walk in.</p></div>
+<div class="w-head"><h1>The world</h1><p>Every member's city on one map: ${n} neighborhood${n === 1 ? "" : "s"}, ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"}. Friendships are rays of light between them. Click a name to fly there, click it again to walk in.</p></div>
 <div class="c-stage" id="stage"><canvas id="city" aria-label="Isometric world map of ${n} member cities"></canvas>
-<div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
+<div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-fr" aria-pressed="true" aria-label="Friendships" title="Friendships between neighborhoods, drawn as rays of light">&#x2727;<span class="t-txt"> Friendships</span></button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
 <div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
 <div class="c-card" id="card" hidden></div><div class="c-hint">Drag to move &middot; scroll or pinch to zoom &middot; click a name to fly there</div></div>
-<div class="w-foot"><span class="w-legend"><i></i>Friendship highway</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
+<div class="w-foot"><span class="w-legend"><i></i>Friendships are rays of light</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
 </main>
 <script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })}</script>
 <script type="application/json" id="city-data">${safeJson(data)}</script>
