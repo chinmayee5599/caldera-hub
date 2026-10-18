@@ -742,6 +742,12 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   /** Hub-side live blocks on hosted pages: links from other gardens, the garden home, layout fixes for old builds. */
   function liveBlocks(handle: string, rel: string, html: string): string {
+    // every page's nav gets World just above City (pages built before plugin 0.19.x don't have it): one click up to the map
+    if (!html.includes("/world?focus=") && html.includes('class="tree-row toc-row page-row')) {
+      const hubBase = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), w = `<a class="tree-row toc-row page-row" href="${hubBase}/world?focus=${encodeURIComponent(handle)}">World</a>`;
+      const city = html.match(/<a class="tree-row toc-row page-row[^"]*" href="[^"]*city\.html"/);
+      html = city ? html.replace(city[0], w + city[0]) : html.replace(/(<a class="tree-row toc-row page-row[^>]*>[^<]*<\/a>)(?![\s\S]*<a class="tree-row toc-row page-row(?! friend-row))/, "$1" + w);
+    }
     const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
     if (note && html.includes('class="xlink"')) html = html.replace(/(<a class="xlink" href="[^"]*\/@([a-z0-9-]+)\/n\/([a-z0-9-]+)\.html"[^>]*>)([\s\S]*?)<\/a>/g, (all, open, h, sl, inner) =>
       tombstoned(h, sl) ? `${open}${inner} <span class="xl-private" style="opacity:.7;font-size:.85em">(made private)</span></a>` : all);
