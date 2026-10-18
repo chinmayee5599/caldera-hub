@@ -641,6 +641,9 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         vaultPage(res, q("SELECT * FROM profiles WHERE id=?").get(me), pre); return true;
       }
       const acct = who.acct;
+      // just claimed: the city is the "aha", not a long settings page. Land there (or back where they came from) once it's built.
+      if (req.method === "GET" && url.searchParams.get("welcome") && q("SELECT 1 FROM profiles WHERE id=?").get(acct.profile_id)) {
+        const back = safeBack(url.searchParams.get("back")); redirect(res, back || `/@${acct.handle}/city.html?welcome=1`); return true; }
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
         mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.${safeBack(url.searchParams.get("back")) ? ` <a href="${esc(safeBack(url.searchParams.get("back")))}">Continue where you were &rarr;</a>` : ""} <span class="mut" style="font-size:12.5px">By using Caldera you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span>` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
       if (req.method === "POST") {

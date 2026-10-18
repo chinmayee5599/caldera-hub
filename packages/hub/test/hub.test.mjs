@@ -371,8 +371,13 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.ok(pageHtml.includes("Octo Cat") && pageHtml.includes("synced from GitHub"), "profile rendered by the plugin's renderer");
   const city = await (await fetch(base + "/@octo-cat/city.html")).text();
   assert.ok(city.includes('"name":"web"') && city.includes("TypeScript") && !city.includes("forked"), "city from public, non-fork repos");
-  const me = await (await fetch(base + "/me?welcome=1", { headers: { cookie } })).text();
-  assert.ok(me.includes("Welcome to Caldera") && me.includes("/t.js") && me.includes("agent-hook.mjs"));
+  // just claimed: straight to the city (the "aha"), with one short welcome line; settings stay one tap away
+  const wel = await fetch(base + "/settings?welcome=1", { headers: { cookie }, redirect: "manual" });
+  assert.equal(wel.headers.get("location"), "/@octo-cat/city.html?welcome=1");
+  const welCity = await (await fetch(base + "/@octo-cat/city.html?welcome=1", { headers: { cookie } })).text();
+  assert.match(welCity, /This is your city\./); assert.doesNotMatch(await (await fetch(base + "/@octo-cat/city.html?welcome=1")).text(), /This is your city\./, "only the owner sees it");
+  const me = await (await fetch(base + "/settings", { headers: { cookie } })).text();
+  assert.ok(me.includes("/t.js") && me.includes("agent-hook.mjs"));
   assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/settings", "/me moved");
   assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin", "/settings needs a sign-in");
   const post = (body, c = cookie, origin = "http://hub.test") => fetch(base + "/me", { method: "POST", headers: { cookie: c, origin, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());

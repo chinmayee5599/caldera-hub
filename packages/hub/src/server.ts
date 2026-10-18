@@ -819,7 +819,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     remove(handle: string, reason = "") { const pr = byHandle(handle); if (pr) erase(pr.id); q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, pr?.id || null, "removed", reason, now()); return { removed: handle, id: pr?.id || null }; },
     block(handle: string, reason = "") { q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, null, "blocked", reason, now()); return { blocked: handle }; },
     // feed moderation: reported posts first
-    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id),
+    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "comment-list": () => FEED!.admin.commentsList(), "comment-hide": (id: string) => FEED!.admin.commentHide(id),
     "post-ban": (handle: string, reason = "") => FEED!.admin.postBan(handle, reason), "post-unban": (handle: string) => FEED!.admin.postUnban(handle),
     "msg-reports": () => MSG!.admin.reports(), "msg-view": (id: string) => MSG!.admin.view(id), "msg-close": (id: string) => MSG!.admin.close(id),
     "msg-ban": (handle: string, reason = "") => MSG!.admin.ban(handle, reason), "msg-unban": (handle: string) => MSG!.admin.unban(handle),
@@ -1387,6 +1387,12 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   }
   /** One-time "get your daily summary" strip on the owner's own page (until they subscribe or say not now). The page is
    *  sandboxed, so it acts through /v1/act with an owner token, like inline kudos. */
+  function welcomeBanner(handle: string): string {
+    return `<div id="cb-wel" style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 40px 9px 16px;background:#1A1530;border-bottom:1px solid #3A2F5C;font:500 13.5px/1.35 'IBM Plex Sans',Arial,sans-serif;color:#E6E1F5">`
+      + `<span><b style="color:#fff">This is your city.</b> Each building is a repo, taller with more commits. Drag to look around, tap a building for its details.</span>`
+      + `<span style="display:inline-flex;gap:12px"><a href="/@${handle}/" style="color:#C9B8FF">Your page</a><a href="/world" style="color:#C9B8FF">Fly over other cities</a></span>`
+      + `<button type="button" aria-label="Close" onclick="this.parentNode.remove()" style="all:unset;cursor:pointer;position:absolute;top:8px;right:10px;padding:2px 6px;color:#9A93B5;font-size:18px;line-height:1">&times;</button></div>`;
+  }
   function summaryBanner(owner: string, handle: string): string {
     const pr = mail.promptFor(owner); if (!pr) return "";
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -1634,7 +1640,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
-      if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
+      if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
       if (/^\/(me\/building\/?|v1\/tags|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 
@@ -1784,7 +1790,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             // the profile's posts + activity card: visitors act with their member token, the owner with an owner token
             const card = rel === "index.html" && prS ? FEED!.profileCard(prS, { token: own ? actToken(prS.id, hd) : viewer?.token || null, owner: !!own }) : "";
             html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card); }
-          const sum = own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "";
+          // just claimed (from /settings?welcome=1): one short line on the city, nothing else competing with it
+          const welcome = own && prS && rel === "city.html" && url.searchParams.get("welcome") ? welcomeBanner(m[1]) : "";
+          const sum = welcome || (own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "");
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar + sum) : bar + sum + html;
           res.writeHead(200, headers); return res.end(out);
         }

@@ -217,6 +217,12 @@ export function feed(c: FeedCtx) {
   q(`CREATE TABLE IF NOT EXISTS post_kudos (post TEXT, sender TEXT, kind TEXT, day TEXT, ts TEXT, PRIMARY KEY (post, sender, day))`).run();
   q(`CREATE TABLE IF NOT EXISTS post_reports (post TEXT, reporter TEXT, reason TEXT, ts TEXT, PRIMARY KEY (post, reporter))`).run();
   q(`CREATE TABLE IF NOT EXISTS post_bans (member TEXT PRIMARY KEY, reason TEXT, ts TEXT)`).run();
+  // comments: threaded under a post (parent = another comment on the same post, or null). status ok | deleted (kept as a
+  // "[deleted]" stub while it still has replies) | hidden (operator)
+  q(`CREATE TABLE IF NOT EXISTS post_comments (id TEXT PRIMARY KEY, post TEXT, parent TEXT, author TEXT, body TEXT, ts TEXT, status TEXT)`).run();
+  q(`CREATE INDEX IF NOT EXISTS post_comments_post ON post_comments(post, ts)`).run();
+  q(`CREATE INDEX IF NOT EXISTS post_comments_author ON post_comments(author)`).run();
+  q(`CREATE TABLE IF NOT EXISTS comment_reports (comment TEXT, reporter TEXT, reason TEXT, ts TEXT, PRIMARY KEY (comment, reporter))`).run();
   const hub = c.hub.replace(/\/$/, "");
   const vocab = () => (c.vocab && c.vocab.length ? c.vocab : VOCAB);
   const visible = (pr: any) => !!pr?.handle && c.listed(pr) && !c.modOf(pr.handle, pr.id);
@@ -280,14 +286,78 @@ export function feed(c: FeedCtx) {
     const tally = Object.fromEntries((q("SELECT kind, COUNT(*) n FROM post_kudos WHERE post=? GROUP BY kind").all(row.id) as any[]).map(r => [r.kind, r.n]));
     const mine = viewer ? (q("SELECT kind FROM post_kudos WHERE post=? AND sender=? AND day=?").get(row.id, viewer, day) as any)?.kind || null : null;
     const helped = viewer ? !!q("SELECT 1 FROM post_links WHERE post=? AND src=? AND kind='help'").get(row.id, viewer) : false;
-    return { id: row.id, type: row.type, fields: f, sentence: sentence(f), text: sentenceText(pr?.handle || "someone", f), detail: f.detail || "", status: row.status, ts: row.ts,
+    return { id: row.id, type: row.type, fields: f, sentence: sentence(f), text: sentenceText(pr?.handle || "someone", f), detail: f.detail || "", status: row.status, ts: row.ts, comments: commentCount(row.id),
       author: { handle: pr?.handle, name: pr?.name || pr?.handle, avatar: pr ? avatarOf(pr) : null }, mine: viewer === row.author, kudos: tally, myKudos: mine, helped, url: `${hub}/feed/p/${row.id}` };
   }
   function closePost(meId: string, id: string, del: boolean) {
     const row = postRow(id); if (!row || row.author !== meId) return { status: 404, body: { error: "not found" } };
-    if (del) { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); try { c.dropNotices?.(id); } catch { /* best effort */ } }
+    if (del) { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); dropComments(id); try { c.dropNotices?.(id); } catch { /* best effort */ } }
     else q("UPDATE posts SET status='closed', closed=? WHERE id=?").run(c.now(), id);
     cache = null; return { status: 200, body: { ok: true } };
+  }
+
+  // ---------------------------------------------------------------- comments (threaded)
+  const CM_DEPTH = 4;   // replies nest 4 deep; a reply to the deepest level joins it as a sibling
+  /** comment text: no markup or control characters, single blank lines at most, capped */
+  const cleanComment = (v: unknown) => String(v ?? "").replace(/<[^>]*>/g, "").replace(/[\u0000-\u0009\u000b-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, " ")
+    .replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 1000);
+  const cmRow = (id: string) => q("SELECT * FROM post_comments WHERE id=?").get(id) as any;
+  const commentCount = (postId: string) => (q("SELECT COUNT(*) n FROM post_comments WHERE post=? AND status='ok'").get(postId) as any).n as number;
+  function depthOf(id: string | null): number { let d = 0, cur = id ? cmRow(id) : null; while (cur?.parent && d < 20) { d++; cur = cmRow(cur.parent); } return d; }
+  function addComment(meId: string, postId: string, b: any): { status: number; body: any } {
+    const row = postRow(postId), author = row ? c.profile(row.author) : null;
+    if (!row || row.status === "hidden" || !visible(author)) return { status: 404, body: { error: "not found" } };
+    const me = c.profile(meId); if (!visible(me)) return { status: 403, body: { error: "List your page in People to comment (Settings)." } };
+    if (q("SELECT 1 FROM post_bans WHERE member=?").get(meId)) return { status: 403, body: { error: "Commenting is turned off for this account." } };
+    const text = cleanComment(b?.text); if (text.length < 2) return { status: 400, body: { error: "Write a comment first." } };
+    let parent: any = null;
+    if (b?.parent) {
+      parent = cmRow(String(b.parent)); if (!parent || parent.post !== postId) return { status: 404, body: { error: "That comment isn't here any more." } };
+      if (parent.status !== "ok") return { status: 409, body: { error: "That comment was deleted." } };
+      if (depthOf(parent.id) >= CM_DEPTH) parent = cmRow(parent.parent);   // deepest level: reply alongside it
+    }
+    if (c.tooMany("cmt:" + meId, 30)) return { status: 429, body: { error: "That's a lot of comments for one hour. Try again a little later." } };
+    if (q("SELECT 1 FROM post_comments WHERE post=? AND author=? AND body=? AND ts > ?").get(postId, meId, text, new Date(Date.now() - 120_000).toISOString())) return { status: 409, body: { error: "You just posted that." } };
+    const id = crypto.randomBytes(8).toString("hex"), ts = c.now();
+    q("INSERT INTO post_comments VALUES (?,?,?,?,?,?,?)").run(id, postId, parent?.id || null, meId, text, ts, "ok");
+    // tell the post's author and the person replied to (never yourself, never twice)
+    const snip = text.length > 160 ? text.slice(0, 157) + "..." : text, url = `/feed/p/${postId}#c-${id}`, told = new Set<string>([meId]);
+    if (parent && !told.has(parent.author)) { told.add(parent.author); tell(parent.author, { title: `@${me.handle} replied to your comment`, body: snip, ctaLabel: "Reply", ctaUrl: url, key: `cr:${parent.id}` }); }
+    if (!told.has(row.author)) tell(row.author, { title: `@${me.handle} commented on your post`, body: snip, ctaLabel: "See the thread", ctaUrl: url, key: `cm:${postId}` });
+    return { status: 200, body: { ok: true, id, parent: parent?.id || null, count: commentCount(postId), html: commentHtml(viewOf(cmRow(id)), [], meId, row.author, depthOf(id)) } };
+  }
+  /** take a comment away: a stub stays while others' replies hang off it; an empty stub chain is cleaned up */
+  function removeComment(id: string): "deleted" | "removed" {
+    const r = cmRow(id); if (!r) return "removed";
+    if (q("SELECT 1 FROM post_comments WHERE parent=? LIMIT 1").get(id)) { q("UPDATE post_comments SET status='deleted', body='' WHERE id=?").run(id); return "deleted"; }
+    q("DELETE FROM post_comments WHERE id=?").run(id); q("DELETE FROM comment_reports WHERE comment=?").run(id);
+    let up = r.parent ? cmRow(r.parent) : null;
+    while (up && up.status !== "ok" && !q("SELECT 1 FROM post_comments WHERE parent=? LIMIT 1").get(up.id)) { q("DELETE FROM post_comments WHERE id=?").run(up.id); up = up.parent ? cmRow(up.parent) : null; }
+    return "removed";
+  }
+  function deleteComment(meId: string, id: string): { status: number; body: any } {
+    const r = cmRow(id), row = r ? postRow(r.post) : null;
+    if (!r || r.status !== "ok" || (r.author !== meId && row?.author !== meId)) return { status: 404, body: { error: "not found" } };   // yours, or any on your post
+    const state = removeComment(id);
+    return { status: 200, body: { ok: true, state, count: commentCount(r.post) } };
+  }
+  function reportComment(meId: string, id: string, reason: string) {
+    if (!cmRow(id)) return { status: 404, body: { error: "not found" } };
+    q("INSERT OR REPLACE INTO comment_reports VALUES (?,?,?,?)").run(id, meId, clean(reason, 200), c.now());
+    return { status: 200, body: { ok: true } };
+  }
+  function dropComments(postId: string) { q("DELETE FROM comment_reports WHERE comment IN (SELECT id FROM post_comments WHERE post=?)").run(postId); q("DELETE FROM post_comments WHERE post=?").run(postId); }
+  /** a comment as the page needs it; an author who has left (unlisted, moderated, deleted) shows as a stub like a deleted one */
+  function viewOf(r: any) {
+    const pr = r.status === "ok" ? c.profile(r.author) : null, gone = !visible(pr);
+    return { id: r.id, parent: r.parent, ts: r.ts, removed: gone, body: gone ? "" : r.body, author: gone ? null : { id: r.author, handle: pr.handle, name: pr.name || pr.handle, avatar: avatarOf(pr) } };
+  }
+  /** the whole thread, oldest first at each level; stubs only where they still hold replies */
+  function threadOf(postId: string) {
+    const rows = (q("SELECT * FROM post_comments WHERE post=? AND status<>'hidden' ORDER BY ts").all(postId) as any[]).map(viewOf);
+    const kids = new Map<string | null, any[]>(); for (const v of rows) { const k = v.parent && rows.some(x => x.id === v.parent) ? v.parent : null; (kids.get(k) || kids.set(k, []).get(k)!).push(v); }
+    const build = (k: string | null): any[] => (kids.get(k) || []).map(v => ({ ...v, replies: build(v.id) })).filter(v => !v.removed || v.replies.length);
+    return build(null);
   }
 
   // ---------------------------------------------------------------- matching (the policy lives in the matcher)
@@ -445,6 +515,18 @@ export function feed(c: FeedCtx) {
   const ago = (iso: string) => { const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : s < 30 * 86400 ? `${Math.floor(s / 86400)}d` : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
   const CSS = `<style>
 .fd [hidden]{display:none!important}
+.fd-cm{border-top:1px solid var(--line);padding-top:12px;margin-top:2px}.fd-c-n{margin:0 0 10px;font-size:14px;color:var(--text-strong)}
+.fd-thread{list-style:none;margin:0;padding:0}.fd-thread .fd-thread{margin:2px 0 0 15px;padding-left:14px;border-left:2px solid var(--line)}
+.fd-c{padding:8px 0 2px}.fd-c-h{display:flex;align-items:center;gap:8px;font-size:13.5px;flex-wrap:wrap}.fd-c-h .fd-av{width:24px;height:24px;font-size:12px}
+.fd-c-h a.who{color:var(--text-strong);font-weight:600;text-decoration:none}.fd-c-h a.t{color:var(--text-muted);font-size:12.5px;text-decoration:none}
+.fd-c .op-t{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-text)}
+.fd-c-b{margin:4px 0 0 32px;font-size:14.5px;line-height:1.55;color:var(--text);overflow-wrap:anywhere}.fd-c-b a{color:var(--accent-text)}.fd-c.gone>.fd-c-b{color:var(--text-muted);font-style:italic;margin-left:0}
+.fd-c:target>.fd-c-b{background:var(--accent-soft);border-radius:6px;padding:2px 6px;margin-left:26px}
+.fd-c-a{display:flex;gap:12px;margin:2px 0 0 32px}.fd-c-a button,.fd-c-a a{all:unset;cursor:pointer;font-size:12.5px;color:var(--text-muted);padding:4px 0}.fd-c-a button:hover,.fd-c-a a:hover{color:var(--accent-text)}
+.fd-c-a button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fd-c-form{margin:0 0 6px}.fd-c-form textarea{display:block;width:100%;box-sizing:border-box;min-height:44px;resize:vertical;font:14.5px/1.5 var(--font-body,'IBM Plex Sans',Arial,sans-serif);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.fd-c-form textarea:focus{outline:none;border-color:var(--accent)}.fd-c-f{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px}
+.fd-c .fd-c-form{margin:6px 0 4px 32px}.fd-c-in{margin:0 0 6px;font-size:14px;color:var(--text-muted)}.fd-c-in a{color:var(--accent-text)}
 .fd{max-width:720px;margin:0 auto;padding:24px 16px 72px}.fd h1{font-family:var(--font-display,'Source Serif 4',Georgia,serif);font-size:clamp(1.6rem,3vw,2.1rem);margin:0 0 4px;color:var(--text-strong)}
 .fd .lede{margin:0 0 18px;color:var(--text-muted)}
 .fd-card{border:1px solid var(--line);border-radius:var(--radius-lg,14px);background:var(--bg-raised);padding:16px 18px}
@@ -527,6 +609,7 @@ export function feed(c: FeedCtx) {
     const actions = [
       v.mine ? "" : `<span class="fd-kd" role="group" aria-label="Kudos">${kd}</span>`,
       v.mine || v.status !== "open" || rec ? "" : `<button type="button" class="fd-btn${v.helped ? "" : " pri"}" data-help${v.helped ? ' aria-disabled="true"' : ""}>${v.helped ? "Offered to help" : "I can help"}</button>`,
+      `<button type="button" class="fd-btn" data-comments aria-expanded="${standalone ? "true" : "false"}" title="Comments">&#128172; <span data-ccount>${v.comments ? v.comments : "Comment"}</span></button>`,
       v.mine || !v.author.handle ? "" : `<a class="fd-btn" href="/messages/@${esc(v.author.handle)}?about=${esc(v.id)}" title="Message @${esc(v.author.handle)} about this post">Message</a>`,
       `<span class="fd-menu"><button type="button" class="fd-btn" data-share aria-haspopup="true">Share</button><span class="fd-pop" hidden role="menu"></span></span>`,
       v.mine ? `${rec ? "" : `<button type="button" class="fd-btn" data-matches>People who match</button>`}<span class="fd-menu fd-own"><button type="button" class="fd-btn fd-dots" data-own aria-haspopup="true" aria-label="More for your post" title="More">&#8943;</button><span class="fd-pop" hidden role="menu">${v.status === "open" ? `<button type="button" role="menuitem" data-close>Close (mark done)</button>` : ""}<button type="button" role="menuitem" data-delete>Delete</button><span class="fd-confirm" hidden>Delete this post? <button type="button" data-yes>Yes</button> <button type="button" data-no>Cancel</button></span></span></span>` : (viewer ? `<button type="button" class="fd-btn" data-report title="Report this post">Report</button>` : ""),
@@ -534,7 +617,24 @@ export function feed(c: FeedCtx) {
     return `<article class="fd-card fd-post" data-post="${esc(v.id)}" data-url="${esc(v.url)}" data-text="${esc(v.text)}">
 <div class="fd-top">${avatarHtml(v.author)}<div style="min-width:0;flex:1"><div class="sent"><a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a> ${sent}${/[.!?]$/.test(v.sentence.map((x: any) => x[0]).join("")) ? "" : "."}</div>
 <div class="fd-meta"><span>@${esc(v.author.handle)}</span><a href="/feed/p/${esc(v.id)}"${standalone ? ' aria-current="page"' : ""}><time datetime="${esc(v.ts)}">${ago(v.ts)}</time></a>${v.status === "closed" ? "<span>closed</span>" : ""}</div></div></div>
-${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec || f.simple ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div></article>`;
+${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec || f.simple ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div>${standalone ? commentsHtml(v.id, viewer, row0(v.id)) : ""}</article>`;
+  }
+  const row0 = (id: string) => postRow(id)?.author || "";
+  function commentHtml(v: any, replies: any[], viewer: string | null, postAuthor: string, depth: number): string {
+    const kids = replies.length ? `<ol class="fd-thread">${replies.map(r => commentHtml(r, r.replies, viewer, postAuthor, depth + 1)).join("")}</ol>` : "";
+    if (v.removed) return `<li class="fd-c gone" id="c-${esc(v.id)}" data-c="${esc(v.id)}"><div class="fd-c-b">[deleted]</div>${kids}</li>`;
+    const mine = viewer === v.author.id, canDel = mine || (viewer && viewer === postAuthor);
+    const acts = [viewer ? `<button type="button" data-creply>Reply</button>` : "",
+      canDel ? `<button type="button" data-cdel>${mine ? "Delete" : "Remove"}</button>` : "", viewer && !mine ? `<button type="button" data-crep>Report</button>` : ""].join("");
+    return `<li class="fd-c${v.author.id === postAuthor ? " op" : ""}" id="c-${esc(v.id)}" data-c="${esc(v.id)}"><div class="fd-c-h">${avatarHtml(v.author)}<a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a>${v.author.id === postAuthor ? `<span class="op-t">author</span>` : ""}<a class="t" href="#c-${esc(v.id)}"><time datetime="${esc(v.ts)}">${ago(v.ts)}</time></a></div>`
+      + `<div class="fd-c-b">${linkify(v.body).replace(/\n/g, "<br>")}</div><div class="fd-c-a">${acts}</div>${kids}</li>`;
+  }
+  /** the thread under a post: the composer first, then every comment (signed-out readers see it all, and a way in) */
+  function commentsHtml(postId: string, viewer: string | null, postAuthor: string): string {
+    const t = threadOf(postId), n = commentCount(postId);
+    const form = viewer ? `<div class="fd-c-form"><label class="fd-sr" for="cm-${esc(postId)}">Add a comment</label><textarea id="cm-${esc(postId)}" maxlength="1000" rows="2" placeholder="Add a comment"></textarea><div class="fd-c-f"><span class="fd-count">Text only. Links are fine.</span><button type="button" class="fd-btn pri" data-csend>Comment</button></div></div>`
+      : `<p class="fd-c-in"><a href="/auth/github?back=${encodeURIComponent("/feed/p/" + postId)}">Sign in with GitHub</a> to comment.</p>`;
+    return `<section class="fd-cm" id="comments" data-cm="${esc(postId)}" aria-label="Comments"><h2 class="fd-c-n">${n ? `${n} comment${n === 1 ? "" : "s"}` : "Comments"}</h2>${form}<ol class="fd-thread fd-top-t">${t.map(v => commentHtml(v, v.replies, viewer, postAuthor, 0)).join("")}</ol></section>`;
   }
   function actHtml(i: any) {
     const icon: Record<string, string> = { join: "\u{1F44B}", city: "\u{1F3D9}️", obsidian: "\u{1F48E}", friends: "\u{1F91D}", kudos: i.emoji || "✨", release: "\u{1F680}" };
@@ -604,7 +704,30 @@ var own=$('[data-own]',card);if(own){var op=own.parentNode.querySelector('.fd-po
 var cl=$('[data-close]',card);if(cl)cl.addEventListener('click',function(){api('/v1/posts/'+pid+'/close',{}).then(function(x){if(x.ok){cl.remove();if(op)op.hidden=true;var m=$('.fd-meta',card);if(m){var s=document.createElement('span');s.textContent='closed';m.appendChild(s)}tip('Closed. It stays in the feed, marked closed.')}else tip(x.j.error||'Could not close')})});
 var de=$('[data-delete]',card);if(de)de.addEventListener('click',function(){$$('[role=menuitem]',op).forEach(function(b){b.hidden=true});cf.hidden=false;$('[data-yes]',cf).focus()});
 if(de){$('[data-no]',cf).addEventListener('click',function(){cf.hidden=true;op.hidden=true});$('[data-yes]',cf).addEventListener('click',function(){api('/v1/posts/'+pid+'/delete',{}).then(function(x){if(x.ok){if(location.pathname.indexOf('/feed/p/')===0){location.href='/feed';return}card.remove();tip('Deleted')}else tip(x.j.error||'Could not delete')})})}
+var cb=$('[data-comments]',card);if(cb)cb.addEventListener('click',function(){var box=$('.fd-cm',card);if(box){box.hidden=!box.hidden;cb.setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){var t0=$('.fd-c-form textarea',box);if(t0)t0.focus()}return}
+cb.disabled=true;api('/v1/posts/'+pid+'/comments?format=html').then(function(x){cb.disabled=false;if(!x.ok){tip(x.j.error||'Could not load comments');return}var d=document.createElement('div');d.innerHTML=x.j.html;var s=d.firstElementChild;card.appendChild(s);cb.setAttribute('aria-expanded','true');wireCm(s,card);var t1=$('.fd-c-form textarea',s);if(t1)t1.focus()})});
+var cm0=$('.fd-cm',card);if(cm0)wireCm(cm0,card);
 var rp=$('[data-report]',card);if(rp)rp.addEventListener('click',function(){if(rp.getAttribute('data-sure')!=='1'){rp.setAttribute('data-sure','1');rp.textContent='Report it?';return}api('/v1/posts/'+pid+'/report',{reason:'reported from the feed'}).then(function(x){if(x.ok){rp.textContent='Reported';rp.disabled=true;tip('Thanks. We will take a look.')}})})}
+// comments: one listener per thread; replies open a small box under the comment
+function wireCm(sec,card){var pid=sec.getAttribute('data-cm');
+function count(n){var h=$('.fd-c-n',sec);if(h)h.textContent=n?n+' comment'+(n===1?'':'s'):'Comments';var c=$('[data-ccount]',card);if(c)c.textContent=n?String(n):'Comment'}
+function box(parent){var f=document.createElement('div');f.className='fd-c-form';f.setAttribute('data-parent',parent);var t=document.createElement('textarea');t.maxLength=1000;t.rows=2;t.placeholder='Write a reply';t.setAttribute('aria-label','Write a reply');
+var r=document.createElement('div');r.className='fd-c-f';var x=document.createElement('button');x.type='button';x.className='fd-btn';x.textContent='Cancel';x.setAttribute('data-ccancel','');var g=document.createElement('button');g.type='button';g.className='fd-btn pri';g.textContent='Reply';g.setAttribute('data-csend','');
+r.appendChild(x);r.appendChild(g);f.appendChild(t);f.appendChild(r);return f}
+function send(f){var t=$('textarea',f),v=t.value.trim(),b=$('[data-csend]',f),par=f.getAttribute('data-parent')||null;if(v.length<2){t.focus();return}b.disabled=true;
+api('/v1/posts/'+pid+'/comments',{text:v,parent:par}).then(function(x){b.disabled=false;if(!x.ok){tip(x.j.error||'Could not post that');return}
+var d=document.createElement('ol');d.innerHTML=x.j.html;var li=d.firstElementChild,list;
+if(x.j.parent){var p=sec.querySelector('[data-c="'+x.j.parent+'"]');list=p&&p.querySelector(':scope>ol.fd-thread');if(p&&!list){list=document.createElement('ol');list.className='fd-thread';p.appendChild(list)}}
+if(!list)list=$('.fd-top-t',sec);list.appendChild(li);if(par)f.remove();else t.value='';count(x.j.count);li.scrollIntoView({block:'nearest'})})}
+sec.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)&&e.target.tagName==='TEXTAREA'){e.preventDefault();send(e.target.closest('.fd-c-form'))}});
+sec.addEventListener('click',function(e){var el=e.target.closest('button,a');if(!el||!sec.contains(el))return;var li=el.closest('.fd-c');
+if(el.hasAttribute('data-csend')){send(el.closest('.fd-c-form'));return}
+if(el.hasAttribute('data-ccancel')){el.closest('.fd-c-form').remove();return}
+if(el.hasAttribute('data-creply')){e.preventDefault();if(!ME)return need('/feed/p/'+pid);var ex=li.querySelector(':scope>.fd-c-form');if(ex){$('textarea',ex).focus();return}var f=box(li.getAttribute('data-c'));li.querySelector(':scope>.fd-c-a').after(f);$('textarea',f).focus();return}
+if(el.hasAttribute('data-cdel')){if(el.getAttribute('data-sure')!=='1'){el.setAttribute('data-sure','1');el.textContent='Sure?';return}
+api('/v1/comments/'+li.getAttribute('data-c')+'/delete',{}).then(function(x){if(!x.ok){tip(x.j.error||'Could not delete');return}if(x.j.state==='deleted'){li.className='fd-c gone';li.querySelector(':scope>.fd-c-h').remove();li.querySelector(':scope>.fd-c-a').remove();li.querySelector(':scope>.fd-c-b').textContent='[deleted]'}else li.remove();count(x.j.count)});return}
+if(el.hasAttribute('data-crep')){if(el.getAttribute('data-sure')!=='1'){el.setAttribute('data-sure','1');el.textContent='Report it?';return}
+api('/v1/comments/'+li.getAttribute('data-c')+'/report',{reason:'reported from the thread'}).then(function(x){if(x.ok){el.textContent='Reported';el.disabled=true;tip('Thanks. We will take a look.')}})}})}
 $$('.fd-post').forEach(wire);
 // the composer: two big choices, optional chips, one text box
 var comp=$('.fd-comp');if(comp){var prev=$('[data-prev]',comp),err=$('[data-err]',comp),ta=$('[data-text]',comp),cnt=$('[data-count]',comp),hint=$('[data-hint]',comp),write=$('[data-write]',comp),FAM=null,KIND='',PH=${JSON.stringify(PH)},NEEDLINK=${JSON.stringify(REC_NEEDS_LINK)};
@@ -689,9 +812,24 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
       c.json(res, 200, { items, more: items.length >= 30 }); return true;
     }
     if (req.method === "GET" && p === "/v1/me/notices") { const me = c.memberOf(req); if (!me) { c.json(res, 401, { error: "sign in" }); return true; } c.json(res, 200, noticesFor(me, url.searchParams.get("since") || "")); return true; }
+    m = p.match(/^\/v1\/posts\/([0-9a-f]{12})\/comments$/);
+    if (req.method === "GET" && m) {
+      const me = c.memberOf(req), row = postRow(m[1]); if (!row || row.status === "hidden" || !visible(c.profile(row.author))) { c.json(res, 404, { error: "not found" }); return true; }
+      if (url.searchParams.get("format") === "html") { c.json(res, 200, { html: commentsHtml(m[1], me, row.author), count: commentCount(m[1]) }); return true; }
+      const strip = (v: any): any => ({ id: v.id, parent: v.parent, ts: v.ts, deleted: v.removed, text: v.body, author: v.author ? { handle: v.author.handle, name: v.author.name } : null, replies: v.replies.map(strip) });
+      c.json(res, 200, { count: commentCount(m[1]), comments: threadOf(m[1]).map(strip) }); return true;
+    }
+    m = p.match(/^\/v1\/comments\/([0-9a-f]{16})\/(delete|report)$/);
+    if (req.method === "POST" && m) {
+      if (!c.sameOrigin(req)) { c.json(res, 403, { error: "cross-site request refused" }); return true; }
+      const me = c.memberOf(req); if (!me) { c.json(res, 401, { error: "Sign in to do that." }); return true; }
+      const b = await c.readBody(req).catch(() => ({}));
+      const r = m[2] === "delete" ? deleteComment(me, m[1]) : reportComment(me, m[1], String(b.reason || ""));
+      c.json(res, r.status, r.body); return true;
+    }
     m = p.match(/^\/v1\/posts\/([0-9a-f]{12})\/matches$/);
     if (req.method === "GET" && m) { const me = c.memberOf(req), row = postRow(m[1]); if (!me || !row || row.author !== me) { c.json(res, 404, { error: "not found" }); return true; } c.json(res, 200, { matches: matchesFor(m[1], 5) }); return true; }
-    if (req.method === "POST" && (p === "/v1/posts" || /^\/v1\/posts\/[0-9a-f]{12}\/(send|help|answer|kudos|close|delete|report)$/.test(p))) {
+    if (req.method === "POST" && (p === "/v1/posts" || /^\/v1\/posts\/[0-9a-f]{12}\/(send|help|answer|kudos|close|delete|report|comments)$/.test(p))) {
       if (!c.sameOrigin(req)) { c.json(res, 403, { error: "cross-site request refused" }); return true; }
       const me = c.memberOf(req); if (!me) { c.json(res, 401, { error: "Sign in to do that." }); return true; }
       const b = await c.readBody(req).catch(() => ({}));
@@ -701,7 +839,8 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
       }
       const [, id, act] = p.match(/^\/v1\/posts\/([0-9a-f]{12})\/(\w+)$/)!;
       const r = act === "send" ? sendPost(me, id, Array.isArray(b.to) ? b.to : [b.to].filter(Boolean)) : act === "help" ? helpPost(me, id) : act === "answer" ? answer(me, id, String(b.from || ""), !!b.yes)
-        : act === "kudos" ? kudosPost(me, id, String(b.kind || "")) : act === "close" ? closePost(me, id, false) : act === "delete" ? closePost(me, id, true) : report(me, id, String(b.reason || ""));
+        : act === "kudos" ? kudosPost(me, id, String(b.kind || "")) : act === "close" ? closePost(me, id, false) : act === "delete" ? closePost(me, id, true)
+        : act === "comments" ? addComment(me, id, b) : report(me, id, String(b.reason || ""));
       if (r.status === 200) cache = null;
       c.json(res, r.status, r.body); return true;
     }
@@ -730,7 +869,8 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
           .map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("") + `</span></span>`;
       const ownMenu = o.owner ? `<span class="pc-menu"><button type="button" class="pc-b pc-dots" data-own aria-label="More for your post" title="More">&#8943;</button><span class="pc-pop" hidden>${v.status === "open" ? `<button type="button" data-close>Close (mark done)</button>` : ""}<button type="button" data-delete>Delete</button><span class="pc-confirm" hidden>Delete this post? <button type="button" data-yes>Yes</button> <button type="button" data-no>Cancel</button></span></span></span>` : "";
       const acts2 = o.owner ? ownMenu : `<span class="pc-kd" role="group" aria-label="Kudos">${kd}</span>${!rec && v.status === "open" ? `<button type="button" class="pc-b pri" data-help>I can help</button>` : ""}<a class="pc-b" href="${esc(hub)}/messages/@${esc(h)}?about=${esc(v.id)}" target="_blank" rel="noopener" title="Message @${esc(h)} about this post">Message</a>`;
-      items.push(`<div class="pc-item" data-post="${esc(v.id)}"><div class="pc-kind">${rec ? "&#128161; Recommends" : "&#128587; Looking for"}${v.status === "closed" ? ` &middot; closed` : ""}</div><p class="pc-sent">@${esc(h)} ${sent}${end}</p>${f.link ? `<a class="pc-link" href="${esc(f.link)}" target="_blank" rel="noopener noreferrer nofollow ugc">${esc(hostOf(f.link))} &#8599;</a>` : ""}<div class="pc-acts">${acts2}${share}<time datetime="${esc(v.ts)}">${ago(v.ts)}</time></div></div>`);
+      const cmLink = `<a class="pc-b" href="${esc(v.url)}#comments" target="_blank" rel="noopener">&#128172; ${v.comments ? v.comments : "Comment"}</a>`;
+      items.push(`<div class="pc-item" data-post="${esc(v.id)}"><div class="pc-kind">${rec ? "&#128161; Recommends" : "&#128587; Looking for"}${v.status === "closed" ? ` &middot; closed` : ""}</div><p class="pc-sent">@${esc(h)} ${sent}${end}</p>${f.link ? `<a class="pc-link" href="${esc(f.link)}" target="_blank" rel="noopener noreferrer nofollow ugc">${esc(hostOf(f.link))} &#8599;</a>` : ""}<div class="pc-acts">${acts2}${cmLink}${share}<time datetime="${esc(v.ts)}">${ago(v.ts)}</time></div></div>`);
     }
     const ic: Record<string, string> = { join: "&#128075;", city: "&#127961;&#65039;", obsidian: "&#128142;", friends: "&#129309;" };
     for (const i of acts) {
@@ -779,15 +919,20 @@ cf.querySelector('[data-no]').addEventListener('click',function(){cf.parentNode.
     postsList: () => (q("SELECT p.id, p.type, p.status, p.ts, pr.handle, (SELECT COUNT(*) FROM post_reports r WHERE r.post=p.id) reports FROM posts p LEFT JOIN profiles pr ON pr.id=p.author ORDER BY reports DESC, p.ts DESC LIMIT 200").all() as any[])
       .map(r => ({ ...r, text: (() => { const row = postRow(r.id); return row ? sentenceText(r.handle || "?", fieldsOf(row)) : ""; })() })),
     postHide: (id: string) => { q("UPDATE posts SET status='hidden' WHERE id=?").run(id); cache = null; return { hidden: id }; },
-    postDelete: (id: string) => { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); cache = null; return { deleted: id }; },
+    postDelete: (id: string) => { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); dropComments(id); cache = null; return { deleted: id }; },
+    /** reported comments first, then the newest */
+    commentsList: () => (q("SELECT m.id, m.post, m.status, m.ts, m.body, pr.handle, (SELECT COUNT(*) FROM comment_reports r WHERE r.comment=m.id) reports FROM post_comments m LEFT JOIN profiles pr ON pr.id=m.author ORDER BY reports DESC, m.ts DESC LIMIT 200").all() as any[]),
+    commentHide: (id: string) => { q("UPDATE post_comments SET status='hidden' WHERE id=?").run(id); return { hidden: id }; },
     postBan: (handle: string, reason = "") => { const pr = c.byHandle(handle); if (!pr) return { error: "unknown handle" }; q("INSERT OR REPLACE INTO post_bans VALUES (?,?,?)").run(pr.id, reason, c.now()); q("UPDATE posts SET status='hidden' WHERE author=?").run(pr.id); cache = null; return { banned: handle }; },
     postUnban: (handle: string) => { const pr = c.byHandle(handle); if (pr) q("DELETE FROM post_bans WHERE member=?").run(pr.id); return { unbanned: handle }; },
   };
   /** deleting a profile takes its posts, links, kudos and reports with it */
   function erase(id: string) {
     for (const r of q("SELECT id FROM posts WHERE author=?").all(id) as any[]) admin.postDelete(r.id);
+    for (const r of q("SELECT id FROM post_comments WHERE author=?").all(id) as any[]) removeComment(r.id);
+    q("DELETE FROM comment_reports WHERE reporter=?").run(id);
     for (const sql of ["DELETE FROM post_links WHERE src=? OR dst=?", "DELETE FROM post_kudos WHERE sender=?", "DELETE FROM post_reports WHERE reporter=?", "DELETE FROM post_bans WHERE member=?"]) { const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id)); }
     cache = null;
   }
-  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, profileCard, closePost, postRow, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, invalidate: () => { cache = null; } };
+  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, profileCard, closePost, postRow, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, addComment, deleteComment, threadOf, commentCount, invalidate: () => { cache = null; } };
 }
