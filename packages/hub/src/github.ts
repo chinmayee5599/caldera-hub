@@ -18,6 +18,7 @@ import { renderProfile, type ProfileData, type DailyEntry } from "../../../../ca
 import { cityData, publicCity, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 import { cleanImage } from "./images";
 import { connectionsPanel, settingsNav, sectionHead, SETTINGS_CSS, type Conn } from "./settings";
+import { alertItem, ALERT_CSS, ALERT_JS, type AlertRow } from "./alerts";
 
 export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
@@ -32,6 +33,7 @@ export interface GhCtx {
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
     recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null; unlockState?: (id: string) => C.UnlockState | null;
     connections?: (id: string) => Conn | null; friendAct?: (me: string, to: string) => { status: number; body: any };
+    alerts?: { forOwner: (id: string) => AlertRow[]; markRead: (id: string, ids: string[]) => void };
     circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
@@ -280,8 +282,9 @@ export function github(ctx: GhCtx) {
       agentPrompt: agentPrompt || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }) });
     page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
 <div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)} &middot; <a href="${esc(url)}">your page</a></div></div></div>
-${settingsNav([["connections", "Connections"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
 ${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
+${sectionHead("alerts", "Alerts")}${alertsList(a.profile_id, "set")}
 ${sectionHead("page", "Your page")}<div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span></div>
 ${finishCard(a)}
 <form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Edit your page</b>
@@ -319,8 +322,9 @@ ${sectionHead("account", "Account")}<div class="card danger-zone"><div class="ro
     const yes = (on: boolean, t: string) => `<div style="margin:6px 0"><span class="conn-dot${on ? " on" : ""}" style="display:inline-block;margin-right:8px;vertical-align:middle"></span>${t}</div>`;
     page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
 <div class="who">${b.photos?.avatar ? `<img src="${esc(url)}${esc(String(b.photos.avatar).replace(/^\.?\//, ""))}" alt="">` : ""}<div><h1>${esc(pr.name || handle)}</h1><div class="mut">@${esc(handle)} &middot; published from Obsidian &middot; <a href="${esc(url)}">your page</a></div></div></div>
-${settingsNav([["connections", "Connections"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
 ${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
+${sectionHead("alerts", "Alerts")}${alertsList(owner, "set")}
 ${sectionHead("page", "Your page", "Edited from Obsidian (<code>Caldera/profile.md</code>). Change it there, or have your AI do it; the page republishes about a minute after you save.")}
 <div class="card">${ro("Name", esc(pr.name || ""))}${ro("Headline", esc(pr.headline || ""))}${ro("Links", links.map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a>`).join(" &middot; "))}${ro("Groups", esc((Array.isArray(b.groups) ? b.groups : []).join(", ")))}
 ${(() => { const t = C.editPrompt({ hubUrl: pub, handle }); return `<pre id="pr-edit" style="max-height:120px">${esc(t)}</pre><button class="btn small" type="button" data-copy-text="pr-edit">Copy prompt for my AI</button>`; })()}</div>
@@ -329,6 +333,14 @@ ${sectionHead("notifications", "Notifications")}${emailCard({ profile_id: owner,
 ${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>
 ${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn small ghost" href="/signout?h=${encodeURIComponent(handle)}">Sign out of this browser</a>
 <p class="mut" style="margin-top:10px">To delete your Caldera profile, run <b>Caldera: Delete my profile from the hub</b> in Obsidian. Your vault is never touched.</p></div>`, ctx.owner?.bar?.(owner) || "");
+  }
+
+  /** The Alerts list (Settings section and /alerts). Showing them marks them read. */
+  function alertsList(owner: string, idp: string): string {
+    const rows = ctx.social?.alerts?.forOwner(owner) || [];
+    const html = rows.length ? rows.map(a => alertItem(a, pub, idp)).join("") : `<p class="mut">Nothing yet. News from Caldera shows up here.</p>`;
+    const unread = rows.filter(a => !a.read).map(a => a.id); if (unread.length) ctx.social?.alerts?.markRead(owner, unread);
+    return `<style>${ALERT_CSS}.me .al-item{padding:14px 0}.me .al-body{font-size:15px}</style><div class="card">${html}</div><script>${ALERT_JS}</script>`;
   }
 
   const photoPath = (pr: any) => { try { return String(JSON.parse(pr.manifest).body.photos?.avatar || "img/avatar.png").replace(/^\.?\//, ""); } catch { return "img/avatar.png"; } };
@@ -541,6 +553,11 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       const code = "CAL-" + crypto.randomBytes(9).toString("base64url"), expires = Date.now() + 30 * 60_000;
       q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(code, expires, who.acct.gh_id);
       ctx.json(res, 200, { code, expires }); return true;
+    }
+    if (p === "/alerts" && req.method === "GET") {
+      const who = settingsOwner(); if (!who) { redirect(res, "/signin"); return true; }
+      const id = who.acct ? who.acct.profile_id : who.vault.id;
+      page(res, 200, "Alerts", `<h1>Alerts</h1><p class="mut">News and tips from Caldera. <a href="/settings">Settings</a></p>${alertsList(id, "pg")}`, ctx.owner?.bar?.(id) || ""); return true;
     }
     if (p === "/me" || p === "/settings") {
       const who = settingsOwner();

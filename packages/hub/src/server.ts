@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import * as C from "@caldera/core";
 import { github } from "./github";
 import { connDots, type Conn } from "./settings";
+import { alertsStore, bellHtml, type PostAlert, type Audience } from "./alerts";
 export { githubAccountOk } from "./github";
 import { repoConnector } from "./repoconnect";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
@@ -126,7 +127,7 @@ export function socialRow(hub: string, handle: string, so: BarSocial, back = "")
 /** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
  *  (public page with the owner cookie, or the private address): logo, the [Public view | Private view] switch in the same
  *  place on both addresses, then the account menu (@handle, Your public page, Private view, Sign out). Same height either way. */
-export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial): string {
+export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial, bell = ""): string {
   const back = `/@${handle}/`;   // sign-in from this page comes back here
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -139,7 +140,7 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     const right = v ? `<a href="${base}/@${encodeURIComponent(v.handle)}/" title="Signed in as @${e(v.handle)}" style="color:#B8B8C2;font-size:12.5px;white-space:nowrap">@${e(v.handle)}</a>`
       : `<a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;white-space:nowrap"><span class="cb-tag">Owner? </span>Sign in</a>`;
     return BAR_CSS + (social && !social.inPage ? BAR_ACT_CSS : "") + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social network for GitHub and Obsidian</span></a></span>`
-      + chips + `<span class="cb-r">${right}${v ? "" : `<a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a>`}</span></div>` + need + (social && !social.inPage ? `<script>${BAR_ACT_JS}</script>` : "");
+      + chips + `<span class="cb-r">${v ? bell : ""}${right}${v ? "" : `<a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a>`}</span></div>` + need + (social && !social.inPage ? `<script>${BAR_ACT_JS}</script>` : "");
   }
   const ext = own.privateExternal ? ' target="_blank" rel="noopener"' : "";
   const sw = `<span class="cb-sw" role="group" aria-label="Which view"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${own.current === "public" ? "You're viewing your public page" : "Private address: you're in your private view"}</span>`
@@ -150,7 +151,7 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
   const dots = own.conn && own.settings ? connDots(own.settings, own.conn) : "";
   return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
-    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${dots}${menu}</span></div>`;
+    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${bell}${dots}${menu}</span></div>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -285,6 +286,7 @@ export function createHub(opts: HubOptions) {
   const privateFor = (handle: string) => opts.privateUrl && Object.values(owners).includes(handle) ? `${opts.privateUrl.replace(/\/$/, "")}/@${handle}/` : undefined;
   const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
+  const alerts = alertsStore(q, crypto.createHash("sha256").update(PRIV_KEY).update("alerts").digest());
   const now = () => new Date().toISOString();
 
   // ---------------------------------------------------------------- helpers
@@ -717,6 +719,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   // ---------------------------------------------------------------- operator tools (run on the server: node dist/admin.js)
   const admin = {
+    alertPost: (o: PostAlert) => ({ posted: alerts.post(o) }),
+    alertPin: (id: string, on: boolean) => ({ id, pinned: on, ok: alerts.pin(id, on) }),
+    alertDelete: (id: string) => ({ id, deleted: alerts.remove(id) }),
+    alertList: () => alerts.list().map(a => ({ id: a.id, title: a.title, pinned: !!a.pinned, audience: a.audience, ts: a.ts, version: a.version, reads: (q("SELECT COUNT(*) n FROM alert_reads WHERE alert_id=?").get(a.id) as any).n })),
     list: () => q("SELECT * FROM moderation ORDER BY at DESC").all(),
     hide(handle: string, reason = "") { const pr = byHandle(handle); q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, pr?.id || null, "hidden", reason, now()); return { hidden: handle, id: pr?.id || null }; },
     unhide(handle: string) { q("DELETE FROM moderation WHERE handle=?").run(handle); return { restored: handle }; },
@@ -949,7 +955,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const v7 = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(h, d7) as any;
     const hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
     const stale = hosted ? 0 : staleDays(owner);
-    return { stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
+    const fresh = alerts.forOwner(owner, hosted ? "github" : "obsidian", 20).filter(a => !a.read && a.ts > since).slice(0, 3).map(a => ({ title: a.title, url: `${PUB()}/alerts` }));
+    return { alerts: fresh.length ? fresh : undefined, stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
       friends: (q("SELECT p.handle, p.name, f.kind, f.why, p.created FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ? AND COALESCE(f.kind,'request')<>'founder'").all(owner, since) as any[])
         .map(r => ({ handle: r.handle, name: r.name, kind: r.kind, why: r.why, joined: !!r.created && r.created > since })),
@@ -969,8 +976,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
-    owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
-    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, connections: connectionsFor, friendAct: (me: string, to: string) => friendAct(me, profile(to)), email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
+    owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, alerts: { forOwner: (id: string) => alerts.forOwner(id, alertKind(id), 50), markRead: (id: string, ids: string[]) => alerts.markRead(id, ids) }, connections: connectionsFor, friendAct: (me: string, to: string) => friendAct(me, profile(to)), email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
       circle: { people: (id: string) => githubPeople(id), invite: (id: string, login: string) => githubInvite(id, login), signedIn: (id: string) => circleHooks.signedIn?.(id) } } });
 
   // shared-repo friendships: members who both contributed to the same public GitHub repo become friends (kind "repo")
@@ -1071,6 +1078,13 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   }
   /** Is this request from the owner of `handle`? Returns the bar's "back to private" target, or null. */
   const PUB = () => (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+  /** The alerts bell for a signed-in member (owner bar, or the member bar on someone else's page). */
+  const alertKind = (owner: string): "github" | "obsidian" => hostedOf(owner) ? "github" : "obsidian";
+  function bellFor(owner: string | null | undefined): string {
+    if (!owner || !profile(owner)?.handle) return "";
+    const rows = alerts.forOwner(owner, alertKind(owner), 20), upTo = rows.reduce((m, a) => a.ts > m ? a.ts : m, "");
+    return bellHtml(PUB(), rows, upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(owner, upTo))}` : "");
+  }
   /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
   function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
     const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
@@ -1312,7 +1326,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
-      if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
+      if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
 
       if (req.method === "GET" && p === "/v1/weather") { const w = await WX.forIp(ipOf(req)); res.setHeader("cache-control", "no-store"); return json(res, 200, w || { c: null }); }   // the requester's own weather, never stored
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
@@ -1426,7 +1440,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           // views, kudos and Add friend sit under the person's name (profile) or the city title; other pages keep the bar clean
           const rowAt = rel === "index.html" ? (/<p class="lede">[\s\S]*?<\/p>/.test(html) ? /<p class="lede">[\s\S]*?<\/p>/ : /<h1 class="title">[\s\S]*?<\/h1>/) : rel === "city.html" ? /<h1 class="c-title">[\s\S]*?<\/h1>/ : null;
           const inPage = !!(soc && rowAt && rowAt.test(html));
-          const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, soc && (inPage || rel === "index.html" || rel === "city.html") ? { ...soc, inPage } : undefined);
+          const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, soc && (inPage || rel === "index.html" || rel === "city.html") ? { ...soc, inPage } : undefined,
+            own && prS ? bellFor(prS.id) : viewer ? bellFor(memberOf(req)) : "");
           html = liveBlocks(m[1], rel, html);
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
@@ -1511,6 +1526,18 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const pr = profile(m[1]); if (!pr?.handle) return json(res, 404, { error: "publish your profile first" });
         return json(res, 200, { url: ownerLink(m[1]), expires_in: 300 });
       }
+      // alerts: the bell's "seen" beacon (sandboxed pages carry no cookies, so a signed per-member token), and the plugin's feed
+      if (req.method === "GET" && p === "/v1/alerts/seen") {
+        const tk = alerts.checkSeen(url.searchParams.get("t")); if (tk) alerts.markSeenUpTo(tk.owner, alertKind(tk.owner), tk.upTo);
+        res.writeHead(200, { "content-type": "image/gif", "cache-control": "no-store", "cross-origin-resource-policy": "cross-origin" }); return res.end(PIXEL);
+      }
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/alerts(\/read)?$/);
+      if (m && (req.method === "GET" || req.method === "POST")) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        if (req.method === "POST" && m[2]) { const { ids } = await readBody(req) as { ids?: unknown }; alerts.markRead(m[1], Array.isArray(ids) ? ids.map(String) : []); return json(res, 200, { ok: true }); }
+        const rows = alerts.forOwner(m[1], alertKind(m[1]), 30);
+        return json(res, 200, { unread: rows.filter(r => !r.read).length, url: `${PUB()}/alerts`, alerts: rows.map(r => ({ id: r.id, title: r.title, body: r.body, cta_label: r.cta_label, cta_url: r.cta_url, copy_label: r.copy_label, has_copy: !!r.copy_text, pinned: !!r.pinned, ts: r.ts, read: !!r.read })) });
+      }
       if (req.method === "GET" && p === "/v1/own") {
         const c = url.searchParams.get("c") || "", row = c ? q("SELECT * FROM owner_links WHERE code_hash=?").get(hashToken(c)) as any : null;
         if (row) q("DELETE FROM owner_links WHERE code_hash=?").run(row.code_hash);   // single use
@@ -1520,7 +1547,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         q("DELETE FROM owner_sessions WHERE expires < ?").run(Date.now());
         q("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(hashToken(t), pr.id, now(), Date.now() + OWN_AGE * 1000);
         const to = url.searchParams.get("to") || "", sub = /^[a-z0-9][a-z0-9._/-]{0,120}$/i.test(to) && !to.includes("..") ? to : "";   // a page inside their profile
-        res.writeHead(302, { location: to === "settings" ? "/settings" : `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
+        res.writeHead(302, { location: to === "settings" || to === "alerts" ? "/" + to : `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
       }
       if (req.method === "GET" && p === "/v1/own/out") {   // older bars: every sign-out goes through /signout
         const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -1921,7 +1948,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // the same bar as the public page signed in as owner: [Public view | Private view] in the same place, account menu on the right
       const nav = pr ? navFor(pr, "private", rel) : null;
       if (nav) nav.note = row ? `Private sections pushed from Obsidian ${ago(row.built)}. Only your Tailscale account can open this address.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian.";
-      const bar = nav ? calderaBar(opts.publicUrl || "https://caldera.social", mine, nav) : "";
+      const bar = nav ? calderaBar(opts.publicUrl || "https://caldera.social", mine, nav, undefined, bellFor(byHandle(mine)?.id)) : "";
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
       if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" });
       if (rel === "city.html" && pr) { html = cityExtras(html, pub ? null : pr.id); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl), originOf(opts.publicUrl)); }

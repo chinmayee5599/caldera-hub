@@ -22,6 +22,8 @@ export interface DigestData {
   kudos?: { handle: string; name: string; emoji: string }[]; viewsAll?: number;
   /** the one "finish your page" step to suggest, if any */
   nudge?: { label: string; why: string; how: string; url: string };
+  /** alerts from Caldera posted since the last email that this member hasn't read */
+  alerts?: { title: string; url: string }[];
 }
 export interface EmailCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string; hub: string;
@@ -106,7 +108,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
 
   // ---------------------------------------------------------------- the digest
   function compose(d: DigestData, unsub: string, quiet: boolean): Mail | null {
-    const page = `${hub}/@${d.handle}/`, accept = d.hosted ? `${hub}/me` : "obsidian://caldera";
+    const page = `${hub}/@${d.handle}/`, accept = d.hosted ? `${hub}/settings#people` : "obsidian://caldera";
     const pl = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
     const subject = ascii(d.requests.length ? `Caldera: ${d.requests.length === 1 ? `@${d.requests[0]!.handle} wants to be friends` : `${d.requests.length} friend requests`}`
       : d.kudos?.length ? `Caldera: ${d.kudos.length === 1 ? `@${d.kudos[0]!.handle} sent you kudos` : `${d.kudos.length} people sent you kudos`}`
@@ -115,12 +117,15 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       : d.invited.length ? `Caldera: @${d.invited[0]!.handle} joined from your invite`
       : d.gravity.length ? `Caldera: you got gravity from @${d.gravity[0]!.handle}`
       : d.links ? `Caldera: ${pl(d.links, "new link")} into your garden`
+      : d.alerts?.length ? `Caldera: ${d.alerts[0]!.title}`
       : `Caldera: people you might know`);
     const H: string[] = [], T: string[] = [];
     const sec = (title: string, html: string, text: string) => { H.push(`<h2 style="margin:20px 0 6px;font:600 15px/1.3 -apple-system,Helvetica,Arial,sans-serif;color:#111113;text-transform:uppercase;letter-spacing:.04em">${title}</h2>${html}`); T.push(`${title.toUpperCase()}\n${text}`); };
     const who = (h: string, n: string) => `<a href="${esc(hub)}/@${esc(h)}/" style="color:#6E4FE0;text-decoration:none;font-weight:600">${esc(n || "@" + h)}</a> <span style="color:#8A8794">@${esc(h)}</span>`;
     if (d.views7 || d.visitors24) sec("Your page", `<p style="margin:0"><b style="font-size:26px;color:#111113">${d.visitors24}</b> ${d.visitors24 === 1 ? "person" : "people"} in the last day (${d.views24} views) &middot; <b>${d.visitors7}</b> this week${d.viewsAll ? ` &middot; ${d.viewsAll.toLocaleString("en-US")} all time` : ""}. <a href="${esc(page)}" style="color:#6E4FE0">See your page</a></p>`,
       `${d.visitors24} people in the last day (${d.views24} views), ${d.visitors7} this week${d.viewsAll ? `, ${d.viewsAll} all time` : ""}. ${page}`);
+    if (d.alerts?.length) sec("From Caldera", `<p style="margin:0">${d.alerts.map(a => `<a href="${esc(a.url)}" style="color:#6E4FE0;font-weight:600;text-decoration:none">${esc(a.title)}</a>`).join("<br>")}</p>`,
+      d.alerts.map(a => `${a.title}: ${a.url}`).join("\n"));
     if (d.kudos?.length) sec("Kudos", `<p style="margin:0">${d.kudos.map(k => `<span style="font-size:18px">${esc(k.emoji)}</span> ${who(k.handle, k.name)}`).join("<br>")}</p>`,
       d.kudos.map(k => `@${k.handle} sent kudos`).join("\n"));
     if (d.requests.length) sec("Friend requests", d.requests.map(r => `<p style="margin:6px 0">${who(r.handle, r.name)}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}</p>`).join("") + `<p style="margin:12px 0 0"><a href="${esc(accept)}" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Accept</a>${d.hosted ? "" : ` <span style="color:#8A8794;font-size:13px">(opens Obsidian; or open the Caldera panel)</span>`}</p>`,
@@ -160,7 +165,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       const d = ctx.digest(r.owner, since); if (!d) { skipped++; continue; }
       // links into the garden have no timestamp: compare with the count at the last send
       const newLinks = r.last_links == null ? 0 : Math.max(0, d.links - r.last_links), totalLinks = d.links; d.links = newLinks;
-      const active = d.visitors24 || d.requests.length || d.friends.length || d.gravity.length || d.links || d.invited.length;
+      const active = d.visitors24 || d.requests.length || d.friends.length || d.gravity.length || d.links || d.invited.length || d.alerts?.length;
       const quietOk = !r.last_quiet || Date.parse(r.last_quiet) < Date.now() - 7 * DAY;
       if (!active && !(quietOk && (d.suggestions.length || d.newMembers.length))) { skipped++; q("UPDATE email_subs SET last_links=? WHERE owner=?").run(totalLinks, r.owner); continue; }
       const m = compose(d, unsubUrl(r.token), !active); if (!m) { skipped++; continue; }
