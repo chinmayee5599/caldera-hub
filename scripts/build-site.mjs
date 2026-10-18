@@ -18,7 +18,7 @@ update("guide.html", h => fill(h, "EDIT_PROMPT", esc(editPrompt({ hubUrl: HUB })
 // guide.html "Every feature": one section per feature in core's inventory (same source as the setup prompt), with a
 // screenshot from @mike's public page where there is one, and the feature's own prompt for the owner's AI
 const GROUPS = [
-  ["Your page", ["masthead", "links", "now", "topics", "sidebar", "graph"]],
+  ["Your page", ["masthead", "links", "now", "topics", "sidebar", "graph", "modules"]],
   ["Your story and your work", ["timeline", "projects", "code", "ai", "knows", "inbox"]],
   ["Every day", ["journal", "scoreboard", "activity", "growth"]],
   ["The live city", ["live", "agents", "weather"]],
@@ -26,7 +26,7 @@ const GROUPS = [
   ["Only for you", ["private"]],
 ];
 const SHOT = { journal: "journal", ai: "ai", timeline: "timeline", projects: "projects", code: "city", knows: "knows", inbox: "inbox", activity: "activity", asks: "asks", masthead: "masthead", live: "city", friends: "world" };
-const PROMPT = { live: "live", agents: "agents", ai: "ai", private: "private", timeline: "story", projects: "story", code: "code", email: "email", groups: "groups" };
+const PROMPT = { live: "live", agents: "agents", ai: "ai", private: "private", timeline: "story", projects: "story", code: "code", email: "email", groups: "groups", modules: "modules" };
 const seen = new Set();
 const card = f => {
   const pid = PROMPT[f.id], shot = SHOT[f.id], first = pid && !seen.has(pid); if (pid) seen.add(pid);

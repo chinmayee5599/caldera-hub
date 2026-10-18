@@ -23,8 +23,13 @@
   <h1>What's new</h1>
   <p class="lead-in">Every Caldera release. When something ships, Caldera also shows its owner a short alert inside Obsidian. Follow along with the <a href="releases.xml">RSS feed</a>.</p>
   <!-- RELEASES_START -->
+  <article class="release" id="v0.22.0">
+    <div class="release-meta"><span class="tag">0.22.0</span><time datetime="2026-10-18">2026-10-18</time><span>latest</span></div>
+    <h2>Your own sections: custom modules</h2>
+    <ul><li>Custom modules: add a note to Caldera/modules/ (for example Caldera/modules/Reading list.md) and it becomes a section on your page, titled with the file name. Write ordinary Markdown: lists, checkboxes, tables, quotes, code, links and images from your vault.</li><li>Put a module in the main column (default) or the right-hand column with place: side, order them with order: 10, and keep drafts private with publish: false. Up to 12 modules; the page republishes about a minute after you save.</li><li>Or just ask your AI agent: "add a Talks module with my last five talks". The setup prompt (now version 6), the edit prompt, profile.md and the guide all explain how.</li><li>Safe by design: no HTML, scripts or embeds, and email addresses and phone numbers are removed automatically. Everything in a module is public.</li><li>Tables now work in Markdown on Caldera pages.</li></ul>
+  </article>
   <article class="release" id="v0.21.0">
-    <div class="release-meta"><span class="tag">0.21.0</span><time datetime="2026-10-18">2026-10-18</time><span>latest</span></div>
+    <div class="release-meta"><span class="tag">0.21.0</span><time datetime="2026-10-18">2026-10-18</time></div>
     <h2>Messages, private repos your way, and the Terms</h2>
     <ul><li>Messages: when you have unread messages on Caldera, Obsidian shows a notice. Click it to open your Messages, already signed in.</li><li>Private repos on my city: choose how private repos show to visitors. Show as padlocked (as before), Anonymous (one separate Private district of identical padlocks, no activity, a rough size instead of a count) or Hidden (no trace). Set it in Caldera's settings, in Caldera/profile.md (privateRepos: show, anonymous or hidden), or on caldera.social/settings. Your private view always shows everything.</li><li>The Welcome form now notes the Terms of Service and Privacy Policy (mjonesone, LLC).</li><li>The setup prompt is version 5: it asks which private-repo level you want.</li></ul>
     <p class="howto">To pick your private-repo level, ask your AI: "Set privateRepos in my Caldera/profile.md to anonymous", or open Settings &gt; Caldera.</p>
