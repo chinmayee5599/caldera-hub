@@ -114,8 +114,9 @@ function tagRelevance(tags: Tag[], text: string, tag: string, term: string) {
   return 1;
 }
 /** Public digest: send when anything happened; subject = the first section with something in it; tips in a fixed order. */
-const digestActive = (d: DigestData) => !!(d.visitors24 || d.kudos?.length || d.postKudos?.length || d.postWaiting?.length || d.requests.length || d.intros?.length || d.friends.length || d.invited.length || d.gravity.length || d.links || d.alerts?.length);
+const digestActive = (d: DigestData) => !!(d.messages?.unread || d.visitors24 || d.kudos?.length || d.postKudos?.length || d.postWaiting?.length || d.requests.length || d.intros?.length || d.friends.length || d.invited.length || d.gravity.length || d.links || d.alerts?.length);
 function digestSubject(d: DigestData) {
+  if (d.messages?.unread) return d.messages.from.length === 1 ? `Caldera: ${d.messages.unread === 1 ? "a message" : d.messages.unread + " messages"} from @${d.messages.from[0]!.handle}` : `Caldera: ${d.messages.unread} unread messages`;
   return "Caldera: " + (d.kudos?.length ? "you got kudos" : d.requests.length ? "friend requests waiting" : d.intros?.length ? "introductions waiting"
     : d.friends.length ? "new connections" : d.visitors24 ? "people viewed your page" : "your daily summary");
 }

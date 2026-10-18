@@ -274,3 +274,7 @@ section h2 { line-height: 1.12; }
 .nav-menu a { padding: 8px 10px; border-radius: 8px; color: var(--text); }
 .nav-menu a:hover { background: var(--bg-sunken, rgba(127,127,127,.12)); text-decoration: none; }
 @media (max-width: 640px) { .nav-menu { position: fixed; right: 16px; top: 52px; } }
+
+/* Messages link with unread badge in the signed-in nav */
+.nav-msgs { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.nav-badge { min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: #f0716a; color: #fff; font: 600 11px/18px var(--font-body, Arial, sans-serif); text-align: center; }

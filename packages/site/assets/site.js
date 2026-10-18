@@ -97,6 +97,11 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     [["Your public page", s.page], ["Private view", s["private"], s.privateExternal], ["Sign out", s.signout]].forEach(function (x) {
       var a = document.createElement("a"); a.textContent = x[0]; a.href = x[1]; if (x[2]) { a.target = "_blank"; a.rel = "noopener"; } m.appendChild(a); });
     d.appendChild(m); link.replaceWith(d);
+    if (s.messages) {   // Messages, with the unread count, next to the account menu
+      var ml = document.createElement("a"); ml.href = s.messages.url || "/messages"; ml.className = "nav-msgs"; ml.textContent = "Messages";
+      if (s.messages.unread) { var bd = document.createElement("span"); bd.className = "nav-badge"; bd.textContent = s.messages.unread > 9 ? "9+" : String(s.messages.unread); ml.appendChild(bd); ml.setAttribute("aria-label", "Messages, " + s.messages.unread + " unread"); }
+      d.before(ml);
+    }
     var cta = document.querySelector('.nav > a.btn'); if (cta && s.page) { cta.textContent = "Your page"; cta.href = s.page; }   // signed in: the header button goes to your page
   }).catch(function () {});
 })();

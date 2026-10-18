@@ -35,6 +35,8 @@ export interface DigestData {
   postWaiting?: { handle: string; name: string; text: string; kind: string; url: string }[];
   lookingFor?: { handle: string; name: string; sentence: string; why: string; url: string }[];
   recommends?: { handle: string; name: string; sentence: string; why: string; link: string; url: string }[];
+  /** unread direct messages (who from, how many, a 120-character preview); absent when the member turned these emails off */
+  messages?: { unread: number; from: { handle: string; name: string; count: number; preview: string; request: boolean }[]; url: string };
 }
 export interface EmailCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string; hub: string;
@@ -159,6 +161,9 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const who = (h: string, n: string) => `<a href="${esc(at(h))}" style="color:#6E4FE0;text-decoration:none;font-weight:600">${esc(n || "@" + h)}</a> <span style="color:#8A8794">@${esc(h)}</span>`;
     const btn = (href: string, label: string, ghost = false) => `<a href="${esc(href)}" style="display:inline-block;margin:6px 6px 0 0;padding:7px 14px;border-radius:999px;${ghost ? "border:1px solid #D9D4EA;color:#24222B" : "background:#6E4FE0;color:#fff"};text-decoration:none;font-weight:600;font-size:13px">${esc(label)}</a>`;
     const row = (inner: string) => `<div style="margin:0 0 10px;padding:10px 12px;border:1px solid #ECEAF2;border-radius:10px">${inner}</div>`;
+    // 0. unread messages (a short preview only; the conversation itself stays on Caldera)
+    if (d.messages?.unread) sec(`Messages: ${pl(d.messages.unread, "unread")}`, d.messages.from.map(m => row(`${who(m.handle, m.name)}${m.request ? ` <span style="color:#55525E">&middot; wants to message you</span>` : m.count > 1 ? ` <span style="color:#55525E">&middot; ${m.count} messages</span>` : ""}<br><span style="color:#55525E">"${esc(m.preview)}"</span><br>${btn(`${hub}/messages/@${encodeURIComponent(m.handle)}`, m.request ? "See the request" : "Reply")}`)).join(""),
+      d.messages.from.map(m => `@${m.handle}${m.request ? " wants to message you" : ""}: "${m.preview}" - reply: ${hub}/messages/@${m.handle}`).join("\n"));
     // 1. kudos
     if (d.kudos?.length) sec("Kudos", d.kudos.map(k => row(`<span style="font-size:20px">${esc(k.emoji)}</span> ${who(k.handle, k.name)} sent you kudos<br>${btn(at(k.handle), "Send one back", true)}`)).join(""),
       d.kudos.map(k => `@${k.handle} sent you ${k.emoji} - send one back: ${at(k.handle)}`).join("\n"));

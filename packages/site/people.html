@@ -122,6 +122,7 @@
     var foot = el("div", "pcard-foot");
     var pl = el("a", "pcard-link", "Profile \u2192"); pl.href = href; foot.appendChild(pl);
     if (p.city) { var c = el("a", "pcard-link", "Walk the city \u2192"); c.href = href + "city.html"; foot.appendChild(c); }
+    var msg = el("a", "pcard-link", "Message"); msg.href = "/messages/@" + encodeURIComponent(p.handle); msg.title = "Send @" + p.handle + " a message"; foot.appendChild(msg);
     var ib = introBtn(p); if (ib) foot.appendChild(ib);
     a.appendChild(foot);
     return a;

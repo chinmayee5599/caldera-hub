@@ -83,7 +83,7 @@ export function github(ctx: GhCtx) {
   // ------------------------------------------------------------------ cookies + sessions
   const cookies = (req: http.IncomingMessage) => Object.fromEntries(String(req.headers.cookie || "").split(/;\s*/).filter(Boolean).map(c => { const i = c.indexOf("="); return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))]; }));
   // where to land after signing in: a page on this hub only (a profile, city, note, the world, people or a group)
-  const safeBack = (v: unknown): string => { const s0 = String(v || ""); return s0.length < 200 && /^\/(@[a-z0-9-]+\/[A-Za-z0-9._\/-]*|world|people|feed|feed\/p\/[0-9a-f]{12}|g\/[a-z0-9-]+)$/.test(s0) && !s0.includes("..") ? s0 : ""; };
+  const safeBack = (v: unknown): string => { const s0 = String(v || ""); return s0.length < 200 && /^\/(@[a-z0-9-]+\/[A-Za-z0-9._\/-]*|world|people|feed|feed\/p\/[0-9a-f]{12}|g\/[a-z0-9-]+|messages|messages\/@[a-z0-9-]+)$/.test(s0) && !s0.includes("..") ? s0 : ""; };
   const setCookie = (res: http.ServerResponse, name: string, val: string, maxAge: number) => {
     const prev = res.getHeader("set-cookie"); const list = Array.isArray(prev) ? prev : prev ? [String(prev)] : [];
     res.setHeader("set-cookie", [...list, `${name}=${encodeURIComponent(val)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`]);

@@ -20,6 +20,8 @@ export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
 import { building } from "./building";
 import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards";
 import { feed } from "./feed";
+import { messages } from "./messages";
+export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
@@ -95,7 +97,8 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const kd = Object.entries(KUDOS).map(([k, em]) => `<button type="button" class="cb-k${sent === k ? " on" : ""}" data-k="${k}"${sent ? ` disabled title="You sent kudos today. More tomorrow."` : ` title="Send @${e(handle)} ${em}"`}>${em}<i>${count(k) ? compact(count(k)) : ""}</i></button>`).join("");
   const fs = v ? v.friend : "none";
   const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}${fs === "friends" && v?.why ? ` title="Connected because: ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; ${e(v.why)}` : ""}</button>`;
-  return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}</span>`;
+  const msg = fs === "self" ? "" : `<a class="cb-msg" href="${e(base)}/messages/@${e(handle)}" target="_blank" rel="noopener" title="Send @${e(handle)} a message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</a>`;
+  return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}${msg}</span>`;
 }
 
 /** Inline kudos + friend for hosted pages: talks to /v1/act with the token the hub put in the page (the page is sandboxed
@@ -118,6 +121,7 @@ const BAR_ACT_CSS = `<style>.cb-row{display:flex;flex-wrap:wrap;align-items:cent
 .cb-social .cb-k{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:0 7px;border-radius:999px;font-size:14px;line-height:1;transition:transform .15s,background .15s}.cb-social .cb-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:var(--text-muted,#B8B8C2);font-variant-numeric:tabular-nums}
 .cb-social .cb-k:hover:not(:disabled){background:var(--bg-sunken,#2A2636);transform:translateY(-1px) scale(1.08)}.cb-social .cb-k:disabled{cursor:default;opacity:.55}.cb-social .cb-k.on{opacity:1;background:var(--accent-soft,#3A2F5C)}.cb-social .cb-k.pop{animation:cbpop .45s ease-out}
 @keyframes cbpop{40%{transform:scale(1.35)}}.cb-social .cb-k:focus-visible,.cb-social .cb-fr:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
+.cb-social .cb-msg{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:0 12px;border-radius:999px;background:#7A58F0;color:#fff!important;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important;white-space:nowrap}.cb-social .cb-msg:hover{filter:brightness(1.08)}.cb-social .cb-msg:focus-visible{outline:2px solid #8B6CF6;outline-offset:2px}
 .cb-social .cb-fr{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--accent,#5B47B8);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;font-weight:600;white-space:nowrap}.cb-social .cb-fr:disabled{cursor:default;border-color:var(--line,#2A2A2E);color:var(--text-muted,#9A9AA6);font-weight:500}.cb-social .cb-fr[data-state="incoming"]{background:#8B6CF6;border-color:#8B6CF6}
 .cb-tip,#cb-need{position:absolute;z-index:100;max-width:280px;padding:8px 11px;border-radius:10px;background:#18171D;border:1px solid #2E2A40;color:#E6E6EA;font:500 12.5px/1.4 'IBM Plex Sans',Arial,sans-serif;box-shadow:0 10px 26px rgba(0,0,0,.45)}#cb-need[hidden]{display:none}
 #cb-need b{display:block;margin-bottom:6px;color:#F2F2F5}#cb-need a{display:inline-flex;margin:4px 6px 0 0;padding:5px 11px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600}#cb-need a.alt{background:transparent;border:1px solid #2E2A40;color:#E6E6EA}
@@ -714,8 +718,9 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const emit = (ev: Parameters<NonNullable<HubOptions["onEvent"]>>[0]) => { try { opts.onEvent?.(ev); } catch { /* never let a notifier break a request */ } };
 
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
+  let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
   function erase(id: string) {
-    FEED?.erase(id);
+    FEED?.erase(id); MSG?.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -744,6 +749,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     // feed moderation: reported posts first
     "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id),
     "post-ban": (handle: string, reason = "") => FEED!.admin.postBan(handle, reason), "post-unban": (handle: string) => FEED!.admin.postUnban(handle),
+    "msg-reports": () => MSG!.admin.reports(), "msg-view": (id: string) => MSG!.admin.view(id), "msg-close": (id: string) => MSG!.admin.close(id),
+    "msg-ban": (handle: string, reason = "") => MSG!.admin.ban(handle, reason), "msg-unban": (handle: string) => MSG!.admin.unban(handle),
   };
 
   // ---------------------------------------------------------------- scores for leaderboards
@@ -1006,6 +1013,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       newMembers: (q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created > ? AND id<>? ORDER BY created DESC").all(d7, owner) as any[]).filter(listed).map(p => ({ handle: p.handle, name: p.name })),
       kudos: kudosFor(owner, since).map(k => ({ handle: k.from || "someone", name: k.name, emoji: k.emoji })), viewsAll: viewsOf(h),
       intros: B.pendingFor(owner, since).map(i => ({ handle: i.handle, name: i.name, tag: i.tag })),
+      messages: MSG ? MSG.digestFor(owner, since) : undefined,
       ...(() => { if (!FEED) return {}; const n = FEED.noticesFor(owner, since);
         return { lookingFor: FEED.lookingFor(owner, 2), recommends: FEED.recsFor(owner, 2),
           postKudos: n.kudos.map(k => ({ handle: k.from.handle, name: k.from.name, emoji: k.emoji, url: k.url })),
@@ -1139,7 +1147,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function bellFor(owner: string | null | undefined): string {
     if (!owner || !profile(owner)?.handle) return "";
     const rows = alerts.forOwner(owner, alertKind(owner), 20), upTo = rows.reduce((m, a) => a.ts > m ? a.ts : m, "");
-    return bellHtml(PUB(), rows, upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(owner, upTo))}` : "");
+    return (MSG ? MSG.iconFor(owner) : "") + bellHtml(PUB(), rows, upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(owner, upTo))}` : "");
   }
   /** Extra signed-in header controls (e.g. Messages), registered by other modules. */
   const headerItems: HeaderItem[] = [];
@@ -1368,9 +1376,10 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
 @media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body>${siteHeader()}<script src="/assets/site.js" defer></script><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
-  function signinGeneral(res: http.ServerResponse) {
+  function signinGeneral(res: http.ServerResponse, back = "") {
+    const bq = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world|@[a-z0-9-]+\/)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     signinPage(res, 200, "Sign in", `<h1>Sign in to Caldera</h1><p class="lede">Sign this browser in as the owner of your page. It stays signed in for a year.</p>
-<div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
+<div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
 <div class="card"><h2>Made your page in Obsidian?</h2><p class="mut">Open your page and tap <b>Sign in</b> in the bar at the top for an email link or a code from Obsidian. Or in Obsidian, run <b>Caldera: Open my public page (as owner)</b>.</p></div>
 <p class="mut">No page yet? <a href="/#install">Get your own page</a>.</p>`);
   }
@@ -1443,6 +1452,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     fetch: opts.githubFetch || fetch, ghToken: () => GH.anyToken(), hasRepos: (pr: any) => !!cityOf(pr.handle)?.buildings });
   // the feed's matching and posting policy is an open-core hook (public: exact tag overlap)
   FEED!.setMatcher(ext.feedMatcher());
+  MSG = messages({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, modOf, areFriends, memberOf, sameOrigin, readBody, json, navify, tooMany, seal, unseal,
+    // brand-new, empty accounts message friends only for their first two days (a public basic rule; abuse heuristics stay in the private extensions)
+    canRequest: (pr: any) => Date.parse(pr.created) < Date.now() - 2 * DAY || !!cityOf(pr.handle)?.buildings,
+    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "messages" }); } });
+  headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge, left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
   const server = http.createServer(async (req, res) => {
@@ -1460,6 +1474,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "OPTIONS") return json(res, 204, {});
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
+      if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
       if (/^\/(me\/building\/?|v1\/tags|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 
       if (req.method === "GET" && p === "/v1/weather") { const w = await WX.forIp(ipOf(req)); res.setHeader("cache-control", "no-store"); return json(res, 200, w || { c: null }); }   // the requester's own weather, never stored
@@ -1708,7 +1723,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         q("DELETE FROM owner_sessions WHERE expires < ?").run(Date.now());
         q("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(hashToken(t), pr.id, now(), Date.now() + OWN_AGE * 1000);
         const to = url.searchParams.get("to") || "", sub = /^[a-z0-9][a-z0-9._/-]{0,120}$/i.test(to) && !to.includes("..") ? to : "";   // a page inside their profile
-        res.writeHead(302, { location: to === "settings" || to === "alerts" ? "/" + to : `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
+        res.writeHead(302, { location: to === "settings" || to === "alerts" || to === "messages" ? "/" + to : `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
       }
       if (req.method === "GET" && p === "/v1/own/out") {   // older bars: every sign-out goes through /signout
         const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -1720,7 +1735,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         res.setHeader("cache-control", "no-store");
         if (!pr?.handle) return json(res, 200, { signedIn: false });
         const n = navFor(pr, "public");
-        return json(res, 200, { signedIn: true, handle: pr.handle, name: pr.name || "", page: n.publicHref, private: n.privateHref, privateExternal: !!n.privateExternal, signout: n.signout });
+        return json(res, 200, { signedIn: true, handle: pr.handle, name: pr.name || "", page: n.publicHref, private: n.privateHref, privateExternal: !!n.privateExternal, signout: n.signout,
+          messages: { unread: MSG ? MSG.unreadFor(pr.id) : 0, url: `${PUB()}/messages` } });
       }
       // sign out: GET asks, POST clears the owner cookie (and its session row) and the GitHub session, then back to the page
       if (p === "/signout") {
@@ -1747,7 +1763,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin && !sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
         const ip = ipOf(req);
         if (req.method === "GET" && p === "/signin") {
-          if (!url.searchParams.get("h")) { signinGeneral(res); return; }
+          if (!url.searchParams.get("h")) { signinGeneral(res, String(url.searchParams.get("back") || "")); return; }
           const pr = byHandle((url.searchParams.get("h") || "").toLowerCase()); if (!pr || modOf(pr.handle, pr.id)) { signinPage(res, 404, "Sign in", `<h1>No such page</h1><p><a href="/people">Find people</a></p>`); return; }
           signinHome(res, pr); return;
         }
@@ -1883,7 +1899,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const links = C.gardenEnabled() ? (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]) : [];
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
-        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts, unlock: unlockStateFor(m[1]) || {}, connections: connectionsFor(m[1]) });
+        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts, unlock: unlockStateFor(m[1]) || {}, connections: connectionsFor(m[1]),
+          messages: MSG ? { unread: MSG.unreadFor(m[1]), from: MSG.inbox(m[1]).filter(x => x.unread && x.handle).slice(0, 3).map(x => x.handle) } : undefined });
       }
       // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
@@ -2127,7 +2144,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
   });
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, feedReady, headerItems, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, digestFor, feedReady, headerItems, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
