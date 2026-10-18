@@ -1565,6 +1565,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           try {
             const r = hdr(), swapped = swapHeader(out, r.header);
             if (swapped !== null) { out = swapFooter(swapped);
+              // public pages built without a footer (Feed, GitHub city previews, groups) get THE footer too
+              if (!/<footer class="footer/.test(out) && /^\/(feed|gh|g\/)/.test(String(req.url || ""))) out = out.replace(/<\/body>/i, () => swapFooter('<footer class="footer"></footer>') + "</body>");
               const h0 = held ? held.find((x: any) => x && typeof x === "object" && !Array.isArray(x)) : null;
               if (r.signedIn) { if (h0) { h0["cache-control"] = "private, no-store"; h0["vary"] = "Cookie"; } else { res.setHeader("cache-control", "private, no-store"); res.setHeader("vary", "Cookie"); } }
               else if (h0) h0["vary"] = "Cookie"; else res.setHeader("vary", "Cookie"); }
