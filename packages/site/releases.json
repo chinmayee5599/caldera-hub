@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.4",
+      "date": "2026-10-18",
+      "title": "Agents park on a sky base",
+      "items": [
+        "Idle AI agents now park on a sky base: a small deck hovering over your city's front corner, tethered to the ground by a thread of light. Amber drones are waiting on you.",
+        "Working agents lift off the deck and fly to the building they're working in, on your city and on the world map."
+      ]
+    },
+    {
       "version": "0.25.3",
       "date": "2026-10-18",
       "title": "Agents dock on a stack",
