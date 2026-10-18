@@ -312,6 +312,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
 
   // ------------------------------------------------------------------ routes
   /** Public hub routes. Returns true when handled. */
+  const cbResults = new Map<string, { state: string; at: number; p: Promise<{ cookies: string[]; loc: string } | null> }>();
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
     const p = url.pathname;
     if (req.method === "GET" && p === "/auth/github") {
@@ -336,6 +337,18 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
       const a = app(); if (!a) { redirect(res, "/"); return true; }
+      // browsers sometimes send the callback twice (a retried navigation): GitHub's code works once, so the second
+      // request replays the first one's outcome (same cookies, same redirect) instead of failing with "code expired"
+      const code = url.searchParams.get("code") || "", st = url.searchParams.get("state") || "";
+      const prior = cbResults.get(code);
+      if (code && prior && prior.state === st && Date.now() - prior.at < 120_000) {
+        const r = await prior.p;
+        if (r) { if (r.cookies.length) res.setHeader("set-cookie", r.cookies); redirect(res, r.loc); return true; }
+      }
+      let settle: (v: { cookies: string[]; loc: string } | null) => void = () => {};
+      if (code) { const pr = new Promise<{ cookies: string[]; loc: string } | null>(r => { settle = r; }); cbResults.set(code, { state: st, at: Date.now(), p: pr }); for (const [k, v] of cbResults) if (Date.now() - v.at > 120_000) cbResults.delete(k); }
+      const done = (loc: string) => { const c = res.getHeader("set-cookie"); settle({ cookies: Array.isArray(c) ? c.map(String) : c ? [String(c)] : [], loc }); redirect(res, loc); };
+      try {
       if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "Try again", `<h1>That sign-in link expired</h1><p><a class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; }
       setCookie(res, "cal_oauth", "", 0);
       try {
@@ -348,14 +361,14 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
-            addCookie(res, ctx.owner.start(pr.id)); redirect(res, `/@${pr.handle}/`); return true;
+            addCookie(res, ctx.owner.start(pr.id)); done(`/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
         }
         if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
-          startSession(res, me.id); redirect(res, "/me"); return true;
+          startSession(res, me.id); done("/me"); return true;
         }
         // new account: a little history keeps bots out
         if (Date.now() - Date.parse(me.created_at) < 30 * DAY || (Number(me.public_repos) || 0) + (Number(me.followers) || 0) < 1) {
@@ -371,12 +384,16 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         startSession(res, me.id);
         if (ck.cal_inv) setCookie(res, "cal_inv", "", 0);
         if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);
-        try { await build(acct); } catch (e: any) { console.error("github first build", e.message); }
-        // joined from a friend's invite: thank the inviter, and send them a friend request from the new member
-        const inviter = ck.cal_inv ? ctx.social?.recordReferral(id.id, ck.cal_inv, "github") : null;
-        if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
-        redirect(res, "/me?welcome=1"); return true;
-      } catch (e: any) { page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true; }
+        // the first build reads the whole GitHub account (slow): send them to /me now, build in the background
+        const acct0 = acct, inv = ck.cal_inv;
+        void build(acct0).catch((e: any) => console.error("github first build", e.message)).finally(() => {
+          // joined from a friend's invite: thank the inviter, and send them a friend request from the new member
+          const inviter = inv ? ctx.social?.recordReferral(id.id, inv, "github") : null;
+          if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
+        });
+        done("/me?welcome=1"); return true;
+      } catch (e: any) { settle(null); page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true; }
+      } finally { settle(null); }   // every other outcome (errors, refusals) settles too, so a duplicate never waits
     }
     if (req.method === "GET" && p === "/auth/github/installed") {   // after installing the app on private repos
       const acct = account(req); if (!acct) { redirect(res, "/auth/github"); return true; }
