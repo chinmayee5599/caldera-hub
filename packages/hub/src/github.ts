@@ -24,6 +24,8 @@ export interface GhPerson { login: string; avatar: string; url: string; relation
 export interface GhCtx {
   /** sign-up gate for new GitHub accounts (an open-core hook) */
   accountOk?: (me: { created_at?: string; public_repos?: number; followers?: number }) => boolean;
+  /** sign-up funnel counting (click, back from GitHub, created / signed in, failures) */
+  track?: (req: http.IncomingMessage, step: "click" | "back" | "created" | "signin" | "fail", detail?: string) => void;
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string;
   accept: (e: C.Envelope) => { status: number; body: any }; erase: (id: string) => void;
   dataDir: string; publicUrl: string; privateUrl?: string;
@@ -224,6 +226,9 @@ export function github(ctx: GhCtx) {
 
   async function build(acct: any): Promise<string> {
     const token = await tokenFor(acct), me = await gh(token, "/user") as any, edits = JSON.parse(acct.edits || "{}"), cache = JSON.parse(acct.cache || "{}");
+    // no email on file yet (signed up before we asked GitHub for it): try again on every refresh until we have one
+    if (ctx.social?.email && !q("SELECT 1 FROM email_suggest WHERE owner=? AND verified=1").get(acct.profile_id) && !q("SELECT 1 FROM email_subs WHERE owner=? AND confirmed IS NOT NULL").get(acct.profile_id)) {
+      try { await captureEmail(acct.profile_id, token, me); } catch (e: any) { console.error("email backfill", acct.login, e.message); } }
     if (edits.heldNew && (ctx.accountOk ? ctx.accountOk(me) : true)) {   // a brand-new account that now has something public: list it
       delete edits.heldNew; delete edits.listed; q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id); }
     const own: any[] = [];
@@ -537,11 +542,14 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
-      const si = signin() || a;
+      const si = signin() || a; ctx.track?.(req, "click", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
       const a = app(); if (!a) { redirect(res, "/"); return true; }
+      ctx.track?.(req, "back", url.searchParams.get("error") ? "denied: " + String(url.searchParams.get("error")).slice(0, 40) : "");
+      if (url.searchParams.get("error")) {   // they pressed Cancel on GitHub's screen: no retry loop, just back to the start
+        ctx.track?.(req, "fail", "cancelled at GitHub"); setCookie(res, "cal_oauth", "", 0); redirect(res, "/#install"); return true; }
       // browsers sometimes send the callback twice (a retried navigation): GitHub's code works once, so the second
       // request replays the first one's outcome (same cookies, same redirect) instead of failing with "code expired"
       const code = url.searchParams.get("code") || "", st = url.searchParams.get("state") || "";
@@ -556,7 +564,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       try {
       // a stale or reused sign-in (slow, second tab, reload): start again by itself. GitHub remembers the approval, so
       // this is invisible; only a second failure in a row shows a page
-      const retry = () => { if (cookies(req).cal_retry) return false; setCookie(res, "cal_retry", "1", 120); settle(null); redirect(res, "/auth/github"); return true; };
+      const retry = () => { ctx.track?.(req, "fail", "stale or reused sign-in (auto-retried)"); if (cookies(req).cal_retry) return false; setCookie(res, "cal_retry", "1", 120); settle(null); redirect(res, "/auth/github"); return true; };
       if ((!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) && retry()) return true;
       if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "One more click", `<h1>That sign-in took a little too long</h1><p>For your safety, a GitHub sign-in has to finish within 10 minutes in the same browser. Start again and it takes a few seconds.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
       setCookie(res, "cal_oauth", "", 0);
@@ -571,20 +579,20 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
-            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;
+            ctx.track?.(req, "signin", "linked page"); addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
         }
         if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
-          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); await captureEmail(acct.profile_id, tok.access, me); done(backTo || "/me"); return true;
+          ctx.track?.(req, "signin"); startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); await captureEmail(acct.profile_id, tok.access, me); done(backTo || "/me"); return true;
         }
         // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
         // a brand-new, completely empty GitHub account (how bots look) still gets its page, just not listed in People or
         // the world until it has a public repo, a follower or a few days behind it (the refresh lists it then)
         const held = !(ctx.accountOk ? ctx.accountOk(me) : true);
-        if (!ctx.allowNewProfile(req)) { page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
+        if (!ctx.allowNewProfile(req)) { ctx.track?.(req, "fail", "rate limited (many sign-ups from one network)"); page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
         const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);
         const edits0: any = grp0.length ? { groups: grp0 } : {};
         if (held) { edits0.listed = false; edits0.heldNew = true; }
@@ -602,14 +610,14 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const inviter = inv ? ctx.social?.recordReferral(id.id, inv, "github") : null;
           if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
         });
-        done("/me?welcome=1" + (backTo ? "&back=" + encodeURIComponent(backTo) : "")); return true;
+        ctx.track?.(req, "created", held ? "held (brand-new GitHub)" : ""); done("/me?welcome=1" + (backTo ? "&back=" + encodeURIComponent(backTo) : "")); return true;
       } catch (e: any) {
         settle(null);
         // a used or expired one-time code (a reload, a retried request, a restart mid-sign-in): one more click fixes it,
         // and if the account was already created the retry simply signs them in
         if (/incorrect or expired|bad_verification_code/i.test(String(e.message)) && retry()) return true;
         if (/incorrect or expired|bad_verification_code/i.test(String(e.message))) { page(res, 400, "One more click", `<h1>That GitHub sign-in link was already used</h1><p>No problem: this happens when a page reloads mid-sign-in. Continue and you'll land on your page.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
-        console.error("github callback", String(e?.message || e));
+        console.error("github callback", String(e?.message || e)); ctx.track?.(req, "fail", "error: " + String(e?.message || e).slice(0, 60));
         page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true;
       }
       } finally { settle(null); }   // every other outcome (errors, refusals) settles too, so a duplicate never waits

@@ -21,6 +21,7 @@ import { building } from "./building";
 import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards";
 import { feed } from "./feed";
 import { gifts } from "./gifts";
+import { funnel } from "./funnel";
 import { messages } from "./messages";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -824,7 +825,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     remove(handle: string, reason = "") { const pr = byHandle(handle); if (pr) erase(pr.id); q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, pr?.id || null, "removed", reason, now()); return { removed: handle, id: pr?.id || null }; },
     block(handle: string, reason = "") { q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, null, "blocked", reason, now()); return { blocked: handle }; },
     // feed moderation: reported posts first
-    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "comment-list": () => FEED!.admin.commentsList(), "comment-hide": (id: string) => FEED!.admin.commentHide(id),
+    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "funnel-report": (days?: number) => FUNNEL.report(Number(days) || 7), "comment-list": () => FEED!.admin.commentsList(), "comment-hide": (id: string) => FEED!.admin.commentHide(id),
     "post-ban": (handle: string, reason = "") => FEED!.admin.postBan(handle, reason), "post-unban": (handle: string) => FEED!.admin.postUnban(handle),
     "msg-reports": () => MSG!.admin.reports(), "msg-view": (id: string) => MSG!.admin.view(id), "msg-close": (id: string) => MSG!.admin.close(id),
     "msg-ban": (handle: string, reason = "") => MSG!.admin.ban(handle, reason), "msg-unban": (handle: string) => MSG!.admin.unban(handle),
@@ -1101,7 +1102,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
-  const GH = github({ accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
+  const FUNNEL = funnel({ q, ipOf, botUa: BOT_UA });
+  const GH = github({ track: (req, step, detail) => FUNNEL.track(req, step, detail), accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
@@ -1675,6 +1677,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
         return res.end(worldPage(worldNow(), { hub: opts.publicUrl || "https://caldera.social", nav: worldNav() }));
       }
+      if (req.method === "GET" && /^\/gh\/[A-Za-z0-9-]+\/?$/.test(p)) FUNNEL.track(req, "preview");
       if ((p === "/gh" || p.startsWith("/gh/")) && await GHP.route(req, res, url, p)) return;
       { const mb = p.match(/^\/@([a-z0-9-]+)\/badge\.svg$/); if (req.method === "GET" && mb) { await GHP.memberBadge(res, mb[1], url.searchParams.get("style") === "card" ? "card" : "flat"); return; } }
       // every indexable member page and city, for search engines (robots.txt points here)
@@ -1698,6 +1701,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       }
       if (req.method === "GET" && opts.siteDir && !p.startsWith("/v1/") && !p.startsWith("/@")) {
         let rel = p === "/" ? "index.html" : decodeURIComponent(p.slice(1));
+        if (p === "/") FUNNEL.track(req, "view", String(url.searchParams.get("ref") || "").slice(0, 40));
         if (rel.endsWith("/")) rel += "index.html";
         const root = path.resolve(opts.siteDir);
         let file = path.resolve(root, path.normalize(rel));
@@ -1804,6 +1808,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card + stack); }
           // just claimed (from /settings?welcome=1): one short line on the city, nothing else competing with it
           const welcome = own && prS && rel === "city.html" && url.searchParams.get("welcome") ? welcomeBanner(m[1]) : "";
+          if (welcome) FUNNEL.track(req, "landed");
           const sum = welcome || (own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "");
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar + sum) : bar + sum + html;
           res.writeHead(200, headers); return res.end(out);
