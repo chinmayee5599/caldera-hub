@@ -51,7 +51,7 @@ export const KUDOS: Record<string, string> = { heart: "\u2764\uFE0F", up: "\u{1F
 /** Who's looking, for the inline kudos + friend controls: a signed-in member gets a short-lived action token. */
 export interface BarViewer { handle: string; token: string; sent: string | null; friend: FriendState }
 export type FriendState = "self" | "friends" | "incoming" | "requested" | "queued" | "none";
-export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null }
+export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
 export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number }
@@ -72,8 +72,8 @@ const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;a
  *  (profile pages are sandboxed, so the member's sign-in can only ride along there). */
 function socialChips(base: string, handle: string, so: BarSocial): string {
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-  const chip = "display:inline-flex;align-items:center;gap:4px;min-height:26px;padding:0 9px;border-radius:999px;background:#1C1C21;border:1px solid #2A2A2E;color:#D6D6DC;font-size:12.5px;white-space:nowrap";
-  const views = so.showViews || so.owner ? `<span class="cb-views" title="${so.views.toLocaleString("en-US")} views${so.showViews ? "" : " (hidden: only you see this)"}" style="${chip}">&#128065;&#65039; ${compact(so.views)}${so.showViews ? "" : `<span style="color:#8A8A93">&nbsp;&middot; hidden</span>`}</span>` : "";
+  const chip = "display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:0 10px;border-radius:999px;background:var(--bg-raised,#1C1C21);border:1px solid var(--line,#2A2A2E);color:var(--text,#D6D6DC);font:500 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap";
+  const views = so.showViews || so.owner ? `<span class="cb-views" title="${so.views.toLocaleString("en-US")} views${so.showViews ? "" : " (hidden: only you see this)"}" style="${chip}">&#128065;&#65039; ${compact(so.views)}${so.showViews ? "" : `<span style="color:var(--text-muted,#8A8A93)">&nbsp;&middot; hidden</span>`}</span>` : "";
   const count = (k: string) => so.tally.find(([x]) => x === k)?.[1] || 0;
   if (so.owner) {
     const tally = so.tally.filter(([, n]) => n > 0).map(([k, n]) => `${KUDOS[k] || ""} ${compact(n)}`).join(" &nbsp;");
@@ -89,7 +89,7 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
 
 /** Inline kudos + friend for hosted pages: talks to /v1/act with the token the hub put in the page (the page is sandboxed
  *  with no cookies, so the token is the only credential). Anonymous visitors get a small sign-in prompt instead. */
-const BAR_ACT_JS = `(function(){function go(){var S=document.querySelector('#caldera-bar .cb-social[data-api]');if(!S)return;var api=S.getAttribute('data-api'),t=S.getAttribute('data-act'),H=S.getAttribute('data-h');
+const BAR_ACT_JS = `(function(){function go(){var S=document.querySelector('.cb-social[data-api]');if(!S)return;var api=S.getAttribute('data-api'),t=S.getAttribute('data-act'),H=S.getAttribute('data-h');
 var L={friends:'Friends \\u2713',incoming:'Accept friend request',requested:'Friend request sent',queued:'Requested \\u00b7 sends from your Obsidian',none:'+ Add friend'};
 function need(el){var p=document.getElementById('cb-need');if(!p)return;p.hidden=false;var r=el.getBoundingClientRect();p.style.top=(r.bottom+window.scrollY+8)+'px';p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-300))+'px'}
 document.addEventListener('click',function(ev){var p=document.getElementById('cb-need');if(p&&!p.hidden&&!p.contains(ev.target)&&!ev.target.closest('.cb-k,[data-caldera-friend]'))p.hidden=true});
@@ -103,14 +103,22 @@ function setF(st){document.querySelectorAll('[data-caldera-friend]').forEach(fun
 document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEventListener('click',function(ev){ev.preventDefault();if(!t)return need(f);var st=f.getAttribute('data-state')||'none';if(st!=='none'&&st!=='incoming')return;
 post({action:st==='incoming'?'accept':'friend'}).then(function(x){if(x.ok){setF(x.j.state);tip(f,x.j.state==='friends'?'You and @'+H+' are friends.':x.j.state==='queued'?'Queued. It sends from your Obsidian the next time it is open.':'Friend request sent to @'+H+'.')}else tip(f,x.j.error||'Could not send the request.')})})})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
 
-const BAR_ACT_CSS = `<style>#caldera-bar .cb-social{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}#caldera-bar .cb-kd{display:inline-flex;gap:2px;padding:1px;border-radius:999px;background:#1C1C21;border:1px solid #2A2A2E}
-#caldera-bar .cb-k{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:0 7px;border-radius:999px;font-size:14px;line-height:1;transition:transform .15s,background .15s}#caldera-bar .cb-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:#B8B8C2;font-variant-numeric:tabular-nums}
-#caldera-bar .cb-k:hover:not(:disabled){background:#2A2636;transform:translateY(-1px) scale(1.08)}#caldera-bar .cb-k:disabled{cursor:default;opacity:.55}#caldera-bar .cb-k.on{opacity:1;background:#3A2F5C}#caldera-bar .cb-k.pop{animation:cbpop .45s ease-out}
-@keyframes cbpop{40%{transform:scale(1.35)}}#caldera-bar .cb-k:focus-visible,#caldera-bar .cb-fr:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
-#caldera-bar .cb-fr{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid #5B47B8;color:#F2F2F5;font-size:12.5px;font-weight:600;white-space:nowrap}#caldera-bar .cb-fr:disabled{cursor:default;border-color:#2A2A2E;color:#9A9AA6;font-weight:500}#caldera-bar .cb-fr[data-state="incoming"]{background:#8B6CF6;border-color:#8B6CF6}
+const BAR_ACT_CSS = `<style>.cb-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 18px}.cb-row .cb-social{gap:8px}.cb-social .cb-social{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.cb-social .cb-kd{display:inline-flex;gap:2px;padding:1px;border-radius:999px;background:var(--bg-raised,#1C1C21);border:1px solid var(--line,#2A2A2E)}
+.cb-social .cb-k{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:0 7px;border-radius:999px;font-size:14px;line-height:1;transition:transform .15s,background .15s}.cb-social .cb-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:var(--text-muted,#B8B8C2);font-variant-numeric:tabular-nums}
+.cb-social .cb-k:hover:not(:disabled){background:var(--bg-sunken,#2A2636);transform:translateY(-1px) scale(1.08)}.cb-social .cb-k:disabled{cursor:default;opacity:.55}.cb-social .cb-k.on{opacity:1;background:var(--accent-soft,#3A2F5C)}.cb-social .cb-k.pop{animation:cbpop .45s ease-out}
+@keyframes cbpop{40%{transform:scale(1.35)}}.cb-social .cb-k:focus-visible,.cb-social .cb-fr:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
+.cb-social .cb-fr{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--accent,#5B47B8);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;font-weight:600;white-space:nowrap}.cb-social .cb-fr:disabled{cursor:default;border-color:var(--line,#2A2A2E);color:var(--text-muted,#9A9AA6);font-weight:500}.cb-social .cb-fr[data-state="incoming"]{background:#8B6CF6;border-color:#8B6CF6}
 .cb-tip,#cb-need{position:absolute;z-index:100;max-width:280px;padding:8px 11px;border-radius:10px;background:#18171D;border:1px solid #2E2A40;color:#E6E6EA;font:500 12.5px/1.4 'IBM Plex Sans',Arial,sans-serif;box-shadow:0 10px 26px rgba(0,0,0,.45)}#cb-need[hidden]{display:none}
 #cb-need b{display:block;margin-bottom:6px;color:#F2F2F5}#cb-need a{display:inline-flex;margin:4px 6px 0 0;padding:5px 11px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600}#cb-need a.alt{background:transparent;border:1px solid #2E2A40;color:#E6E6EA}
-@media (max-width:620px){#caldera-bar .cb-k{padding:0 5px}#caldera-bar .cb-k i:empty{display:none}}@media (prefers-reduced-motion:reduce){#caldera-bar .cb-k.pop{animation:none}}</style>`;
+@media (max-width:620px){.cb-social .cb-k{padding:0 5px}.cb-social .cb-k i:empty{display:none}}@media (prefers-reduced-motion:reduce){.cb-social .cb-k.pop{animation:none}}</style>`;
+
+/** The social row under the person's name on their profile and city: views, kudos and Add friend belong to the person,
+ *  not to the site bar. Carries the sign-in prompt and the inline actions script. */
+export function socialRow(hub: string, handle: string, so: BarSocial): string {
+  const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
+  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
+  return BAR_ACT_CSS + `<div class="cb-row">${socialChips(base, handle, so)}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
+}
 
 /** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
  *  (public page with the owner cookie, or the private address): logo, the [Public view | Private view] switch in the same
@@ -118,16 +126,16 @@ const BAR_ACT_CSS = `<style>#caldera-bar .cb-social{display:inline-flex;align-it
 export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-  const chips = social ? socialChips(base, handle, social) : "";
+  const chips = social && !social.inPage ? socialChips(base, handle, social) : "";
   if (!own) {
     const v = social?.viewer || null;
     // anyone tapping kudos or Add friend without being signed in gets this small prompt (sign-in opens in a new window:
     // the page is sandboxed and can't navigate the top window)
-    const need = social ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
+    const need = social && !social.inPage ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
     const right = v ? `<a href="${base}/@${encodeURIComponent(v.handle)}/" title="Signed in as @${e(v.handle)}" style="color:#B8B8C2;font-size:12.5px;white-space:nowrap">@${e(v.handle)}</a>`
       : `<a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;white-space:nowrap"><span class="cb-tag">Owner? </span>Sign in</a>`;
-    return BAR_CSS + (social ? BAR_ACT_CSS : "") + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social network for GitHub and Obsidian</span></a></span>`
-      + chips + `<span class="cb-r">${right}${v ? "" : `<a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a>`}</span></div>` + need + (social ? `<script>${BAR_ACT_JS}</script>` : "");
+    return BAR_CSS + (social && !social.inPage ? BAR_ACT_CSS : "") + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social network for GitHub and Obsidian</span></a></span>`
+      + chips + `<span class="cb-r">${right}${v ? "" : `<a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a>`}</span></div>` + need + (social && !social.inPage ? `<script>${BAR_ACT_JS}</script>` : "");
   }
   const ext = own.privateExternal ? ' target="_blank" rel="noopener"' : "";
   const sw = `<span class="cb-sw" role="group" aria-label="Which view"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${own.current === "public" ? "You're viewing your public page" : "Private address: you're in your private view"}</span>`
@@ -1177,13 +1185,18 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           // signed-in members (not the owner) get inline kudos + Add friend, with an action token for this page's owner only
           const prS = byHandle(m[1]), viewer = !own && prS ? viewerFor(memberOf(req), prS) : null;
           let html = fs.readFileSync(file, "utf8");
-          const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, prS ? { ...barSocial(prS, !!own), viewer } : undefined);
+          const soc: BarSocial | undefined = prS ? { ...barSocial(prS, !!own), viewer } : undefined;
+          // views, kudos and Add friend sit under the person's name (profile) or the city title; other pages keep the bar clean
+          const rowAt = rel === "index.html" ? (/<p class="lede">[\s\S]*?<\/p>/.test(html) ? /<p class="lede">[\s\S]*?<\/p>/ : /<h1 class="title">[\s\S]*?<\/h1>/) : rel === "city.html" ? /<h1 class="c-title">[\s\S]*?<\/h1>/ : null;
+          const inPage = !!(soc && rowAt && rowAt.test(html));
+          const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, soc && (inPage || rel === "index.html" || rel === "city.html") ? { ...soc, inPage } : undefined);
           html = liveBlocks(m[1], rel, html);
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
+          if (inPage && soc && rowAt) { const hd = m[1]; html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc)); }
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
         }
