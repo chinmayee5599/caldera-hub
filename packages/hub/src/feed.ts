@@ -42,7 +42,9 @@ export const VOCAB = ["AI agents", "social features", "dev tools", "note-taking"
 export interface PostFields { type: PostType; role?: string; topic?: string; commitment?: string; what?: string; stack?: string[]; oss?: string; kind?: string; where?: string;
   offer?: string; audience?: string[]; stage?: string; link?: string; detail?: string;
   /** recommendations: what kind, its name, who it's for, and (repos) public GitHub facts the hub looked up */
-  rec?: string; name?: string; forWhom?: string; meta?: { desc?: string; stars?: number; lang?: string } }
+  rec?: string; name?: string; forWhom?: string; meta?: { desc?: string; stars?: number; lang?: string };
+  /** the simple composer (one choice + free text): `detail` is the text with its link lifted out into `link` */
+  simple?: boolean }
 const list = (v: unknown, n: number, each: number) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map(x => clean(x, each)).filter(Boolean).slice(0, n);
 const pick = <T extends Record<string, string>>(m: T, v: unknown): string | null => typeof v === "string" && Object.prototype.hasOwnProperty.call(m, v) ? v : null;
 /** server-side validation for every field; returns the clean post or an error a person can act on */
@@ -90,12 +92,50 @@ export function validatePost(b: any, linkOk: (host: string) => boolean = () => t
   return { ok: true, p };
 }
 
+/** first https link in free text (trailing punctuation dropped) */
+export const firstLink = (t: string) => { const m = String(t || "").match(/https?:\/\/[^\s"'<>]+/i); return m ? m[0].replace(/[.,;:!?)\]]+$/, "") : ""; };
+const reEsc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** vocabulary terms that appear in the text: problem spaces case-insensitively; short stack names (Go, R, C) only as written */
+export function termsIn(text: string, terms: string[], max = 6): string[] {
+  const out: string[] = [];
+  for (const t of terms) { if (!t || out.length >= max) continue; const ci = t.length > 3;
+    if (new RegExp(`(^|[^A-Za-z0-9+#])${reEsc(t)}($|[^A-Za-z0-9+#])`, ci ? "i" : "").test(text)) out.push(t); }
+  return out;
+}
+/** The simple composer: one choice (an ask kind, or a recommendation kind) and one free-text box, text only. The first
+ *  https link in the text becomes the post's link; tags and stack for matching are read out of the text. */
+export function validateSimple(b: any, linkOk: (host: string) => boolean = () => true, vocab: string[] = [], stackVocab: string[] = []): { ok: true; p: PostFields } | { ok: false; error: string } {
+  const type = TYPES.includes(b?.type) ? b.type as PostType : null;
+  if (!type) return { ok: false, error: "Pick what you're looking for or recommending." };
+  const rec = type === "recommend" ? pick(REC, b.rec) : null;
+  if (type === "recommend" && !rec) return { ok: false, error: "Pick what you're recommending." };
+  const text = clean(b.text, 280); if (text.length < 8) return { ok: false, error: type === "recommend" ? "Say what it is and why you recommend it." : "Say what you're looking for." };
+  const raw = firstLink(text); let link = "";
+  if (raw) {
+    if (!/^https:\/\//i.test(raw)) return { ok: false, error: "Links need to start with https://" };
+    const host = hostOf(raw); if (!host || !host.includes(".")) return { ok: false, error: "That link doesn't look right." };
+    if (!linkOk(host)) return { ok: false, error: "That link isn't allowed. Use the full, direct link (no link shorteners)." };
+    link = raw.slice(0, 200);
+  } else if (rec && REC_NEEDS_LINK.includes(rec)) return { ok: false, error: "Add a link (https://...) so people can find it." };
+  const detail = (link ? text.replace(raw, " ") : text).replace(/\s+/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim() || text;
+  const p: PostFields = { type, simple: true, detail, audience: termsIn(text, vocab), stack: termsIn(text, stackVocab) };
+  if (link) p.link = link;
+  if (rec) { p.rec = rec; const head = detail.split(/\s[-\u2013\u2014:]\s|[.!?](\s|$)/)[0].trim(); p.name = clean(head.length >= 2 && head.length <= 60 ? head : detail.split(" ").slice(0, 6).join(" "), 60); }
+  return { ok: true, p };
+}
+
 /** The post as one sentence: [text, slot] pieces, so the page and the share card render the same words. Used on the
  *  server and (via toString) in the composer's live preview, so keep it plain JS. */
 export function sentence(p: any): [string, boolean][] {
   var out: [string, boolean][] = [], t = function (s: string) { out.push([s, false]); }, s = function (v: string) { out.push([v, true]); };
   var c: any = { paid: "paid", equity: "equity", volunteer: "volunteer", unsure: "not sure yet" }, fb: any = { ux: "UX", code: "code", idea: "idea", pricing: "pricing" };
   var stack = (p.stack || []).join(", ");
+  if (p.simple) {
+    var K: any = { someone: "someone", code: "code", work: "work", clients: "clients", feedback: "feedback", other: "something" };
+    if (p.type === "recommend") t("recommends: "); else { t("is looking for "); s(K[p.type] || "something"); t(": "); }
+    t(p.detail || "...");
+    return out;
+  }
   if (p.type === "someone") { t("is looking for "); s(p.role || "someone"); if (p.commitment) { t(" ("); s(c[p.commitment] || p.commitment); t(")"); } if (p.topic) { t(" for "); s(p.topic); } }
   else if (p.type === "code") { t("is looking for code: "); s(p.what || "..."); if (stack) { t(" in "); s(stack); } if (p.oss === "yes") { t(" ("); s("open source"); t(")"); } }
   else if (p.type === "work") { t("is a "); s(p.role || "builder"); t(" looking for "); s(p.kind || "new"); t(" work"); if (stack) { t(" with "); s(stack); } if (p.where) { t(" · "); s(p.where); } }
@@ -105,7 +145,7 @@ export function sentence(p: any): [string, boolean][] {
   else { t("is looking for "); s(p.topic || "a hand"); }
   return out;
 }
-export const sentenceText = (handle: string, p: any) => "@" + handle + " " + sentence(p).map(x => x[0]).join("") + ".";
+export const sentenceText = (handle: string, p: any) => { const t = "@" + handle + " " + sentence(p).map(x => x[0]).join(""); return /[.!?]$/.test(t) ? t : t + "."; };
 
 /** tags a post carries for matching: its topic, audience, stack and role words, lower-cased */
 export function postTags(p: PostFields): string[] {
@@ -147,6 +187,8 @@ export interface FeedCtx {
   /** member tags from the topic-tags module, when it's installed; otherwise the page's own topics and languages */
   tagsOf?: (pr: any) => FeedTag[];
   vocab?: string[];
+  /** stack names (Next.js, Supabase...) read out of a post's free text for matching */
+  stackVocab?: string[];
   /** the topic-tags module's double opt-in introductions, when installed */
   requestIntro?: (fromId: string, to: any) => { status: number; body: any };
   decide?: (meId: string, fromId: string, yes: boolean) => { status: number; body: any };
@@ -184,7 +226,8 @@ export function feed(c: FeedCtx) {
   function createPost(meId: string, b: any): { status: number; body: any } {
     const me = c.profile(meId); if (!visible(me)) return { status: 403, body: { error: "List your page in People to post (Settings)." } };
     if (q("SELECT 1 FROM post_bans WHERE member=?").get(meId)) return { status: 403, body: { error: "Posting is turned off for this account." } };
-    const v = validatePost(b, h => M.linkAllowed(h)); if (!v.ok) return { status: 400, body: { error: v.error } };
+    const v = typeof b?.text === "string" ? validateSimple(b, h => M.linkAllowed(h), vocab(), c.stackVocab || []) : validatePost(b, h => M.linkAllowed(h));
+    if (!v.ok) return { status: 400, body: { error: v.error } };
     const day = new Date(Date.now() - DAY).toISOString();
     if ((q("SELECT COUNT(*) n FROM posts WHERE author=? AND ts > ?").get(meId, day) as any).n >= 3) return { status: 429, body: { error: "That's 3 posts today. Try again tomorrow." } };
     if (v.p.type !== "recommend" && q("SELECT 1 FROM posts WHERE author=? AND type=? AND status='open'").get(meId, v.p.type)) return { status: 409, body: { error: `You already have an open "${TYPE_LABEL[v.p.type]}" post. Close it first.` } };
@@ -436,6 +479,9 @@ export function feed(c: FeedCtx) {
 .fd-link .lc-m{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--text-muted)}.fd-link .lc-m span{white-space:nowrap}
 .fd-fam{display:flex;gap:6px;margin:0 0 12px}.fd-fam button{all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;border:1px solid var(--line);font:600 15px var(--font-display,Georgia,serif);color:var(--text-muted)}
 .fd-fam button[aria-pressed="true"]{border-color:var(--accent);color:var(--text-strong);background:var(--accent-soft)}
+.fd-comp select,.fd-comp textarea{font:15px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;box-sizing:border-box}
+.fd-comp select{margin:0 0 10px;font-weight:600;color:var(--text-strong);cursor:pointer}.fd-comp select:focus,.fd-comp textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.fd-comp textarea{min-height:84px;resize:vertical;line-height:1.5}.fd-row2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 4px}.fd-row2 .fd-hint{font-size:12.5px;color:var(--accent-text)}
 .fd-more{display:flex;justify-content:center;margin:16px 0}.fd-empty{color:var(--text-muted);text-align:center;padding:24px}
 .fd-tip{position:fixed;z-index:60;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 14px;border-radius:10px;background:var(--text-strong);color:var(--bg);font-size:14px;box-shadow:0 10px 26px rgba(0,0,0,.3)}
 .fd-shared{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--text)}
@@ -469,9 +515,9 @@ export function feed(c: FeedCtx) {
       v.mine ? `${rec ? "" : `<button type="button" class="fd-btn" data-matches>People who match</button>`}${v.status === "open" ? `<button type="button" class="fd-btn" data-close>Close</button>` : ""}<button type="button" class="fd-btn" data-delete>Delete</button>` : (viewer ? `<button type="button" class="fd-btn" data-report title="Report this post">Report</button>` : ""),
     ].join("");
     return `<article class="fd-card fd-post" data-post="${esc(v.id)}" data-url="${esc(v.url)}" data-text="${esc(v.text)}">
-<div class="fd-top">${avatarHtml(v.author)}<div style="min-width:0;flex:1"><div class="sent"><a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a> ${sent}.</div>
+<div class="fd-top">${avatarHtml(v.author)}<div style="min-width:0;flex:1"><div class="sent"><a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a> ${sent}${/[.!?]$/.test(v.sentence.map((x: any) => x[0]).join("")) ? "" : "."}</div>
 <div class="fd-meta"><span>@${esc(v.author.handle)}</span><a href="/feed/p/${esc(v.id)}"${standalone ? ' aria-current="page"' : ""}><time datetime="${esc(v.ts)}">${ago(v.ts)}</time></a>${v.status === "closed" ? "<span>closed</span>" : ""}</div></div></div>
-${v.detail ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div></article>`;
+${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec || f.simple ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div></article>`;
   }
   function actHtml(i: any) {
     const icon: Record<string, string> = { join: "\u{1F44B}", city: "\u{1F3D9}️", obsidian: "\u{1F48E}", friends: "\u{1F91D}", kudos: i.emoji || "✨", release: "\u{1F680}" };
@@ -487,29 +533,24 @@ ${v.detail ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec ? linkCard(f) 
   const itemHtml = (i: any, viewer: string | null) => i.kind === "post" ? postHtml(i.post, viewer) : actHtml(i);
 
   const SIGNIN = (back: string, inv = "") => `<div class="fd-card"><h2 style="margin:0 0 6px;font-size:16px;color:var(--text-strong)">Ask the network</h2><p style="margin:0 0 12px;color:var(--text-muted)">Looking for someone, code, work, clients or feedback? Members post here, and Caldera sends your ask to the people who fit.</p><a class="btn small" href="/auth/github?back=${encodeURIComponent(back)}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}">Sign in with GitHub to post</a> <a href="/signin?back=${encodeURIComponent(back)}" style="margin-left:10px;font-size:14px">Other ways</a></div>`;
+  /** the composer: one choice + one free-text box. Placeholders show what a good post looks like for each choice. */
+  const PH: Record<string, string> = {
+    someone: "a co-founder for a social app built on Next.js and Supabase", code: "an open-source library that parses Obsidian vaults into a graph",
+    work: "contract work building AI agents in TypeScript and Python", clients: "beta testers for an AI inbox that answers email for founders",
+    feedback: "honest feedback on my onboarding https://example.com", other: "a few people to trade notes with on building in public",
+    "recommend:repo": "Caldera - turns your GitHub into a living city https://github.com/schoettle-cmd/caldera", "recommend:model": "Claude Opus - best model I've used for long agent runs https://www.anthropic.com/claude",
+    "recommend:tool": "Claude Code - best coding agent I've used https://claude.com/claude-code", "recommend:read": "this essay on agent memory changed how I build https://...",
+    "recommend:person": "@someone - writes the clearest threads on agent evals", "recommend:other": "what you recommend, and why",
+  };
   function composerHtml() {
-    const opt = (vals: string[] | Record<string, string>, ph: string) => `<option value="">${esc(ph)}</option>` + (Array.isArray(vals) ? vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`) : Object.entries(vals).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`)).join("");
-    const dl = `<datalist id="fd-vocab">${vocab().map(v => `<option value="${esc(v)}"></option>`).join("")}</datalist>`;
-    const det = (ph: string, req = false) => `<label>The specifics${req ? "" : " (optional)"}<textarea name="detail" maxlength="280" placeholder="${esc(ph)}"></textarea><span class="fd-count" data-count>0 / 280</span></label>`;
-    const Q: Record<PostType, string> = {
-      someone: `<div class="row"><label>Who?<select name="role" required>${opt(NEED_ROLES, "Pick one")}</select></label><label>Paid, equity or volunteer?<select name="commitment" required>${opt(COMMIT as any, "Pick one")}</select></label></div>
-<label>For what project or topic?<input name="topic" maxlength="60" list="fd-vocab" placeholder="social features" required></label>${det("What they'd work on, what you have so far")}`,
-      code: `<label>What should it do?<input name="what" maxlength="200" placeholder="Parse Obsidian vaults into a graph" required></label><div class="row"><label>Language or stack (commas)<input name="stack" maxlength="140" placeholder="TypeScript, Node"></label><label>Open source only?<select name="oss">${opt({ no: "Doesn't matter", yes: "Yes, open source only" }, "Doesn't matter")}</select></label></div>`,
-      work: `<div class="row"><label>Your role<select name="role" required>${opt(MY_ROLES, "Pick one")}</select></label><label>Kind of work<select name="kind" required>${opt(WORK_KIND as any, "Pick one")}</select></label></div>
-<div class="row"><label>Skills or stack (commas)<input name="stack" maxlength="140" placeholder="React, Python, LLMs"></label><label>Remote or location (optional)<input name="where" maxlength="60" placeholder="Remote"></label></div>${det("What you've built, what you want next")}`,
-      clients: `<label>What do you offer? (one line)<input name="offer" maxlength="120" placeholder="An AI inbox that answers email for you" required></label><div class="row"><label>Who it's for (commas)<input name="audience" maxlength="140" list="fd-vocab" placeholder="founders, creators"></label><label>Stage<select name="stage" required>${opt(STAGE as any, "Pick one")}</select></label></div>${det("What you're looking for from early users")}`,
-      feedback: `<div class="row"><label>What kind?<select name="kind" required>${opt(FB_KIND as any, "Pick one")}</select></label><label>Link (optional)<input name="link" maxlength="200" inputmode="url" placeholder="https://..."></label></div>${det("What you'd like people to look at", true)}`,
-      other: `<label>Topic (optional)<input name="topic" maxlength="60" list="fd-vocab" placeholder="AI agents"></label>${det("What are you looking for?", true)}`,
-      recommend: `<div class="row"><label>What is it?<select name="rec" required>${opt(REC as any, "Pick one")}</select></label><label>Its name<input name="name" maxlength="60" placeholder="Claude Code" required></label></div>
-<label>Link (https://, required for repos, models, tools and reads)<input name="link" maxlength="200" inputmode="url" placeholder="https://github.com/owner/repo"></label>
-<label>Why you recommend it<textarea name="detail" maxlength="200" placeholder="It cut my agent setup from a day to an hour" required></textarea><span class="fd-count" data-count data-max="200">0 / 200</span></label>
-<div class="row"><label>Tags or stack (commas)<input name="stack" maxlength="140" list="fd-vocab" placeholder="AI agents, TypeScript"></label><label>For whom (optional)<input name="forWhom" maxlength="60" placeholder="anyone building agents"></label></div>`,
-    };
-    return `<section class="fd-card fd-comp" aria-label="Post to the network"><div class="fd-fam" role="group" aria-label="What kind of post"><button type="button" data-family="ask" aria-pressed="true">I'm looking for...</button><button type="button" data-family="rec" aria-pressed="false">I recommend...</button></div>
-<div class="fd-types" data-asks role="group" aria-label="What are you looking for">${ASK_TYPES.map(t => `<button type="button" data-type="${t}" aria-pressed="false">${esc(TYPE_LABEL[t])}</button>`).join("")}</div><small class="fd-hint" data-hint>Pick one to start.</small>
-${dl}${TYPES.map(t => `<form class="fd-q" data-form="${t}" hidden novalidate>${Q[t]}</form>`).join("")}
+    const asks = ASK_TYPES.map(t => `<option value="${t}">${esc(t === "someone" ? "someone (collaborator, co-founder, hire)" : t === "other" ? "something else" : t)}</option>`).join("");
+    const recs = Object.entries(REC).map(([k, v]) => `<option value="recommend:${k}">${esc(v)}</option>`).join("");
+    return `<section class="fd-card fd-comp" aria-label="Post to the network">
+<div class="fd-one"><label class="fd-sr" for="fd-kind">What kind of post</label><select id="fd-kind" data-kind><option value="">What's your post about?</option><optgroup label="I'm looking for...">${asks}</optgroup><optgroup label="I recommend...">${recs}</optgroup></select></div>
+<label class="fd-sr" for="fd-text">Your post</label><textarea id="fd-text" data-text maxlength="280" rows="3" placeholder="Pick one above, then say it in your own words"></textarea>
+<div class="fd-row2"><span class="fd-count" data-count>0 / 280</span><span class="fd-hint" data-hint hidden>Add a link (https://...) so people can find it.</span></div>
 <div class="fd-prev" data-prev hidden></div><p class="fd-err" data-err hidden></p>
-<div class="fd-foot" data-foot hidden><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri" data-post-it>Post</button></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
+<div class="fd-foot" data-foot><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri" data-post-it>Post</button></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
   }
   const SCRIPT = (me: string | null, invite: string) => `<script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
 ${sentence.toString()}
@@ -544,20 +585,17 @@ var cl=$('[data-close]',card);if(cl)cl.addEventListener('click',function(){api('
 var de=$('[data-delete]',card);if(de)de.addEventListener('click',function(){if(de.getAttribute('data-sure')!=='1'){de.setAttribute('data-sure','1');de.textContent='Delete for good?';return}api('/v1/posts/'+pid+'/delete',{}).then(function(x){if(x.ok){card.remove();tip('Deleted')}})});
 var rp=$('[data-report]',card);if(rp)rp.addEventListener('click',function(){if(rp.getAttribute('data-sure')!=='1'){rp.setAttribute('data-sure','1');rp.textContent='Report it?';return}api('/v1/posts/'+pid+'/report',{reason:'reported from the feed'}).then(function(x){if(x.ok){rp.textContent='Reported';rp.disabled=true;tip('Thanks. We will take a look.')}})})}
 $$('.fd-post').forEach(wire);
-// the composer
-var comp=$('.fd-comp'),TYPE=null;if(comp){var prev=$('[data-prev]',comp),err=$('[data-err]',comp),foot=$('[data-foot]',comp);
-function form(){return TYPE?$('[data-form="'+TYPE+'"]',comp):null}
-function vals(){var f=form(),o={type:TYPE};if(!f)return o;$$('input,select,textarea',f).forEach(function(i){o[i.name]=i.value.trim()});['stack','audience'].forEach(function(k){if(o[k]!=null)o[k]=o[k].split(',').map(function(s){return s.trim()}).filter(Boolean).slice(0,6)});return o}
-function render(){if(!TYPE){prev.hidden=true;return}var p=vals();prev.hidden=false;prev.textContent='';var b=document.createElement('b');b.textContent=(ME?'@'+INV:'You')+' ';prev.appendChild(b);
-sentence(p).forEach(function(x){var s=document.createElement('span');if(x[1])s.className='slot';s.textContent=x[0];prev.appendChild(s)});prev.appendChild(document.createTextNode('.'));if(p.detail){var d=document.createElement('div');d.style.cssText='margin-top:6px;color:var(--text-muted)';d.textContent=p.detail;prev.appendChild(d)}
-$$('[data-count]',form()).forEach(function(c){var ta=c.parentNode.querySelector('textarea');c.textContent=(ta?ta.value.length:0)+' / '+(c.getAttribute('data-max')||280)})}
-function pickType(t){TYPE=t;$$('[data-type]',comp).forEach(function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-type')===t))});$$('[data-form]',comp).forEach(function(f){f.hidden=f.getAttribute('data-form')!==t});$('[data-hint]',comp).textContent=t==='recommend'?'Share something worth knowing about. The people it fits best hear about it.':t?HINT[t]:'Pick one to start.';foot.hidden=!t;err.hidden=true;render();if(t){var f=form().querySelector('input,select,textarea');if(f)f.focus()}}
-$$('[data-family]',comp).forEach(function(b){b.addEventListener('click',function(){var rec=b.getAttribute('data-family')==='rec';$$('[data-family]',comp).forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});$('[data-asks]',comp).hidden=rec;pickType(rec?'recommend':null)})});
-$$('[data-type]',comp).forEach(function(b){b.addEventListener('click',function(){pickType(b.getAttribute('data-type'))})});
-comp.addEventListener('input',render);comp.addEventListener('change',render);
-$('[data-post-it]',comp).addEventListener('click',function(){var btn=this;btn.disabled=true;err.hidden=true;api('/v1/posts',vals()).then(function(x){btn.disabled=false;if(!x.ok){err.textContent=x.j.error||'Could not post';err.hidden=false;return}
-location.hash='';var list=$('.fd-list');var tmp=document.createElement('div');tmp.innerHTML=x.j.html;var card=tmp.firstElementChild;if(list&&card){list.insertBefore(card,list.firstChild);wire(card)}
-$$('input,textarea',form()).forEach(function(i){i.value=''});$$('select',form()).forEach(function(s){s.selectedIndex=0});render();var nm=$('[data-newmatch]');if(x.j.notified){nm.hidden=false;nm.textContent='';var h=document.createElement('h2');h.textContent=x.j.notified.length?'Shared with '+x.j.notified.length+' people it fits':'Posted to the feed';nm.appendChild(h);
+// the composer: one choice + one text box
+var comp=$('.fd-comp');if(comp){var prev=$('[data-prev]',comp),err=$('[data-err]',comp),sel=$('[data-kind]',comp),ta=$('[data-text]',comp),cnt=$('[data-count]',comp),hint=$('[data-hint]',comp),PH=${JSON.stringify(PH)},NEEDLINK=${JSON.stringify(REC_NEEDS_LINK)};
+function vals(){var k=sel.value||'',o={text:ta.value.trim()};if(k.indexOf('recommend:')===0){o.type='recommend';o.rec=k.slice(10)}else o.type=k;return o}
+function link(t){var m=t.match(/https?:\\/\\/[^\\s"'<>]+/i);return m?m[0].replace(/[.,;:!?)\\]]+$/,''):''}
+function render(){var o=vals(),l=link(o.text);cnt.textContent=ta.value.length+' / 280';hint.hidden=!(o.type==='recommend'&&NEEDLINK.indexOf(o.rec)>=0&&o.text.length>3&&!/^https:/.test(l));
+if(!o.type||!o.text){prev.hidden=true;return}var d=(l?o.text.replace(l,' '):o.text).replace(/\\s+/g,' ').replace(/\\s+([.,;:!?])/g,'$1').trim();prev.hidden=false;prev.textContent='';var b=document.createElement('b');b.textContent=(ME?'@'+INV:'You')+' ';prev.appendChild(b);
+sentence({simple:true,type:o.type,detail:d||o.text}).forEach(function(x){var s=document.createElement('span');if(x[1])s.className='slot';s.textContent=x[0];prev.appendChild(s)});if(l){var c=document.createElement('div');c.style.cssText='margin-top:6px;color:var(--text-muted);font-size:13px';try{c.textContent='Link: '+new URL(l).hostname.replace(/^www\\./,'')}catch(x){c.textContent='Link: '+l}prev.appendChild(c)}}
+sel.addEventListener('change',function(){ta.placeholder=PH[sel.value]||'Pick one above, then say it in your own words';err.hidden=true;render();ta.focus()});ta.addEventListener('input',render);
+$('[data-post-it]',comp).addEventListener('click',function(){var btn=this,o=vals();err.hidden=true;if(!o.type){err.textContent='Pick what your post is about.';err.hidden=false;sel.focus();return}btn.disabled=true;api('/v1/posts',o).then(function(x){btn.disabled=false;if(!x.ok){err.textContent=x.j.error||'Could not post';err.hidden=false;return}
+var list=$('.fd-list');var tmp=document.createElement('div');tmp.innerHTML=x.j.html;var card=tmp.firstElementChild;if(list&&card){list.insertBefore(card,list.firstChild);wire(card)}
+ta.value='';sel.selectedIndex=0;ta.placeholder='Pick one above, then say it in your own words';render();var nm=$('[data-newmatch]');if(x.j.notified){nm.hidden=false;nm.textContent='';var h=document.createElement('h2');h.textContent=x.j.notified.length?'Shared with '+x.j.notified.length+' people it fits':'Posted to the feed';nm.appendChild(h);
 x.j.notified.forEach(function(m){var r=document.createElement('div');r.className='fd-m';var t=document.createElement('div');t.className='t';var b=document.createElement('b');b.textContent=m.name;t.appendChild(b);var sm=document.createElement('small');sm.textContent='@'+m.handle+' \u00b7 '+m.why;t.appendChild(sm);r.appendChild(t);nm.appendChild(r)})}
 else matchesInto(nm,x.j.matches||[],x.j.post.id);nm.scrollIntoView({behavior:'smooth',block:'nearest'});tip('Posted')})})}
 // "For you": answers

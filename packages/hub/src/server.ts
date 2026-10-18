@@ -1405,7 +1405,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
 
   FEED = feed({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, listed, modOf, areFriends, befriend: (a, b, kind, ts, why) => { befriend(a, b, kind, ts, why); worldCache = null; },
     memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags,
-    tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
+    tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, stackVocab: ext.tagVocab().stack, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "feed" }); },
     postCard: async (o) => toPng(postCardSvg({ ...o, host: hubUrl().replace(/^https?:\/\//, "") })),
     fetch: opts.githubFetch || fetch, ghToken: () => GH.anyToken(), hasRepos: (pr: any) => !!cityOf(pr.handle)?.buildings });
