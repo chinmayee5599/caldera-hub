@@ -6,7 +6,7 @@ URL: https://caldera.social/github-profile-city
 Sign up at caldera.social with GitHub and Caldera builds a city from your repos in about 30 seconds, with nothing to install. Each building is a repo, its height grows with your commits over the last year, and windows light up for repos you committed to this week. The city sits on a public profile page that rebuilds from GitHub every 6 hours, and it can show visitors to your sites and your AI agents live.
 
 ### What you get
-A city of your repos. Buildings are repos and districts group them. Public repos are named and link to GitHub. Private repos, only if you want. Install the Caldera GitHub app on the repos you choose. They appear as padlocked buildings with no names. The app has read-only access to repository metadata and cannot open your files. Live visitors. Add one script tag to a site and its visitors parachute into your city as they arrive; signups and sales get their own celebrations. AI agents as drones. A small hook shows your coding agents over the repo they are working in. The time of day. The sky follows the viewer's clock, from dawn to night. Pop the city out into a small window and watch it all day. People. Add friends, start a group at caldera.social/g/name, and get a daily summary by email.
+A city of your repos. Buildings are repos and districts group them. Public repos are named and link to GitHub. Private repos, your way. Install the Caldera GitHub app on the repos you choose. By default they appear as padlocked buildings with no names; switch to anonymous (one separate padlocked district) or hidden in Settings. The app has read-only access to repository metadata and cannot open your files. Live visitors. Add one script tag to a site and its visitors parachute into your city as they arrive; signups and sales get their own celebrations. AI agents as drones. A small hook shows your coding agents over the repo they are working in. The time of day. The sky follows the viewer's clock, from dawn to night. Pop the city out into a small window and watch it all day. People. Follow builders (follow each other and you are friends), message them, post on the Feed , start a group at caldera.social/g/name, and get a daily summary by email.
 
 ### How to do it
 Go to caldera.social/auth/github and sign in with GitHub. Brand-new, empty GitHub accounts wait a few days before they can sign up. Your page and city are built from your public repos and open on your account page. Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.
@@ -25,10 +25,10 @@ A: On your account page, choose Delete my Caldera profile. Your page is erased a
 ## What is Caldera?
 URL: https://caldera.social/what-is-caldera
 
-Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only "gravity". It is private by default
+Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile. Members follow each other (mutual follows are friends), message each other, post what they need or recommend on the Feed, join groups and share notes end-to-end encrypted. It is private by default
 
 ### What Caldera does
-GitHub city. Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names. Living profile. With Obsidian, a public page built on your own device from your vault and republished automatically. Friends between vaults. Add friends by handle. Share any note as an end-to-end encrypted card that lands in their vault as a normal note. Help exchange. Post asks ("I could use help with...") and offers, with optional help-credit bounties. Credits have no cash value. Gravity. Positive-only recognition that fades over a month. No likes, downvotes or follower counts. AI-native setup. One copy-paste prompt lets Claude Code, Codex or Cursor install it and run a daily journal routine.
+GitHub city. Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names. Living profile. With Obsidian, a public page built on your own device from your vault and republished automatically. Follow and friends. Follow anyone; when you follow each other you are friends. Friends can share any note as an end-to-end encrypted card that lands in their vault as a normal note. Feed and messages. Post "I need..." or "I recommend..." and it reaches the people who match. Message members directly; strangers send a request first. Kudos and views. One-tap kudos and a view count on every page. AI-native setup. One copy-paste prompt lets Claude Code, Codex or Cursor install it and run a daily journal routine.
 
 ### Who makes it
 Caldera is built by mjonesone, LLC. The plugin and core library are MIT-licensed, the reference hub is AGPL-3.0 and self-hostable, and the protocol is open. Source: github.com/schoettle-cmd/caldera .
@@ -88,10 +88,10 @@ A: A delivered note is a copy in your friend's vault, like an email. You can sto
 ## Is there a social network for Obsidian users?
 URL: https://caldera.social/obsidian-social-network
 
-Yes. Caldera is an open-source social layer built for Obsidian: every member gets a living profile generated from their vault, vaults can befriend each other and share end-to-end encrypted notes, people post asks and offers for help, and a People directory at caldera.social/people lets you browse profiles by what people work on. There are no likes or follower counts; recognition is a positive-only score called gravity.
+Yes. Caldera is an open-source social layer built for Obsidian: every member gets a living profile generated from their vault, members follow each other (mutual follows are friends) and share end-to-end encrypted notes, post what they need or recommend on the Feed, and a People directory at caldera.social/people lets you browse profiles by what people work on.
 
 ### How it differs from a normal social network
-Your vault is the source. Profiles are built from your own notes on your own device, not typed into a website. Private by default. Only the sections and notes you switch on are published. Open protocol. Identity is a key in your vault; the hub is open source and self-hostable. Built for helping. Asks, offers and help credits instead of feeds and engagement.
+Your vault is the source. Profiles are built from your own notes on your own device, not typed into a website. Private by default. Only the sections and notes you switch on are published. Open protocol. Identity is a key in your vault; the hub is open source and self-hostable. Built for finding people. Feed posts reach the members who match what you need, not an engagement-ranked timeline.
 
 ### Where Obsidian users talk today
 The official Obsidian forum and Discord, and the r/ObsidianMD subreddit, are where the community discusses the app. Caldera complements them: it is about connecting vaults and showing your work, not discussion threads.
@@ -189,7 +189,7 @@ Caldera adds a GitHub-style 26-week activity heatmap, a daily activity score, st
 Notes created and changed each day come from the vault itself. Outside activity comes from Caldera/activity.json , which your AI agent or scripts can fill with counts. Only numbers are published.
 
 ### Compete with friends, positively
-The leaderboard ranks you against friends by points this week. There are no downvotes; recognition is gravity, a positive-only score that fades over a month so recent help counts most.
+The leaderboard ranks you against friends by points this week. There are no downvotes, and points come only from your own activity.
 
 ### Questions
 Q: How is the score calculated?
@@ -198,3 +198,716 @@ Q: Can I hide the heatmap?
 A: Yes. Every section can be switched off in Caldera/profile.md.
 Q: Does it work on mobile?
 A: Yes. The plugin runs on Obsidian desktop and mobile, and profiles are responsive.
+
+## GitHub city: your repos as a living city
+URL: https://caldera.social/github-city
+
+A GitHub city is a visualization where every repository is a building and related repos form districts, so a developer's body of work reads like a skyline. On Caldera, open caldera.social/gh/<username> to see any public GitHub account as a city, or sign up with GitHub to get a live city that updates itself.
+
+### How a GitHub city reads
+Buildings are repos. Height grows with commits over the last year, so the work you actually do stands tallest. Districts group repos. On a member's city a district is a project; on a quick preview it is a language. Lit windows mean commits this week. A crane means a repo is being built right now. Private repos appear only if the owner adds them, as padlocked buildings with no names (or anonymous, or hidden). The sky follows the viewer's clock and local weather, from dawn to night.
+
+### See any GitHub as a city
+Go to caldera.social/gh . Type a GitHub username and press See the city . Caldera draws a preview from public data only: public repos, languages and recent commit activity. Previews refresh daily. If the account already belongs to a Caldera member, you go straight to their real city instead.
+
+### Get your own live city
+Sign up with GitHub and your city lives on your own page at caldera.social/@you/city.html. It rebuilds from GitHub every 6 hours, shows visitors to your websites as they arrive, and shows your AI coding agents as drones over the repos they are working in. See Turn your GitHub into a living city . Try it on any public GitHub account at caldera.social/gh , or sign up with GitHub to get your own live city.
+
+### A city of cities
+Every member's city also sits on one shared map, the World , where friendships show as rays of light between cities.
+
+### Questions
+Q: Is a GitHub city free?
+A: Yes. Previews and your own city on Caldera are free.
+Q: Does Caldera read my code?
+A: No. It uses repo names, languages, sizes and commit counts. It never opens file contents.
+Q: Why does a preview look smaller than my real work?
+A: Previews count the 20 most recently pushed public repos in detail and cannot see organization repos or private work. Your own city can include organization and private repos you add.
+Q: Can I remove a preview of my account?
+A: Yes. Claim it by signing up with GitHub, or email hello@caldera.social and it is removed.
+Q: Does it work for organizations?
+A: Not yet. Previews are for personal GitHub accounts.
+
+## How to visualize your GitHub activity
+URL: https://caldera.social/visualize-github-activity
+
+The simplest view of GitHub activity is the contribution graph on your profile, which counts contributions per day for a year. To see what you worked on, not just when, use a repo-level view such as a GitHub city on Caldera, where each repo is a building that grows with commits and lights up when it is active this week.
+
+### Four common ways
+View Shows Best for Contribution graph (built into GitHub) Contributions per day, last year Consistency at a glance README stats cards Totals, top languages, streaks A quick summary on your profile 3D contribution models A year of contributions as a shape A one-off keepsake A GitHub city (Caldera) Every repo as a building, grouped into districts, live activity Seeing what you build and where you are active now
+
+### Try the city view in 10 seconds
+Open caldera.social/gh . Enter your GitHub username. Read the city: tall buildings are your most committed repos this year, lit windows are this week, cranes are being built right now.
+
+### Go further: make it live
+Sign up with GitHub and your city becomes a page that updates itself. Add a one-line script to your websites and visitors parachute into the district for that site. Add the Claude Code hook and your coding agents fly over the repos they are editing. See Visualize your AI coding agents .
+
+### Put it on your profile
+Add the Caldera badge to your GitHub profile README so visitors can open your city in one click. See GitHub README badge .
+
+### Questions
+Q: What is the best way to visualize GitHub activity?
+A: Use the contribution graph for consistency and a repo-level view, such as a GitHub city, for what you actually work on.
+Q: Can I visualize someone else's GitHub?
+A: Yes, from public data: open caldera.social/gh/<username>.
+Q: Does it include private repos?
+A: Only on your own city, and only if you add them; they appear without names.
+Q: How often does it update?
+A: Previews refresh daily. Members' cities rebuild from GitHub every 6 hours, and live visitors and agents show in real time.
+
+## An alternative to the GitHub contribution graph
+URL: https://caldera.social/github-contribution-graph-alternative
+
+GitHub's contribution graph shows how many contributions you made each day, but not which projects they went into. Caldera's GitHub city is a complementary view: each repo is a building that grows with its commits over the year, districts group related repos, and lit windows show what you touched this week.
+
+### What the contribution graph is good at
+The green grid on every GitHub profile is a fast read on consistency: busy days are darker, streaks are visible, and it covers a full year. It counts contributions, so one big week on a side project looks the same as one big week on your main product.
+
+### What a city adds
+Where the work went. Each repo is its own building, so your main projects stand out. Shape of a career. Districts group repos into projects (or languages on a preview). Right now. Windows light up for this week's commits and cranes mark repos being built today. Live. On a member's city, website visitors and AI coding agents appear as they happen.
+
+### Side by side
+Contribution graph Caldera city Unit Day Repo Window Last 12 months Last 12 months, plus this week and today Private work Optional count Optional, padlocked with no names, or hidden Live activity No Visitors and AI agents
+
+### Try it
+Try it on any public GitHub account at caldera.social/gh , or sign up with GitHub to get your own live city.
+
+### Questions
+Q: Does Caldera replace the contribution graph?
+A: No. It sits alongside it. Many people link their city from their GitHub README.
+Q: Will private contributions show?
+A: Only if you add private repos to your own city, and never with names.
+Q: Is it accurate?
+A: Commit counts come from GitHub's own statistics. Previews count the 20 most recently pushed public repos in detail.
+Q: Is it free?
+A: Yes.
+
+## A GitHub Skyline alternative that stays live
+URL: https://caldera.social/github-skyline-alternative
+
+GitHub Skyline turned a year of contributions into a 3D model you could look at or print. If you want something that keeps updating, Caldera turns your repos into a living city: each repo is a building, this week's work lights the windows, and your page refreshes from GitHub on its own.
+
+### Snapshot versus living view
+A skyline model is a snapshot of one year of contribution counts. A Caldera city is per repo and keeps changing: it rebuilds from GitHub every 6 hours, the sky follows the viewer's time and weather, and live events (visitors to your sites, your coding agents) appear as they happen.
+
+### What you can do with a city
+Share it: every city has a link preview image for X, LinkedIn and chat apps. Embed a badge in your README that opens it. Pop it out into a small window and keep it on screen all day. See it next to everyone else's on the World map.
+
+### Make one now
+Open caldera.social/gh and enter your username for an instant preview. Click Claim it with GitHub to turn the preview into your own live city.
+
+### Questions
+Q: Can I print my Caldera city?
+A: Not as a 3D file today. You can share it, embed it and pop it out on screen.
+Q: Is it per year or per repo?
+A: Per repo: building height reflects that repo's commits over the last year.
+Q: Does it need any install?
+A: No. Sign up with GitHub in your browser.
+Q: Is it free?
+A: Yes.
+
+## Add a GitHub city badge to your README
+URL: https://caldera.social/github-readme-badge
+
+Caldera gives every GitHub account a README badge at caldera.social/gh/<username>/badge.svg that shows public repos and commits in the last year and links to your GitHub city. Add ?style=card for a larger skyline card. Members can use caldera.social/@<handle>/badge.svg.
+
+### Copy the snippet
+Replace you with your GitHub username and paste into your profile README (the repo named after your username): [![My GitHub city on Caldera](https://caldera.social/gh/you/badge.svg)](https://caldera.social/gh/you) For the skyline card: [![My GitHub city on Caldera](https://caldera.social/gh/you/badge.svg?style=card)](https://caldera.social/gh/you)
+
+### Members: use your page
+Once you sign up, use your handle so the badge opens your live city: https://caldera.social/@handle/badge.svg . The snippet with your own handle is in Settings , ready to copy.
+
+### What it shows
+Public repo count and commits in the last year, from public GitHub data. No private repo names, ever. Cached for about an hour, so it stays fast on your profile.
+
+### More profile ideas
+See GitHub profile README ideas for other sections that make a profile worth reading.
+
+### Questions
+Q: Is the badge free?
+A: Yes.
+Q: Will it slow down my README?
+A: No. It is a small SVG image served with caching.
+Q: Does it work in other places?
+A: Anywhere that shows images: READMEs, personal sites, docs.
+Q: What does it link to?
+A: Your GitHub city preview, or your live Caldera city if you use your member handle.
+
+## GitHub profile README ideas
+URL: https://caldera.social/github-profile-readme-ideas
+
+A good GitHub profile README says who you are in one line, what you are building now, and where to see your best work, then gives one clear way to reach you. Visuals help when they show real work: a GitHub city badge from Caldera links visitors to every repo you build, sized by recent commits.
+
+### A simple structure
+One line: what you build and for whom. Now: two or three things you are working on this month. Best work: links to the repos or products you want judged by. A visual: your activity as an image that opens somewhere useful. Contact: one channel you actually check.
+
+### Add your GitHub city
+[![My GitHub city on Caldera](https://caldera.social/gh/you/badge.svg?style=card)](https://caldera.social/gh/you) The card shows public repos and commits this year and opens your city. See GitHub README badge .
+
+### Keep it current without effort
+A README goes stale when it depends on you remembering to edit it. Link to something that updates itself: a Caldera page rebuilds from GitHub every 6 hours, and with Obsidian it also carries a daily journal written from your notes.
+
+### Avoid
+Walls of badges with no meaning. Lists of every technology you have touched. Stats with no link to the work behind them.
+
+### Questions
+Q: How do I create a profile README?
+A: Create a public repo with the same name as your username and add a README.md; GitHub shows it on your profile.
+Q: What should I put first?
+A: One line on what you build, then what you are working on now.
+Q: Are visual stats worth it?
+A: Yes, when they link to the work. A city badge opens every repo you build.
+Q: Is the Caldera badge free?
+A: Yes.
+
+## Show your GitHub stats on a portfolio
+URL: https://caldera.social/github-stats-for-portfolio
+
+The GitHub stats that help a portfolio are the ones that point to real work: active repos, commits this year, languages and what you shipped recently. Caldera turns those into a page and a city that update themselves, so your portfolio links to something current instead of a screenshot.
+
+### What to include
+Commits in the last year and how many repos they went into. Your top languages. Which projects are active this week. Links to the repos and live products behind the numbers.
+
+### What Caldera builds for you
+Sign up with GitHub and your page shows a Code section (commits, repos, languages and a weekly bar chart), your projects with links, a scoreboard and your city. Visitors see public work by name; private repos you add appear without names. Embed a badge on your own site with caldera.social/@you/badge.svg .
+
+### Steps
+Sign up with GitHub . Edit your headline and links in Settings. Link caldera.social/@you from your portfolio, or add the badge.
+
+### Questions
+Q: Do stats impress hiring managers?
+A: Stats alone rarely do; stats that link to real, current work help.
+Q: Will private client work show?
+A: Only if you add it, and only as padlocked buildings with no names, or not at all.
+Q: Can I preview before signing up?
+A: Yes: caldera.social/gh/<username>.
+Q: Is it free?
+A: Yes.
+
+## A LinkedIn for developers
+URL: https://caldera.social/linkedin-for-developers
+
+LinkedIn is built around job titles and posts. Caldera is a professional profile for developers built from the work itself: sign up with GitHub and your repos become a living city, your page shows commits, languages and AI usage, and people find and follow you by what you build.
+
+### How it differs
+Typical professional network Caldera Profile source What you type Your GitHub (and optionally your Obsidian vault), updated automatically Proof of work Endorsements and posts Repos, commits, AI coding activity Connections Requests Follow; follow each other and you are friends Finding people Search by title Search by what people build; Feed posts matched to people
+
+### What you get
+A page at caldera.social/@you with your city, code stats and projects. Friends, followers and following counts, kudos and views. Feed posts: "I need..." and "I recommend..." go to the people who match. Direct messages, with a request first for people who aren't friends yet. A listing in People , searchable by what you build.
+
+### Start
+Sign up with GitHub (about 30 seconds). Add a headline and links. Follow a few builders you know from People or the World .
+
+### Questions
+Q: Is Caldera a replacement for LinkedIn?
+A: It is a complement focused on builders: it shows the work behind the title.
+Q: Do I need Obsidian?
+A: No. GitHub alone gives you a page and a city. Obsidian adds a journal, AI usage and encrypted note sharing.
+Q: Can recruiters message me?
+A: Members can send you one message request; you accept, ignore or block it.
+Q: Is it free?
+A: Yes.
+
+## A LinkedIn alternative for AI builders
+URL: https://caldera.social/linkedin-alternative-for-ai-builders
+
+Caldera is a professional network for people who build with AI. Your page shows what you actually ship and how you build: repos as a living city, AI token usage by model, and your coding agents flying over the repos they work in, so others can judge AI development skill from real activity.
+
+### Signals that matter for AI builders
+What you ship: repos, commits and projects from GitHub. How you build: AI usage by model and provider (counts only) from Claude Code and Codex logs, via the Obsidian plugin. What you build with: "what I'm building" tags worked out from your public repos, like AI agents or Next.js. Right now: live drones for your coding agents on your city.
+
+### Find and be found
+Search People by tag, post "I need..." on the Feed to reach people who match, or browse everyone's cities on the World . Follow people; when they follow back, you are friends.
+
+### Privacy
+Prompts, file names and code are never published. Private repos never show names. See Show private GitHub activity safely .
+
+### Questions
+Q: What does AI usage show?
+A: Tokens by model and provider and a daily chart. Never prompts, file names or costs.
+Q: Do I need to use Claude Code?
+A: No. Any GitHub user can sign up; AI usage and agent drones are extras.
+Q: Is it only for AI engineers?
+A: It is for anyone who builds with AI tools, from engineers to designers who code.
+Q: Is it free?
+A: Yes.
+
+## A social network for developers
+URL: https://caldera.social/developer-social-network
+
+Caldera is a social network for developers built on GitHub and Obsidian. Each member gets a living profile and a GitHub city, follows other builders (mutual follows are friends), posts what they need or recommend on a Feed that reaches the people who match, and messages people directly.
+
+### The pieces
+Profile and city at caldera.social/@you, rebuilt from GitHub. Follow anyone; friends follow each other. Counts show under every name. Feed : two buttons, "I need..." and "I recommend...", plus a few words. Posts go to members whose work matches. Messages : friends write directly; others send one request first. World : every member's city on one map, friendships as rays of light. Groups : a town of cities at caldera.social/g/name for a team, class or community.
+
+### Built differently
+Your profile comes from your work, not a form. With the Obsidian plugin it is generated on your own device from your vault and only what you switch on is published. The protocol, plugin and core library are open source.
+
+### Join
+Sign up with GitHub , or preview any account at caldera.social/gh .
+
+### Questions
+Q: Is there a feed of everything?
+A: Yes, the Feed shows posts, recommendations, new members and new cities, and posts are matched to the people they fit.
+Q: Can I stay unlisted?
+A: Yes. Your page then works only for people with the link.
+Q: Is it open source?
+A: The plugin, core library and protocol are open source; the hub is self-hostable.
+Q: Is it free?
+A: Yes.
+
+## Find AI engineers by what they build
+URL: https://caldera.social/find-ai-engineers
+
+To find AI engineers, look at what they build rather than what they call themselves. On Caldera you can search People by tags worked out from public repos (like AI agents or LLM apps), open each person's GitHub city and AI usage, and post an "I need..." on the Feed that goes straight to members who match.
+
+### Three ways to search
+People: open caldera.social/people and search a tag such as AI agents, RAG or MCP. Feed: post "I need someone who..." on the Feed ; Caldera sends it to members whose tags match. World: browse everyone's cities on the World map and open the ones that look busy.
+
+### What to look at
+Repos and commits this year in their city and Code section. Which projects are active this week (lit windows, cranes). AI usage by model, for members who show it. Their posts and recommendations on the profile's activity card.
+
+### Reach out
+Tap Message on their page or post. If you don't follow each other yet, they receive one request and can accept, ignore or block it.
+
+### Questions
+Q: Can I search by technology?
+A: Yes. Tags come from public repo topics, descriptions, READMEs and dependencies.
+Q: Do candidates know I viewed them?
+A: No. Owners see a view count, not who viewed.
+Q: Can I post a job?
+A: Post "I need..." on the Feed with a few words; it reaches members who match.
+Q: Is it free?
+A: Yes.
+
+## Find a technical cofounder
+URL: https://caldera.social/find-a-technical-cofounder
+
+The best signal for a technical cofounder is recent, sustained building in your area. On Caldera, post "I need a technical cofounder for..." on the Feed and it reaches members whose work matches; then judge each person by their GitHub city, commits this year and the projects active this week.
+
+### Steps
+Sign up and fill in your headline so people know what you are building. On the Feed , tap I need... , pick someone and describe the role in a sentence. Read the matches: open their cities and Code sections. Follow and message the people who fit. Non-friends receive a single request.
+
+### What to check before a first call
+Do they ship regularly? Look at commits this year and lit windows this week. Do they finish? Look for projects with live links. Do they work in your stack? Check their tags and languages.
+
+### Also try
+Search People by tag, and see Find AI engineers .
+
+### Questions
+Q: How many posts can I make?
+A: Up to three a day, with one open post of each type.
+Q: Is my post public?
+A: Yes, Feed posts are public and shareable.
+Q: Can I message someone directly?
+A: Yes. If you are not friends, they get one request to accept or ignore.
+Q: Is it free?
+A: Yes.
+
+## Follow developers and see what they build
+URL: https://caldera.social/follow-developers
+
+On Caldera you follow a developer with one tap on their page. If they follow you back you become friends, which unlocks encrypted note sharing for Obsidian members. Every page shows friends, followers and following counts, and new followers get an alert and a line in their daily email.
+
+### How following works
++ Follow on anyone's page. The button then reads Following ; tap it twice to unfollow. If they already follow you, the button says Follow back , and following back makes you friends at once. Counts under the name: friends, followers, following. People who share public GitHub repos with you can be connected automatically (you can turn that off).
+
+### Where to find people to follow
+People , searchable by what they build. The World map of every city. The Feed : new members, new cities and posts.
+
+### What friends get
+Friends can message without a request, appear on each other's leaderboard, and (with Obsidian) share notes as end-to-end encrypted cards that land in the other vault.
+
+### Questions
+Q: Is following public?
+A: The counts are public. Lists of who follows whom are not shown.
+Q: What is the difference between a follower and a friend?
+A: A friend is someone you follow who follows you back.
+Q: Will people know I followed them?
+A: Yes. They get one alert and it appears in their daily email.
+Q: Is it free?
+A: Yes.
+
+## Build a developer portfolio from your GitHub
+URL: https://caldera.social/developer-portfolio-from-github
+
+Sign up at caldera.social with GitHub and you get a portfolio page built from your repos in about 30 seconds: projects with links, commits and languages, a living city of your work and your links. It rebuilds from GitHub every 6 hours, so it stays current without editing.
+
+### What the page includes
+Your name, photo, headline and links. Projects: your most committed public repos with descriptions and links. Code: commits in the last year, repos, top languages and a weekly chart. Your GitHub city and a scoreboard. Your own sections if you use Obsidian (see profile modules ).
+
+### Steps
+Sign up with GitHub . In Settings, set your headline, links, photo and an optional masthead image. Share caldera.social/@you, or add the README badge.
+
+### Compared with a hand-built site
+A hand-built portfolio gives full design control but goes stale. A Caldera page is generated, current and connected to a network of builders. Many people use both and link one from the other.
+
+### Questions
+Q: Can I use a custom domain?
+A: Not today; your page lives at caldera.social/@handle.
+Q: Can I hide repos?
+A: Private repos never show names; you choose whether they appear at all.
+Q: Does it need Obsidian?
+A: No.
+Q: Is it free?
+A: Yes.
+
+## Build in public without the busywork
+URL: https://caldera.social/build-in-public
+
+Building in public works best when sharing costs nothing. Caldera turns your GitHub (and optionally your Obsidian notes) into a page that updates itself: a live city of your repos, commits this week, your coding agents at work and a daily journal, plus a Feed to ask for help or recommend tools.
+
+### What people can follow
+Your city: repos rising with commits, lit windows for this week, cranes for today. Live visitors to your sites parachuting in, if you add the snippet. Your coding agents as drones over the repos they are editing. A daily journal written from your notes (Obsidian), with only what you approve made public.
+
+### Share without extra work
+Follow-ups happen on their own: your page refreshes, and followers see your activity. Post milestones or asks on the Feed in one line; share to X, LinkedIn or Bluesky from the post. Put the city badge in your README.
+
+### Keep private things private
+Private repos show without names, or not at all. Journal lines are filtered for private details before publishing. See Show private GitHub activity safely .
+
+### Questions
+Q: Do I have to post every day?
+A: No. Your page updates from your work.
+Q: Can I share a post on X?
+A: Yes. Every Feed post has Share buttons.
+Q: Can people see my private repos?
+A: Not by name. You choose padlocked, anonymous or hidden.
+Q: Is it free?
+A: Yes.
+
+## An AI developer community built on real work
+URL: https://caldera.social/ai-developer-community
+
+Caldera is a community for people who build with AI tools, where profiles come from real work instead of bios. Members' pages show their GitHub city, AI usage and live coding agents; the Feed routes "I need..." and "I recommend..." posts to the members they fit; and people follow and message each other directly.
+
+### What makes it different
+Proof over claims. Commits, projects and AI usage come from GitHub and your own machine. Matching, not a timeline. Posts reach the members whose tags match. Live. See who is building right now on the World map. Groups. Start a town of cities for your team or cohort at caldera.social/g/name.
+
+### Join in three steps
+Sign up with GitHub . Follow a few people from People . Post what you need or recommend on the Feed .
+
+### Show your AI stack
+With the Obsidian plugin, your page can show tokens by model and provider from Claude Code and Codex logs, and a hook shows your agents as drones over your repos. See Show your AI token usage and Visualize AI coding agents .
+
+### Questions
+Q: Who is it for?
+A: Anyone who builds with AI tools: engineers, founders, designers and hobbyists.
+Q: Is there a chat room?
+A: No group chat; members use the Feed and direct messages.
+Q: Can I start a private group?
+A: Groups are public towns of cities; your own page can be unlisted.
+Q: Is it free?
+A: Yes.
+
+## Track your Claude Code activity
+URL: https://caldera.social/claude-code-activity-tracker
+
+Caldera tracks Claude Code activity two ways. The Obsidian plugin reads Claude Code's local logs and shows tokens by model and day on your profile (counts only, never prompts or file names), and a small Claude Code hook shows each running agent as a drone over the repo it is working in on your GitHub city.
+
+### Token usage from local logs
+Install the Caldera plugin in Obsidian on the computer where you code. The plugin reads Claude Code (and Codex) logs on that machine. Your page shows an AI usage section: total tokens, a daily chart, and shares by model and provider. More machines or tools can be added through Caldera/activity.json . See Track AI token usage .
+
+### Agents live on your city
+Copy the agent setup prompt from Settings and paste it into Claude Code. It installs a hook so each session appears over its repo: a beam while it edits, circling while it thinks, and parked at Agent HQ blinking amber when it is waiting on you. Task text stays private to you.
+
+### What is never published
+Prompts and responses File names and code Costs
+
+### Questions
+Q: Does it send my prompts anywhere?
+A: No. Only token counts by model and day are published.
+Q: Does it work with Codex?
+A: Yes, Codex logs are read too. Other tools can be added as counts.
+Q: Do I need Obsidian?
+A: For token usage from local logs, yes. Agent drones work for GitHub sign-ups too.
+Q: Is it free?
+A: Yes.
+
+## Visualize your AI coding agents
+URL: https://caldera.social/visualize-ai-coding-agents
+
+Caldera shows each AI coding agent as a drone on your GitHub city, hovering over the repo it is working in: a beam while it edits, circling while it thinks, and parked at your Agent HQ blinking amber when it needs you. A small Claude Code hook sends the state; task text stays private.
+
+### Set it up
+Sign up (GitHub) or install the Obsidian plugin. Open Settings, find AI agents on your city and copy the setup prompt. Paste it into Claude Code; it installs the hook on that computer. Open your city and start a session: the drone appears over the repo.
+
+### What visitors see
+Drones over public repos, and labeled agent HQs on the World map. Not your task text, prompts or private repo names.
+
+### Why it is useful
+Running several agents at once is easier when you can see which are working and which are waiting. Pop the city out into a small window and keep it in a corner of your screen.
+
+### Questions
+Q: Which agents are supported?
+A: Claude Code, through its hooks.
+Q: Will people see what my agent is doing?
+A: They see that it is working and over which public repo, not what it is doing.
+Q: Does it slow down Claude Code?
+A: No. The hook sends a tiny status message.
+Q: Is it free?
+A: Yes.
+
+## A vibe coding portfolio
+URL: https://caldera.social/vibe-coding-portfolio
+
+A vibe coding portfolio should show what you shipped with AI and how you built it. Caldera builds one from your GitHub: projects with live links, commits and languages, a city of your repos, and (with the Obsidian plugin) AI token usage by model plus your coding agents shown live.
+
+### What to show
+Live links to what you built, not just repos. How active you are: commits this year and this week. Your AI stack: tokens by model and provider. Your process: agents on your city while you work.
+
+### Build it
+Sign up with GitHub ; your page and city are ready in about 30 seconds. Add project links and a headline in Settings. Optional: install the Obsidian plugin for AI usage and a daily journal. Share caldera.social/@you or add the README badge.
+
+### Get noticed
+Post what you shipped as an "I recommend..." on the Feed , and follow other builders from People .
+
+### Questions
+Q: Do I need many repos?
+A: No. A few active repos with live links make a strong page.
+Q: Will people see my prompts?
+A: No. Only counts are shown.
+Q: Can I add my own sections?
+A: Yes, with Obsidian profile modules.
+Q: Is it free?
+A: Yes.
+
+## Show your AI token usage on your profile
+URL: https://caldera.social/show-ai-token-usage
+
+Caldera can put your AI token usage on your public page: total tokens, a daily chart and shares by model and provider. The Obsidian plugin reads Claude Code and Codex logs on your computer and publishes counts only; other machines and your own products can add counts through Caldera/activity.json.
+
+### How it works
+Install Caldera in Obsidian on the machine where you code. The plugin reads local Claude Code and Codex logs and adds an AI usage section. To include more sources, have your AI agent write an ai block (counts by model and provider) into Caldera/activity.json .
+
+### What it shows and hides
+Shown Never shown Tokens per day Prompts and responses Share by model and provider File names and code Window (for example, last 45 days) Costs
+
+### Turn it off
+Set the ai section to false in Caldera/profile.md , or switch it off in settings.
+
+### Questions
+Q: Why show token usage?
+A: It is a concrete signal of how much you build with AI.
+Q: Does it include API usage from my apps?
+A: If your tools write counts into Caldera/activity.json, yes.
+Q: Can GitHub-only members show it?
+A: Token usage needs the Obsidian plugin or activity file.
+Q: Is it free?
+A: Yes.
+
+## Create an AI builder profile
+URL: https://caldera.social/ai-builder-profile
+
+An AI builder profile on Caldera is a page generated from your GitHub, and optionally your Obsidian vault, that shows what you build with AI: projects and commits, tags worked out from your public repos, AI usage by model, and your coding agents on a living city. Sign up with GitHub and it is ready in about 30 seconds.
+
+### What goes on it
+Building tags from public repo topics, descriptions, READMEs and dependencies; add or hide tags yourself. Projects and Code from GitHub. AI usage and a daily journal with the Obsidian plugin. Your own sections such as talks, stack or office hours ( modules ).
+
+### Steps
+Sign up with GitHub . Check your tags under What you're building and edit them. Follow people in People who build the same things.
+
+### Questions
+Q: How are tags chosen?
+A: From your public repos; private repos only ever add a language.
+Q: Can I edit my tags?
+A: Yes, add or hide them on your building page or in Caldera/profile.md.
+Q: Will it list me publicly?
+A: Yes by default in People; you can be unlisted.
+Q: Is it free?
+A: Yes.
+
+## Make a portfolio from your Obsidian vault
+URL: https://caldera.social/obsidian-portfolio
+
+Install the Caldera plugin and your Obsidian vault becomes a portfolio page at caldera.social/@you: headline, projects, timeline, links, your own custom sections and your GitHub city. It is generated on your own device, publishes only what you switch on, and republishes about a minute after you edit it.
+
+### How it works
+Install Caldera from Obsidian's Community plugins. Fill in the Welcome form: name, handle, headline. Edit Caldera/profile.md (or ask your AI agent) for summary, now, timeline, projects and links. Add sections of your own as notes in Caldera/modules/ .
+
+### What stays private
+The vault never leaves your computer. Only the sections you switch on, notes you mark caldera: public and journal fields you write are published. Your private view, visible only to you, adds visits, goals and patterns.
+
+### Compared with publishing notes
+Obsidian Publish and static-site generators put notes online as a website. Caldera publishes a profile about you and your work, with counts from the vault instead of the notes themselves. See Obsidian Publish alternatives .
+
+### Questions
+Q: Does it upload my vault?
+A: No. The page is built on your device; only what you choose is published.
+Q: Can my AI agent edit it?
+A: Yes. It edits Caldera/profile.md and module notes, and the page republishes.
+Q: Does it work on mobile?
+A: Yes, Obsidian desktop and mobile.
+Q: Is it free?
+A: Yes.
+
+## Connect Obsidian and GitHub on one profile
+URL: https://caldera.social/obsidian-github-integration
+
+Caldera connects Obsidian and GitHub on one page. Add your GitHub link to Caldera/profile.md and Caldera builds a city from your public repos; or sign up with GitHub first and connect your Obsidian vault later. Your vault adds a journal, AI usage and project notes; GitHub adds code stats and the city.
+
+### Two ways in
+Obsidian first: install the plugin, then add GitHub | https://github.com/you to links in Caldera/profile.md . GitHub first: sign up with GitHub , then connect Obsidian from Settings and keep your page.
+
+### Richer with your own data
+Your AI agent can write Caldera/city.json with every repo you own (private ones without names), grouped into your own projects, plus commit counts per project in Caldera/activity.json . The setup prompt walks it through.
+
+### Settings shows what's connected
+The Settings page shows a light for each connection: GitHub, Obsidian, live visitors, agents, private view and email.
+
+### Questions
+Q: Do I need the GitHub app?
+A: Only to include private repos; public repos work without it.
+Q: Will the GitHub link create a second profile?
+A: No. Signing in with GitHub links to your existing page.
+Q: Does it sync notes to GitHub?
+A: No. For vault backups use a git plugin; Caldera reads counts and repo data.
+Q: Is it free?
+A: Yes.
+
+## An Obsidian plugin for developers
+URL: https://caldera.social/obsidian-plugin-for-developers
+
+Caldera is an Obsidian plugin that turns a developer's vault into a public profile: a GitHub city of your repos, AI token usage from Claude Code and Codex, a daily journal, custom sections and a scoreboard, plus end-to-end encrypted note sharing with friends. It is free and open source.
+
+### Features
+Living profile at caldera.social/@you, republished as you work. GitHub city and Code section. AI usage by model and provider. Daily journal from your daily notes' caldera_ fields. Custom modules from Caldera/modules/ . Private view only you can see, in Obsidian and on the web. Encrypted note cards to friends.
+
+### Set up with your AI
+Copy the setup prompt from the plugin and paste it into Claude Code, Codex or Cursor. It fills in your page, sets up a daily journal routine and asks before anything goes public. See Obsidian AI agent setup .
+
+### Install
+Obsidian, Settings, Community plugins, Browse, search Caldera. Install and enable. Fill in the Welcome form.
+
+### Questions
+Q: Is it open source?
+A: Yes, the plugin is MIT-licensed.
+Q: Does it read my code?
+A: No. It counts notes and reads local AI logs for token counts.
+Q: Does it work offline?
+A: Your vault works as always; publishing needs a connection.
+Q: Is it free?
+A: Yes.
+
+## Custom profile sections from Obsidian notes
+URL: https://caldera.social/obsidian-profile-modules
+
+Caldera profile modules let you add your own sections to your page. Each module is one Markdown note in Caldera/modules/ in your vault; the note becomes a section titled with its file name. Lists, checkboxes, tables, quotes, links and vault images all work, and the page republishes about a minute after you save.
+
+### Make a module
+Create a note such as Caldera/modules/Reading list.md . Write ordinary Markdown. Optional frontmatter: place: side for the right-hand column, order: 10 to sort, publish: false for a draft, title for a different heading.
+
+### Ideas
+Talks and podcasts My stack Office hours What I'm looking for Reading list A changelog of what I shipped
+
+### Ask your AI
+Tell your AI agent: "add a Talks module with my last five talks". The setup and edit prompts explain modules, so it drafts the note, shows you, and adds only what you approve.
+
+### Safe by design
+No HTML, scripts or embeds; email addresses and phone numbers are removed. Up to 12 modules. Everything in a module is public.
+
+### Questions
+Q: Do modules need a plugin update?
+A: Yes, Caldera 0.22 or later.
+Q: Can I embed a video?
+A: No embeds; link to it instead.
+Q: Can I hide a module?
+A: Set publish: false or delete the note.
+Q: Is it free?
+A: Yes.
+
+## Share Obsidian notes with friends
+URL: https://caldera.social/share-obsidian-vault-with-friends
+
+With Caldera you can send a note from your Obsidian vault to a friend as an end-to-end encrypted card; it arrives in their vault as a normal note. Friends are members who follow each other, and the hub only ever stores ciphertext it cannot read.
+
+### How to share
+Install Caldera in Obsidian and follow your friend; when they follow back you are friends. Open a note and run Caldera: Share this note with a friend . It lands in their vault the next time Obsidian is open.
+
+### Good things to share
+Checklists and templates Frameworks and how-tos Meeting prep or reading notes for a collaborator Mark notes friends can receive with caldera: friends .
+
+### Privacy
+Notes are encrypted on your device with your friend's key. Caldera cannot read them. See Share Obsidian notes privately .
+
+### Questions
+Q: Do both people need Obsidian?
+A: Yes, to send and receive notes.
+Q: Can I share a whole vault?
+A: No, note by note.
+Q: Can Caldera read shared notes?
+A: No. They are end-to-end encrypted.
+Q: Is it free?
+A: Yes.
+
+## Show private GitHub activity safely
+URL: https://caldera.social/show-private-github-activity-safely
+
+Caldera lets you count private work without exposing it. Private repos you add appear on your public city as padlocked buildings with no names (the default), as one separate anonymous district with no sizes or activity, or not at all. Names, descriptions and code are never shown, and your private view always shows everything to you.
+
+### Three levels
+Setting Visitors see Padlocked (default) Locked buildings in place: roughly how big and how busy private work is, and which project it sits beside. No names. Anonymous One separate padlocked district of identical buildings. No sizes, activity or projects. Hidden No trace of private work.
+
+### How to set it
+Install the Caldera GitHub app on the private repos you choose (read-only metadata; it cannot open files). Pick padlocked, anonymous or hidden in Settings , in the Obsidian plugin, or with privateRepos in Caldera/profile.md .
+
+### Enforced everywhere
+The setting applies to your city, the World map, your share card and live feeds, whatever built the page.
+
+### Questions
+Q: Can Caldera read my private code?
+A: No. The GitHub app reads repository metadata only.
+Q: Do private commit counts show?
+A: With padlocked, roughly; with anonymous or hidden, no.
+Q: Can I change it later?
+A: Yes, any time; it takes effect on the next page view.
+Q: Is it free?
+A: Yes.
+
+## Show your website visitors live
+URL: https://caldera.social/add-live-visitors-to-website-map
+
+Caldera can show visitors to your websites live on your GitHub city: add one script tag to each site and every arrival parachutes into that project's district as it happens, with celebrations for signups and sales. Departed visitors leave fading ghosts, and the city shows today's site visits.
+
+### Set it up
+Open Settings (or the plugin's Live traffic on your city ). Copy the snippet for the district that matches your site. Paste it into your site's shared layout, just before &lt;/body&gt; . Open your city and visit your site: you will see yourself land.
+
+### What is collected
+Page views, signups and sales per site, with a visitor id made from a salted hash that changes daily, so visitors cannot be tracked across days. Live-visitor events are deleted after 35 days. Detailed numbers are shown only to you; the public sees activity levels.
+
+### Why it is fun and useful
+Launch days become something you can watch. Pop the city out into a small window and keep it on screen; signups and sales get their own celebrations.
+
+### Questions
+Q: Does it slow my site?
+A: No. It is a small async script.
+Q: Can visitors see each other?
+A: Visitors to your Caldera page see arrivals as figures, not who they are.
+Q: Does it work with any site?
+A: Any site where you can add a script tag.
+Q: Is it free?
+A: Yes.
+
+## Message developers directly
+URL: https://caldera.social/developer-direct-messages
+
+Caldera members can message each other without sharing email addresses. Friends (people who follow each other) write directly; anyone else sends a single request that the recipient can accept, ignore or block. New messages trigger an email alert if they are still unread a minute later.
+
+### How it works
+Tap Message on someone's page or Feed post. Not friends yet? They get one request. Replying accepts it; ignoring is silent. Block or report any conversation; delete it for both of you. Email alerts: at most one every 30 minutes per person, off with one click.
+
+### Good first messages
+Say why you are writing in one line. Reference their work (a repo or post). Make one clear ask.
+
+### Privacy
+Messages are text only and encrypted on Caldera's servers; email addresses are never shown to other members.
+
+### Questions
+Q: Can anyone message me?
+A: Members can send one request; you decide.
+Q: Can I turn off message emails?
+A: Yes, on the Messages page or from any alert email.
+Q: Are messages end-to-end encrypted?
+A: No. They are encrypted at rest on Caldera's servers. Note sharing between Obsidian vaults is end-to-end encrypted.
+Q: Is it free?
+A: Yes.

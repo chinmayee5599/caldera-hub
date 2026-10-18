@@ -24,8 +24,19 @@ const headTpl = guide.slice(0, guide.indexOf("</head>"))    // inherited per-pag
 const header = guide.slice(guide.indexOf('<header class="nav">'), guide.indexOf("</header>") + 9).replace(/ aria-current="page"/g, "");
 // idempotent: drop any Learn links left by earlier builds before adding exactly one (it used to stack one per rebuild)
 const noLearn = h => h.replace(/(<a href="\/learn">Learn<\/a> &middot; )+/g, "");
-const footer = noLearn(guide.slice(guide.indexOf('<footer class="footer">'), guide.indexOf("</footer>") + 9))
-  .replace('<a href="/guide">Guide</a>', '<a href="/learn">Learn</a> &middot; <a href="/guide">Guide</a>');
+let footer = "";   // set below, once the page list is known
+
+// THE footer: every Learn page by topic, so search engines and AI crawlers reach all of them from any page.
+// Written to assets/footer.html too: the hub serves it on its own pages (feed, people, world, settings...).
+const topic = p => /obsidian/.test(p.slug) ? "Obsidian" : /github|readme|contribution|skyline/.test(p.slug) ? "GitHub" : /\bai\b|ai-|claude|agent|vibe|token|llm/.test(p.slug) ? "AI builders" : "Developers";
+const TOPICS = ["GitHub", "AI builders", "Developers", "Obsidian"];
+const col = (h, links) => `<div class="fcol"><b>${esc(h)}</b>${links.map(([u, t]) => `<a href="${u}">${esc(t)}</a>`).join("")}</div>`;
+const short = p => { const t = (p.nav || p.h1).replace(/^How to /i, "").replace(/\?$/, ""); return t.charAt(0).toUpperCase() + t.slice(1); };
+const bigFooter = `<footer class="footer footer-big"><div class="fgrid">${col("Caldera", [["/", "Home"], ["/feed", "Feed"], ["/people", "People"], ["/world", "World map"], ["/gh", "See any GitHub as a city"], ["/guide", "Guide"], ["/learn", "Learn"], ["/changelog", "What's new"]])}${TOPICS.map(t => col(t, pages.filter(p => topic(p) === t).map(p => [`/${p.slug}`, short(p)]))).join("")}</div><div class="fbase"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="mailto:hello@caldera.social">hello@caldera.social</a></span></div></footer>`;
+write("assets/footer.html", bigFooter + "\n");
+footer = bigFooter;
+// every static page gets the same footer (index, guide, people, changelog, privacy, terms...)
+for (const f of fs.readdirSync(dir)) if (f.endsWith(".html")) { const h = read(f), n = h.replace(/<footer class="footer[^"]*">[\s\S]*?<\/footer>/, () => bigFooter); if (n !== h) write(f, n); }
 
 function head(title, description, slug, extra = "") {
   const url = slug ? `${SITE}/${slug}` : `${SITE}/`;
@@ -95,7 +106,7 @@ for (const [f, slug] of core) {
 const urls = [["", "weekly", "1.0"], ["learn", "weekly", "0.9"], ...pages.map(p => [p.slug, "monthly", "0.8"]), ["people", "daily", "0.7"], ["feed", "hourly", "0.7"], ["guide", "monthly", "0.7"], ["changelog", "weekly", "0.6"], ["privacy", "yearly", "0.3"], ["terms", "yearly", "0.3"]];
 write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(([u, f, pr]) => `  <url><loc>${SITE}/${u}</loc><lastmod>${UPDATED}</lastmod><changefreq>${f}</changefreq><priority>${pr}</priority></url>`).join("\n")}\n</urlset>\n`);
 const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User", "anthropic-ai", "PerplexityBot", "Perplexity-User", "Google-Extended", "Googlebot", "Bingbot", "Applebot", "Applebot-Extended", "DuckAssistBot", "Meta-ExternalAgent", "MistralAI-User", "CCBot"];
-write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n\nSitemap: ${SITE}/sitemap.xml\n`);
+write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n\nSitemap: ${SITE}/sitemap.xml\nSitemap: ${SITE}/sitemap-profiles.xml\n`);
 write("llms.txt", `# Caldera
 
 > Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
@@ -105,6 +116,8 @@ write("llms.txt", `# Caldera
 - Example city: ${SITE}/@mike/city.html
 - Example profile: ${SITE}/@mike/
 - Directory of people: ${SITE}/people
+- Member profiles and cities (indexable ones): ${SITE}/sitemap-profiles.xml
+- See any public GitHub account as a city: ${SITE}/gh/<github-username>
 - Source (MIT plugin, AGPL hub): https://github.com/schoettle-cmd/caldera
 
 ## Guides

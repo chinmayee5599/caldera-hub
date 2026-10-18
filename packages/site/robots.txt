@@ -134,3 +134,4 @@ Disallow: /signin
 Disallow: /messages
 
 Sitemap: https://caldera.social/sitemap.xml
+Sitemap: https://caldera.social/sitemap-profiles.xml
