@@ -579,6 +579,8 @@ export function feed(c: FeedCtx) {
 .fd-burst{position:fixed;z-index:70;pointer-events:none;font-size:20px;animation:fdburst .9s ease-out forwards}@keyframes fdburst{to{transform:translate(var(--dx),var(--dy)) scale(1.2);opacity:0}}
 .fd-big button span{white-space:nowrap}@media (max-width:420px){.fd-big{gap:8px}.fd-big button{font-size:14px;gap:6px;padding:0 8px}.fd-big button b{font-size:18px}}
 @media (prefers-reduced-motion:reduce){.fd-big button,.fd-chips2 button,.fd-postbtn{transition:none}.fd-big button:hover,.fd-chips2 button:hover{transform:none}.fd-pop1{animation:none}}
+.fd-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.fd-spin{display:inline-block;font-size:15px}.fd-btn.busy .fd-spin{animation:fdspin .8s linear infinite}@keyframes fdspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.fd-btn.busy .fd-spin{animation:none}}
 .fd-more{display:flex;justify-content:center;margin:16px 0}.fd-empty{color:var(--text-muted);text-align:center;padding:24px}
 .fd-dots{min-width:34px;justify-content:center;font-size:18px;line-height:1}.fd-own .fd-pop{min-width:180px;left:auto;right:0}.fd-own .fd-pop button{display:block;width:100%;text-align:left}.fd-confirm{display:block;padding:8px 10px;font-size:14px;color:var(--text)}.fd-confirm button{display:inline-flex!important;width:auto!important;margin:6px 6px 0 0;padding:5px 12px!important;border-radius:999px;border:1px solid var(--line)}.fd-confirm [data-yes]{background:#E5484D;border-color:#E5484D;color:#fff}
 .fd-tip{position:fixed;z-index:60;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 14px;border-radius:10px;background:var(--text-strong);color:var(--bg);font-size:14px;box-shadow:0 10px 26px rgba(0,0,0,.3)}
@@ -753,7 +755,13 @@ else matchesInto(nm,x.j.matches||[],x.j.post.id);nm.scrollIntoView({behavior:cal
 $$('[data-answer]').forEach(function(b){b.addEventListener('click',function(){var row=b.closest('[data-waiting]');api('/v1/posts/'+row.getAttribute('data-post')+'/answer',{from:row.getAttribute('data-from'),yes:b.getAttribute('data-answer')==='yes'}).then(function(x){if(x.ok){row.querySelector('.acts').textContent=x.j.state==='friends'?'You are now friends':'Closed';tip(x.j.state==='friends'?'Connected':'Closed')}else tip(x.j.error||'Could not answer')})})});
 // older items
 var more=$('[data-more]');if(more)more.addEventListener('click',function(){var last=$$('.fd-list > [data-ts], .fd-list > article').pop();var before=last?(last.getAttribute('data-ts')||last.querySelector('time').getAttribute('datetime')):'';more.disabled=true;
-api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type'))+'&author='+encodeURIComponent(more.getAttribute('data-author')||'')+'&before='+encodeURIComponent(before)).then(function(x){more.disabled=false;if(!x.ok)return;var tmp=document.createElement('div');tmp.innerHTML=x.j.html||'';var n=0;while(tmp.firstElementChild){var el=tmp.firstElementChild;$('.fd-list').appendChild(el);if(el.classList.contains('fd-post'))wire(el);n++}if(!n||!x.j.more)more.parentNode.remove()})})})();</script>`;
+api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type'))+'&author='+encodeURIComponent(more.getAttribute('data-author')||'')+'&before='+encodeURIComponent(before)).then(function(x){more.disabled=false;if(!x.ok)return;var tmp=document.createElement('div');tmp.innerHTML=x.j.html||'';var n=0;while(tmp.firstElementChild){var el=tmp.firstElementChild;$('.fd-list').appendChild(el);if(el.classList.contains('fd-post'))wire(el);n++}if(!n||!x.j.more)more.parentNode.hidden=true})})
+// refresh: swap in the latest list (same tab and author filter) without reloading the page
+function tsOf(el){var t=el.querySelector('time');return el.getAttribute('data-ts')||(t?t.getAttribute('datetime'):'')||''}
+var rf=$('[data-refresh]');if(rf)rf.addEventListener('click',function(){if(rf.classList.contains('busy'))return;rf.classList.add('busy');var list=$('.fd-list'),ts0=list.firstElementChild?tsOf(list.firstElementChild):'';
+api('/v1/feed?format=html&fresh=1&type='+encodeURIComponent(rf.getAttribute('data-type'))+'&author='+encodeURIComponent(rf.getAttribute('data-author')||'')).then(function(x){rf.classList.remove('busy');if(!x.ok){tip('Could not refresh. Try again.');return}
+list.innerHTML=x.j.html||'<p class="fd-empty">Nothing here yet.</p>';var n=0;$$('.fd-list > [data-ts], .fd-list > article').forEach(function(el){if(el.classList.contains('fd-post'))wire(el);if(ts0&&tsOf(el)>ts0)n++});
+var mw=$('.fd-more');if(mw)mw.hidden=!x.j.more;tip(n?n+' new':'Up to date')})})})();</script>`;
 
   function youHtml(meId: string) {
     const n = noticesFor(meId, new Date(Date.now() - 14 * DAY).toISOString()); if (!n.waiting.length && !n.recs.length) return "";
@@ -768,10 +776,10 @@ api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type
 <meta name="description" content="What's happening on Caldera: new members, new cities, kudos, and what people are looking for."><link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><main class="fd">
-<h1>Feed</h1><p class="lede">What's happening across Caldera, and what people are looking for. Post an ask and it goes to the people who fit.</p>
+<div class="fd-head"><h1>Feed</h1><button type="button" class="fd-btn" data-refresh data-type="${t}" data-author="${esc(author)}" title="Load the latest without reloading the page"><span class="fd-spin" aria-hidden="true">&#8635;</span> Refresh</button></div><p class="lede">What's happening across Caldera, and what people are looking for. Post an ask and it goes to the people who fit.</p>
 ${me ? youHtml(me) + composerHtml() : SIGNIN("/feed")}
 ${author ? `<p class="fd-shared">Showing posts and activity from <a href="/@${esc(author)}/">@${esc(author)}</a>. <a href="/feed">Show everyone</a></p>` : ""}<nav class="fd-tabs" aria-label="Filter the feed">${tabs}</nav><div class="fd-list">${items.map(i => itemHtml(i, me)).join("") || `<p class="fd-empty">Nothing here yet.</p>`}</div>
-${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn" data-more data-type="${t}" data-author="${esc(author)}">Show older</button></div>` : ""}
+<div class="fd-more"${items.length >= 30 ? "" : " hidden"}><button type="button" class="fd-btn" data-more data-type="${t}" data-author="${esc(author)}">Show older</button></div>
 </main>${SCRIPT(me, meH)}</body></html>`;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: "Cookie" });
     res.end(c.navify(html, "/feed"));
@@ -807,6 +815,7 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
     }
     if (req.method === "GET" && p === "/v1/feed") {
       const me = c.memberOf(req), t = url.searchParams.get("type") || "all", au = String(url.searchParams.get("author") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+      if (url.searchParams.get("fresh") && cache && Date.now() - cache.at > 3000) cache = null;   // the Refresh button: skip the 30s cache
       const items = page(FILTER[t] ? t : "all", url.searchParams.get("before") || "", me, 30, au);
       if (url.searchParams.get("format") === "html") { c.json(res, 200, { html: items.map(i => itemHtml(i, me)).join(""), more: items.length >= 30 }); return true; }
       c.json(res, 200, { items, more: items.length >= 30 }); return true;

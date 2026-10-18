@@ -74,6 +74,7 @@ test("threaded comments: post, reply, nest, notify, delete, moderate", async () 
   const pg = await get(`/feed/p/${pid}`);
   assert.match(pg.text, /id="comments"/); assert.match(pg.text, /6 comments/); assert.match(pg.text, /Great, tell me more/); assert.match(pg.text, /Sign in with GitHub<\/a> to comment/);
   const feedHtml = await get("/feed", "cy");
+  assert.match(feedHtml.text, /data-refresh data-type="all"/, "refresh button at the top");
   assert.match(feedHtml.text, /data-comments[^>]*>&#128172; <span data-ccount>6<\/span>/, "feed card shows the count");
   // permissions: cy can't delete bo's comment; ana (post author) can remove it, which leaves a stub because it has replies
   assert.equal((await as("cy", `/v1/comments/${c1.body.id}/delete`, {})).status, 404);
