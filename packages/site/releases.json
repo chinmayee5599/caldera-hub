@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.3",
+      "date": "2026-10-18",
+      "title": "Agents dock on a stack",
+      "items": [
+        "Idle AI agents now dock on an agent stack: a thin mast on your city's corner, one ring per agent standing by. Amber rings are waiting on you.",
+        "Working agents lift off the stack and fly to the building they're working in, on your city and on the world map."
+      ]
+    },
+    {
       "version": "0.25.2",
       "date": "2026-10-18",
       "title": "See where your points come from",
