@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as C from "@caldera/core";
-import { createHub } from "../dist/server.js";
+import { createHub, publicExt } from "../dist/server.js";
 
 let hub, base, dir;
 const mike = C.newIdentity(), ana = C.newIdentity(), eve = C.newIdentity();
@@ -175,7 +175,7 @@ test("every hosted profile page gets the Caldera bar linking home with the owner
 
 test("gardens: signed garden index, cross-garden backlinks injected into note pages, recent feed", async () => {
   const gdir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-garden-"));
-  const gh = createHub({ dataDir: gdir, publicUrl: "" }); const gbase = "http://127.0.0.1:" + await gh.listen(0);
+  const gh = createHub({ dataDir: gdir, publicUrl: "", garden: true }); const gbase = "http://127.0.0.1:" + await gh.listen(0);
   const post = (p, body) => fetch(gbase + p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() }));
   const get = (p) => fetch(gbase + p).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
   const g1 = C.newIdentity(), g2 = C.newIdentity();
@@ -200,7 +200,7 @@ test("gardens: signed garden index, cross-garden backlinks injected into note pa
 });
 
 test("owner activity: counts real visits (not bots, not the owner's own view), owner-only, erased with the profile", async () => {
-  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-")); const h3 = createHub({ dataDir: d3 }); const base = "http://127.0.0.1:" + await h3.listen(0);
+  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-")); const h3 = createHub({ dataDir: d3, garden: true }); const base = "http://127.0.0.1:" + await h3.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const get = (p, tk) => fetch(base + p, { headers: tk ? { authorization: "Bearer " + tk } : {} }).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -352,7 +352,8 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
     if (u.includes("/applications/cid/grant")) return new Response(null, { status: 204 });
     return J({ message: "not mocked " + u }, 404);
   };
-  const h = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake });
+  // the sign-up gate is an open-core hook: this test plugs in its own (empty accounts wait)
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: me => (Number(me.public_repos) || 0) + (Number(me.followers) || 0) > 0 } });
   const base = "http://127.0.0.1:" + await h.listen(0);
   // someone already owns @mike
   const mk = C.newIdentity(); await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(mk, "profile.manifest", { name: "M", handle: "mike", boxKey: mk.boxPublic })) });

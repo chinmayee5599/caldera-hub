@@ -8,7 +8,9 @@ import crypto from "node:crypto";
 
 export type Audience = "all" | "github" | "obsidian";
 export interface AlertRow { id: string; title: string; body: string; cta_label: string | null; cta_url: string | null; copy_text: string | null; copy_label: string | null; pinned: number; audience: Audience; ts: string; by: string; version: string | null; read?: boolean }
-export interface PostAlert { title: string; body: string; ctaLabel?: string; ctaUrl?: string; copyText?: string; copyLabel?: string; pinned?: boolean; audience?: Audience; by?: string; version?: string; ts?: string }
+export interface PostAlert { title: string; body: string; ctaLabel?: string; ctaUrl?: string; copyText?: string; copyLabel?: string; pinned?: boolean; audience?: Audience; by?: string; version?: string; ts?: string;
+  /** a personal alert for one member (feed: "@x sent you a post", kudos on your post); `key` folds repeats into one unread alert */
+  target?: string; key?: string }
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
@@ -36,6 +38,8 @@ export function alertsStore(q: (sql: string) => any, key: Buffer) {
   q(`CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, title TEXT, body TEXT, cta_label TEXT, cta_url TEXT, copy_text TEXT, copy_label TEXT,
     pinned INTEGER DEFAULT 0, audience TEXT DEFAULT 'all', ts TEXT, by TEXT, version TEXT)`).run();
   q("CREATE TABLE IF NOT EXISTS alert_reads (owner TEXT, alert_id TEXT, ts TEXT, PRIMARY KEY (owner, alert_id))").run();
+  for (const col of ["target TEXT", "dkey TEXT"]) { try { q(`ALTER TABLE alerts ADD COLUMN ${col}`).run(); } catch { /* already there */ } }
+  q("CREATE INDEX IF NOT EXISTS alerts_target ON alerts(target, ts)").run();
   const mac = (s: string) => crypto.createHmac("sha256", key).update("alerts-seen:" + s).digest("base64url").slice(0, 32);
   const visible = (aud: Audience, kind: "github" | "obsidian") => aud === "all" || aud === kind;
   const store = {
@@ -44,18 +48,24 @@ export function alertsStore(q: (sql: string) => any, key: Buffer) {
       if (!title) throw new Error("an alert needs a title");
       const aud: Audience = o.audience === "github" || o.audience === "obsidian" ? o.audience : "all";
       if (o.version) { const ex = q("SELECT id FROM alerts WHERE version=?").get(o.version) as any; if (ex) return ex.id; }   // one alert per release
+      const ts = o.ts || new Date().toISOString(), target = o.target || null, dkey = o.key || null;
+      if (target && dkey) {   // the same thing again (more kudos on the same post): update the unread alert instead of stacking
+        const ex = q("SELECT a.id FROM alerts a WHERE a.target=? AND a.dkey=? AND NOT EXISTS (SELECT 1 FROM alert_reads r WHERE r.owner=a.target AND r.alert_id=a.id)").get(target, dkey) as any;
+        if (ex) { q("UPDATE alerts SET title=?, body=?, ts=? WHERE id=?").run(title, body, ts, ex.id); return ex.id; }
+      }
       const id = crypto.randomBytes(6).toString("hex");
-      q("INSERT INTO alerts VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(id, title, body, o.ctaLabel || null, o.ctaUrl || null, o.copyText ? String(o.copyText).slice(0, 60000) : null,
-        o.copyLabel || null, o.pinned ? 1 : 0, aud, o.ts || new Date().toISOString(), o.by || "caldera", o.version || null);
+      q("INSERT INTO alerts (id, title, body, cta_label, cta_url, copy_text, copy_label, pinned, audience, ts, by, version, target, dkey) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id, title, body, o.ctaLabel || null, o.ctaUrl || null, o.copyText ? String(o.copyText).slice(0, 60000) : null,
+        o.copyLabel || null, o.pinned ? 1 : 0, aud, ts, o.by || "caldera", o.version || null, target, dkey);
+      if (target && Math.random() < 0.02) q("DELETE FROM alerts WHERE target IS NOT NULL AND ts < ?").run(new Date(Date.now() - 45 * 86_400_000).toISOString());   // personal alerts don't pile up forever
       return id;
     },
     pin(id: string, on: boolean) { return q("UPDATE alerts SET pinned=? WHERE id=?").run(on ? 1 : 0, id).changes > 0; },
     remove(id: string) { q("DELETE FROM alert_reads WHERE alert_id=?").run(id); return q("DELETE FROM alerts WHERE id=?").run(id).changes > 0; },
-    list(): AlertRow[] { return q("SELECT * FROM alerts ORDER BY pinned DESC, ts DESC").all() as AlertRow[]; },
+    list(): AlertRow[] { return q("SELECT * FROM alerts WHERE target IS NULL ORDER BY pinned DESC, ts DESC").all() as AlertRow[]; },
     /** A member's alerts, pinned first then newest, with read flags. */
     forOwner(owner: string, kind: "github" | "obsidian", limit = 50): AlertRow[] {
       const read = new Set((q("SELECT alert_id FROM alert_reads WHERE owner=?").all(owner) as any[]).map(r => r.alert_id));
-      return (q("SELECT * FROM alerts ORDER BY pinned DESC, ts DESC LIMIT 200").all() as AlertRow[]).filter(a => visible(a.audience, kind)).slice(0, limit).map(a => ({ ...a, read: read.has(a.id) }));
+      return (q("SELECT * FROM alerts WHERE target IS NULL OR target=? ORDER BY pinned DESC, ts DESC LIMIT 200").all(owner) as AlertRow[]).filter(a => visible(a.audience, kind)).slice(0, limit).map(a => ({ ...a, read: read.has(a.id) }));
     },
     unread(owner: string, kind: "github" | "obsidian"): number { return store.forOwner(owner, kind, 200).filter(a => !a.read).length; },
     markRead(owner: string, ids: string[]) { const t = new Date().toISOString(); for (const id of ids.slice(0, 200)) q("INSERT OR IGNORE INTO alert_reads VALUES (?,?,?)").run(owner, id, t); },

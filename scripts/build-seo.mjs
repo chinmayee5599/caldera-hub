@@ -3,7 +3,8 @@
 //   canonical/og tags on every page, and SoftwareApplication/Organization/FAQPage JSON-LD on the homepage.
 import fs from "node:fs";
 import { pages, UPDATED } from "./seo-pages.mjs";
-import { FEATURES } from "../../caldera/packages/core/dist/index.js";
+import { activeFeatures } from "../../caldera/packages/core/dist/index.js";
+const FEATURES = activeFeatures();   // the garden is paused (core flags.ts): nothing switched off reaches the site
 
 const SITE = "https://caldera.social";
 const dir = new URL("../packages/site/", import.meta.url);
@@ -81,7 +82,7 @@ for (const [f, slug] of core) {
   if (f === "index.html") {
     const faq = [...s.matchAll(/<details><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map(m => ({ "@type": "Question", name: strip(m[1]), acceptedAnswer: { "@type": "Answer", text: strip(m[2]) } }));
     const app = { "@context": "https://schema.org", "@graph": [
-      { "@type": "SoftwareApplication", name: "Caldera", applicationCategory: "SocialNetworkingApplication", operatingSystem: "Web (sign up with GitHub); Windows, macOS, Linux, iOS, Android (Obsidian plugin)", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, url: SITE, downloadUrl: `${SITE}/download/caldera-latest.zip`, softwareVersion: VERSION, license: "https://opensource.org/licenses/MIT", codeRepository: "https://github.com/schoettle-cmd/caldera", description: "Caldera is the social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city; install it in Obsidian and your vault becomes a living profile and a digital garden. Friends, groups, end-to-end encrypted shared notes, asks, offers and gravity. Free, open source and private by default.", publisher: { "@id": `${SITE}/#org` }, image: `${SITE}/og.jpg` },
+      { "@type": "SoftwareApplication", name: "Caldera", applicationCategory: "SocialNetworkingApplication", operatingSystem: "Web (sign up with GitHub); Windows, macOS, Linux, iOS, Android (Obsidian plugin)", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, url: SITE, downloadUrl: `${SITE}/download/caldera-latest.zip`, softwareVersion: VERSION, license: "https://opensource.org/licenses/MIT", codeRepository: "https://github.com/schoettle-cmd/caldera", description: "Caldera is the social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city; install it in Obsidian and your vault becomes a living profile. Friends, groups, end-to-end encrypted shared notes, asks, offers and gravity. Free, open source and private by default.", publisher: { "@id": `${SITE}/#org` }, image: `${SITE}/og.jpg` },
       { "@type": "WebSite", name: "Caldera", url: SITE, publisher: { "@id": `${SITE}/#org` } },
       { "@type": "FAQPage", mainEntity: faq }, ORG ] };
     s = s.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "").replace("</head>", `${ld(app)}\n</head>`);
@@ -91,21 +92,19 @@ for (const [f, slug] of core) {
 }
 
 // sitemap, robots, llms
-const urls = [["", "weekly", "1.0"], ["learn", "weekly", "0.9"], ...pages.map(p => [p.slug, "monthly", "0.8"]), ["people", "daily", "0.7"], ["guide", "monthly", "0.7"], ["changelog", "weekly", "0.6"], ["privacy", "yearly", "0.3"], ["terms", "yearly", "0.3"]];
+const urls = [["", "weekly", "1.0"], ["learn", "weekly", "0.9"], ...pages.map(p => [p.slug, "monthly", "0.8"]), ["people", "daily", "0.7"], ["feed", "hourly", "0.7"], ["guide", "monthly", "0.7"], ["changelog", "weekly", "0.6"], ["privacy", "yearly", "0.3"], ["terms", "yearly", "0.3"]];
 write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(([u, f, pr]) => `  <url><loc>${SITE}/${u}</loc><lastmod>${UPDATED}</lastmod><changefreq>${f}</changefreq><priority>${pr}</priority></url>`).join("\n")}\n</urlset>\n`);
 const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User", "anthropic-ai", "PerplexityBot", "Perplexity-User", "Google-Extended", "Googlebot", "Bingbot", "Applebot", "Applebot-Extended", "DuckAssistBot", "Meta-ExternalAgent", "MistralAI-User", "CCBot"];
 write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 write("llms.txt", `# Caldera
 
-> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself and a digital garden of notes grown in public (seedling, budding, evergreen; a license per note; links between gardens with backlinks on both sides). Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
 - Sign up with GitHub (no install): ${SITE}/auth/github
 - Install for Obsidian: Obsidian community plugins (search Caldera), or copy one prompt into Claude Code, Codex or Cursor: ${SITE}/#install
 - Example city: ${SITE}/@mike/city.html
 - Example profile: ${SITE}/@mike/
 - Directory of people: ${SITE}/people
-- Recently tended gardens: ${SITE}/gardens
-- Example garden: ${SITE}/@mike/garden.html
 - Source (MIT plugin, AGPL hub): https://github.com/schoettle-cmd/caldera
 
 ## Guides

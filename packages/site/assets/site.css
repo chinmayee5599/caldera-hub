@@ -161,6 +161,21 @@ section h2 { line-height: 1.12; }
 .people-sort button { border: 0; background: none; color: var(--text-muted); font: 500 14px var(--font-body); padding: 8px 14px; border-radius: var(--radius-round); cursor: pointer; }
 .people-sort button[aria-selected="true"] { background: var(--bg-raised); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .people-count { margin: 6px 0 18px; font-variant-numeric: tabular-nums; }
+.people-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.ptag { display: inline-flex; align-items: center; min-height: 34px; padding: 0 13px; border-radius: var(--radius-round); font: 500 13.5px var(--font-body); cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.ptag-prob { background: var(--accent-soft); color: var(--accent-text); border: 1px solid transparent; }
+.ptag-stack { background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
+.ptag:hover { border-color: var(--accent); }
+.ptag[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ptag:focus-visible, .ptag-clear:focus-visible, .pcard-intro:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ptag-clear { border: 0; background: none; color: var(--text-muted); font: 500 13.5px var(--font-body); padding: 0 8px; min-height: 34px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.ptag-sm { min-height: 28px; padding: 0 10px; font-size: 12.5px; position: relative; z-index: 1; }
+.pcard-tags { gap: 6px; }
+.pcard-intro { position: relative; z-index: 1; margin-left: auto; border: 0; border-radius: var(--radius-round); background: var(--accent); color: #fff; font: 600 13px var(--font-body); padding: 0 12px; min-height: 30px; cursor: pointer; transition: filter .15s; }
+.pcard-intro:hover:not(:disabled) { filter: brightness(1.08); }
+.pcard-intro:disabled { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--line-strong); cursor: default; }
+.pcard-msg { position: relative; z-index: 1; width: 100%; font-size: 12.5px; color: var(--text-muted); }
+@media (max-width: 560px) { .ptag { min-height: 40px; } .ptag-sm { min-height: 34px; } .pcard-intro { min-height: 40px; } }
 .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .pcard { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-raised); color: var(--text); transition: border-color .15s, transform .15s; }
 .pcard:hover { border-color: var(--accent); transform: translateY(-2px); }

@@ -2,7 +2,9 @@
 //   @caldera/core prompts  -> index.html (the one setup prompt) and guide.html (edit)
 //   site/releases.json     -> changelog.html (rendered at rest) and releases.xml (RSS)
 import fs from "node:fs";
-import { agentPrompt, editPrompt, FEATURES, featurePrompt, upgradePrompt } from "../../caldera/packages/core/dist/index.js";
+import { agentPrompt, editPrompt, activeFeatures, featurePrompt, upgradePrompt } from "../../caldera/packages/core/dist/index.js";
+// only features that are switched on reach the site (the garden is paused: core flags.ts)
+const FEATURES = activeFeatures();
 
 const site = new URL("../packages/site/", import.meta.url);
 const HUB = "https://caldera.social";
@@ -34,6 +36,7 @@ const card = f => {
     <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-${pid}.md</div><button class="btn copy" type="button" data-copy="fp-${pid}"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-${pid}">${esc(featurePrompt(pid, { hubUrl: HUB }))}</pre></div></div></details>` : ""}</section>`;
 };
 const byId = Object.fromEntries(FEATURES.map(f => [f.id, f]));
+for (const g of GROUPS) g[1] = g[1].filter(id => byId[id]);
 const missing = FEATURES.filter(f => !GROUPS.some(([, ids]) => ids.includes(f.id))).map(f => f.id);
 if (missing.length) throw new Error("guide groups miss features: " + missing.join(", "));
 const featuresHtml = `\n  <nav class="feat-toc" aria-label="Features">${GROUPS.map(([g, ids]) => `<span><b>${esc(g)}</b> ${ids.map(id => `<a href="#f-${id}">${esc(byId[id].label.replace(/ \(.*\)$/, ""))}</a>`).join(" &middot; ")}</span>`).join("")}</nav>

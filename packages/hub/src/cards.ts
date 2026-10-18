@@ -75,6 +75,33 @@ ${LOGO(1062, 538, 44)}<text x="1110" y="606" text-anchor="end" font-family="${se
 </svg>`;
 }
 
+/** word-wrap for SVG text (no measuring available): about `width` characters per line, at most `max` lines */
+function wrap(text: string, width: number, max: number): string[] {
+  const out: string[] = []; let line = "";
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    if ((line + " " + w).trim().length > width) { if (line) out.push(line); line = w.length > width ? w.slice(0, width - 1) + "-" : w; if (out.length === max) break; }
+    else line = (line + " " + w).trim();
+  }
+  if (out.length < max && line) out.push(line);
+  if (out.length === max && text.length > out.join(" ").length + 1) out[max - 1] = clip(out[max - 1]!, width - 3).replace(/\.\.\.$/, "") + "...";
+  return out.slice(0, max);
+}
+/** The share image for a feed post: text only (author + the post as a sentence + its specifics), Caldera styling, no user images. */
+export function postCardSvg(o: { handle: string; name: string; sentence: string; detail: string; host: string }): string {
+  const W = 1200, H = 630, serif = `'DejaVu Serif','Liberation Serif',Georgia,serif`, sans = `'DejaVu Sans','Liberation Sans',Arial,sans-serif`;
+  const lines = wrap(`${o.name || "@" + o.handle} ${o.sentence}`, 38, 4), det = wrap(o.detail || "", 70, 2);
+  const y0 = 150 + (4 - lines.length) * 26;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<defs><radialGradient id="sky" cx="50%" cy="115%" r="95%"><stop offset="0" stop-color="#1D2B4A"/><stop offset=".6" stop-color="#0C1222"/><stop offset="1" stop-color="#080B14"/></radialGradient></defs>
+<rect width="${W}" height="${H}" fill="url(#sky)"/>${stars(o.handle + o.sentence, W, 260, 40)}
+<text x="64" y="92" font-family="${sans}" font-size="24" fill="#9CC4FF">On Caldera, @${esc(o.handle)}</text>
+${lines.map((l, i) => `<text x="64" y="${y0 + i * 66}" font-family="${serif}" font-size="54" font-weight="700" fill="#F7F7FA">${esc(l)}</text>`).join("\n")}
+${det.map((l, i) => `<text x="66" y="${y0 + lines.length * 66 + 18 + i * 34}" font-family="${sans}" font-size="25" fill="#C9D3E6">${esc(l)}</text>`).join("\n")}
+<text x="66" y="598" font-family="${sans}" font-size="22" fill="#9CC4FF">${esc(o.host)}/feed</text>
+${LOGO(1062, 538, 44)}<text x="1110" y="606" text-anchor="end" font-family="${serif}" font-size="22" font-weight="700" fill="#F2F2F5">Caldera</text>
+</svg>`;
+}
+
 let resvg: any;
 /** SVG -> PNG with resvg (loaded on first use; optional dependency on the server). */
 export async function toPng(svg: string): Promise<Buffer> {

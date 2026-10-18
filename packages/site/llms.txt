@@ -1,14 +1,12 @@
 # Caldera
 
-> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself and a digital garden of notes grown in public (seedling, budding, evergreen; a license per note; links between gardens with backlinks on both sides). Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
 - Sign up with GitHub (no install): https://caldera.social/auth/github
 - Install for Obsidian: Obsidian community plugins (search Caldera), or copy one prompt into Claude Code, Codex or Cursor: https://caldera.social/#install
 - Example city: https://caldera.social/@mike/city.html
 - Example profile: https://caldera.social/@mike/
 - Directory of people: https://caldera.social/people
-- Recently tended gardens: https://caldera.social/gardens
-- Example garden: https://caldera.social/@mike/garden.html
 - Source (MIT plugin, AGPL hub): https://github.com/schoettle-cmd/caldera
 
 ## Guides
@@ -39,7 +37,6 @@ The full setup prompt (safe to paste again; it covers everything below and asks 
 - Timeline with eras and links: fed by "timeline" in Caldera/profile.md: "Year | milestone | detail" lines, chapters as "era | Name | 2015-2020", links as [[Name|https://...]]. Only things already public; linked names also become links in the side menu.
 - Side menu groups: fed by "sidebar" in Caldera/profile.md (Group | item, item | optional vault folder). Hand-pick companies, projects or sources to list; items named in your timeline or projects link to their sites.
 - Local graph and backlinks: fed by "graph" (note names) and "backlinks" (Title | context) in Caldera/profile.md. Pick names you're comfortable showing; the page shows how many notes link to each.
-- Garden and garden home: fed by notes in your Garden folder or marked "caldera: garden" (stage + license). Plant a note; the whole note becomes a public page with backlinks from other gardens.
 - Help exchange (asks and offers): fed by asks and offers you post. Run "Caldera: Post an ask" / "Caldera: Post an offer" in Obsidian.
 - Elsewhere (links): fed by "links" in Caldera/profile.md (Label | https://url). Your site, GitHub, socials.
 - Masthead and photo: fed by "banner" and "photo" in Caldera/profile.md (images inside the vault). Choose images in Private view, or copy the masthead prompt for your AI.

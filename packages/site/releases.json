@@ -1,6 +1,40 @@
 {
   "releases": [
     {
+      "version": "0.20.3",
+      "date": "2026-10-18",
+      "title": "Your daily summary",
+      "items": [
+        "New members are asked where to send their daily summary right after signing up. If you signed up with GitHub, your verified GitHub address is filled in and one click turns it on, with nothing to confirm.",
+        "The daily email leads with what matters: kudos you got, friend requests and introductions waiting, people to meet, and new connections, each with a button to act on it. Then your page (visitors, what you wrote in your vault, commits in your city) and one next step for your page.",
+        "Members without the summary see a one-time strip on their own page, and Obsidian shows a one-time notice, to add an email in one step."
+      ],
+      "howto": "Add your email in Settings (caldera.social/settings), or in Obsidian: Settings > Caldera > Email me a daily summary."
+    },
+    {
+      "version": "0.20.2",
+      "date": "2026-10-17",
+      "title": "A simpler page",
+      "items": [
+        "The garden is paused. Your page no longer shows a Garden section, garden pages or garden links, and the garden commands and settings are hidden. Notes in your vault are untouched, and the code is kept so it can come back later.",
+        "Your page leads with what matters most right now: your city, your story, your AI usage and the people you build with.",
+        "The setup prompt (v4) drops the garden steps. Caldera will offer you the new prompt; pasting it again is safe.",
+        "Settings in Obsidian show the Connections lights with their full styling."
+      ]
+    },
+    {
+      "version": "0.20.1",
+      "date": "2026-10-17",
+      "title": "What people are building",
+      "items": [
+        "Your page shows what you're building: tags like AI agents, Social features or Next.js under your headline, worked out from your public GitHub repos (topics, descriptions, READMEs and dependency names). Private repos only ever add a language.",
+        "Find people by what they're building: People has tag filters and a Best match sort, and every tag on a page opens that search.",
+        "Introduce me: ask to meet someone building the same things. They can accept or say not now, and they're never told which. Introductions show in the Caldera panel, on caldera.social/me/building and in your daily email.",
+        "Edit your tags on caldera.social/me/building, or with tags, hideTags and autoTags in Caldera/profile.md. A new setting turns automatic tags off.",
+        "The World map has a Topics toggle that tints each neighborhood by what its member is building, with a legend that names every color."
+      ]
+    },
+    {
       "version": "0.20.0",
       "date": "2026-10-17",
       "title": "Settings with connection lights, and alerts",

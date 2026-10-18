@@ -11,11 +11,16 @@ import { CITY_CSS, CITY_JS, type CityData, type CityRepo } from "../../../../cal
 export interface WorldMemberIn {
   handle: string; name: string; headline: string; created: string; groups: string[]; friends: number;
   city: CityData | null; notes: number; busy: number;
+  /** their top "what they're building" problem space (public GitHub signals), for Color by topic */
+  tag?: string;
 }
-export interface WorldMember { handle: string; name: string; headline: string; isNew: boolean; groups: string[]; friends: number; city: string; page: string }
+export interface WorldMember { handle: string; name: string; headline: string; isNew: boolean; groups: string[]; friends: number; city: string; page: string; tag?: string }
 /** A friendship ray: [@a, @b, kind (0 request/invite, 1 founder welcome, 2 shared repo, 3 GitHub follow), why (repo, or the follow)]. */
 export type WorldLink = [string, string, number, string?];
-export interface World { at: string; members: WorldMember[]; city: CityData; links: WorldLink[]; start: string | null }
+export interface World { at: string; members: WorldMember[]; city: CityData; links: WorldLink[]; start: string | null; topics?: { t: string; c: string; n: number }[] }
+/** Color by topic: the most common problem spaces get a hue each (readable on the night map, distinct for color-blind
+ *  viewers in the order used), everything else is "Other". The legend always names them, so color is never the only cue. */
+const TOPIC_HUES = ["#A78BFA", "#2DD4BF", "#FBBF24", "#FB7185", "#38BDF8", "#A3E635", "#FB923C", "#E879F9", "#34D399"];
 
 const MAX_PER_MEMBER = 30, MAX_BUILDINGS = 900, MAX_LINKS = 300, NEW_MS = 48 * 3600_000;
 const str = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
@@ -74,10 +79,12 @@ export function buildWorld(members: WorldMemberIn[], friendships: ([string, stri
   const busiest = [...members].sort((a, b) => b.busy - a.busy)[0];
   return {
     at: new Date(now).toISOString(),
-    members: order.map(m => ({ handle: m.handle, name: str(m.name, 80), headline: str(m.headline, 160), isNew: isNew(m), groups: m.groups.slice(0, 8), friends: m.friends,
+    members: order.map(m => ({ handle: m.handle, name: str(m.name, 80), headline: str(m.headline, 160), isNew: isNew(m), groups: m.groups.slice(0, 8), friends: m.friends, ...(m.tag ? { tag: str(m.tag, 32) } : {}),
       city: m.city ? `${base}/@${m.handle}/city.html` : `${base}/@${m.handle}/`, page: `${base}/@${m.handle}/` })),
     city: { generated: new Date(now).toISOString(), districts, private: false, totals: { commits: all.reduce((s, r) => s + r.commits, 0), active: all.filter(r => r.week > 0).length } },
     links: links.slice(0, MAX_LINKS),
+    topics: (() => { const n = new Map<string, number>(); for (const m of members) if (m.tag) n.set(m.tag, (n.get(m.tag) || 0) + 1);
+      return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, TOPIC_HUES.length).map(([t, k], i) => ({ t: str(t, 32), c: TOPIC_HUES[i]!, n: k })); })(),
     start: busiest && busiest.busy > 0 ? "@" + busiest.handle : order.length ? "@" + order[0].handle : null,
   };
 }
@@ -108,7 +115,7 @@ const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").repl
 /** The world page: the city renderer in world mode, with the site's own look around it. */
 export function worldPage(w: World, o: { hub: string; nav: string }): string {
   const hub = o.hub.replace(/\/$/, ""), n = w.members.length, b = w.city.districts.reduce((s, d) => s + d.repos.length, 0);
-  const data = { ...w.city, openBase: "", world: { m: Object.fromEntries(w.members.map(m => ["@" + m.handle, m])), links: w.links, start: w.start } };
+  const data = { ...w.city, openBase: "", world: { m: Object.fromEntries(w.members.map(m => ["@" + m.handle, m])), links: w.links, start: w.start, topics: w.topics || [] } };
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Caldera world: every member's city on one map</title>
 <meta name="description" content="Every Caldera member's GitHub and Obsidian city on one live map: ${n} neighborhoods, ${b} buildings, friendships as highways.">
@@ -125,11 +132,11 @@ ${o.nav}
 <main class="w-main">
 <div class="w-head"><h1>The world</h1><p>${n} neighborhood${n === 1 ? "" : "s"} &middot; ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"} &middot; rays of light are friendships &middot; click a name to fly there, again to walk in</p></div>
 <div class="c-stage" id="stage"><canvas id="city" aria-label="Isometric world map of ${n} member cities"></canvas>
-<div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-fr" aria-pressed="true" aria-label="Friendships" title="Friendships between neighborhoods, drawn as rays of light">&#x2727;<span class="t-txt"> Friendships</span></button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
+<div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-fr" aria-pressed="true" aria-label="Friendships" title="Friendships between neighborhoods, drawn as rays of light">&#x2727;<span class="t-txt"> Friendships</span></button><button id="t-topics" aria-pressed="false" aria-label="Color by topic" title="Tint each neighborhood by what they're building"><span class="t-sw" aria-hidden="true"></span><span class="t-txt"> Topics</span></button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
 <div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
 <div class="c-card" id="card" hidden></div><div class="c-hint">Drag to move &middot; scroll or pinch to zoom &middot; click a name to fly there</div></div>
 <div class="w-foot"><span class="w-legend"><i></i>Friendships are rays of light</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
-</main>
+</main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>
 <script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })}</script>
 <script type="application/json" id="city-data">${safeJson(data)}</script>
 <script>${CITY_JS}</script></body></html>`;

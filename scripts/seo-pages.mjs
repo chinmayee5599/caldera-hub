@@ -20,11 +20,11 @@ export const pages = [
 <li><b>People.</b> Add friends, start a group at caldera.social/g/name, and get a daily summary by email.</li>
 </ul>` },
       { h2: "How to do it", html: `<ol>
-<li>Go to <a href="/auth/github">caldera.social/auth/github</a> and sign in with GitHub. Your account needs to be at least 30 days old with a public repo or a follower.</li>
+<li>Go to <a href="/auth/github">caldera.social/auth/github</a> and sign in with GitHub. Brand-new, empty GitHub accounts wait a few days before they can sign up.</li>
 <li>Your page and city are built from your public repos and open on your account page.</li>
 <li>Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.</li>
 </ol>` },
-      { h2: "Use Obsidian too?", html: `<p>Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, a digital garden and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to <code>Caldera/profile.md</code> and Caldera builds your city from your public repos. See <a href="/what-is-caldera">What is Caldera?</a></p>` },
+      { h2: "Use Obsidian too?", html: `<p>Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, AI usage and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to <code>Caldera/profile.md</code> and Caldera builds your city from your public repos. See <a href="/what-is-caldera">What is Caldera?</a></p>` },
     ],
     faq: [
       ["Does Caldera read my code?", "No. It reads repo names, languages, sizes, commit counts and your public activity. The optional GitHub app for private repos has read-only access to repository metadata, which does not include file contents."],
@@ -38,7 +38,7 @@ export const pages = [
     title: "What is Caldera? The social network for GitHub and Obsidian",
     description: "Caldera is a free, open-source social network for GitHub and Obsidian: your repos become a living city, your vault becomes a living profile, and members befriend each other and help each other.",
     h1: "What is Caldera?",
-    answer: "Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile and a digital garden. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only \"gravity\". It is private by default",
+    answer: "Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only \"gravity\". It is private by default",
     sections: [
       { h2: "What Caldera does", html: `<ul>
 <li><b>GitHub city.</b> Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names.</li>
@@ -53,7 +53,7 @@ export const pages = [
     ],
     faq: [
       ["Is Caldera free?", "Yes. The plugin, your profile and friends are free and open source."],
-      ["Does Caldera need Obsidian?", "No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and a garden, and a GitHub sign-up can move into a vault any time."],
+      ["Does Caldera need Obsidian?", "No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and AI usage, and a GitHub sign-up can move into a vault any time."],
       ["Is Caldera an official Obsidian or GitHub product?", "No. Caldera is an independent, open-source project made by mjonesone, LLC."],
     ],
     related: ["github-profile-city", "obsidian-public-profile", "obsidian-social-network"],

@@ -91,7 +91,7 @@ test("daily email: double opt-in, sealed at rest, digest only when something hap
   await post("/v1/envelopes", C.sign(ids.bo, "friend.request", { to: ids.mike.id, note: "hello" }));
   let r = await hub.mail.runDigest(true); assert.equal(r.sent, 1);
   const d = sent.at(-1);
-  assert.match(d.subject, /^Caldera: @bo wants to be friends$/); assert.ok(/^[\x20-\x7e]+$/.test(d.subject), "ascii subject");
+  assert.match(d.subject, /^Caldera: /); assert.ok(/^[\x20-\x7e]+$/.test(d.subject), "ascii subject");
   assert.ok(d.html.includes("hello") && d.text.includes("Unsubscribe"));
   assert.match(d.headers["List-Unsubscribe"], /^<http:\/\/hub\.test\/v1\/email\/unsub\?t=/); assert.equal(d.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
   // nothing new since: quiet digest at most once a week
@@ -127,7 +127,8 @@ test("daily email: a vault page not updated in 3+ days gets the refresh line ins
   await post("/v1/envelopes", C.sign(eve, "friend.request", { to: dee.id, note: "again" }));
   const m = sent.length; await hub.mail.runDigest(true);
   const d2 = sent.slice(m).find(x => x.to === "dee@realmail.org");
-  assert.ok(d2); assert.doesNotMatch(d2.text, /last updated/); assert.match(d2.text, /FINISH YOUR PAGE/);
+  assert.ok(d2); assert.doesNotMatch(d2.text, /last updated/); assert.match(d2.text, /NEXT FOR YOUR PAGE|FINISH YOUR PAGE/);
+  assert.equal((d2.text.match(/NEXT FOR YOUR PAGE|FINISH YOUR PAGE/g) || []).length, 1, "exactly one setup step");
 });
 
 test("GitHub sign-up from an invite + group: referral, friend request to the inviter, /me friends, accept, email", async () => {

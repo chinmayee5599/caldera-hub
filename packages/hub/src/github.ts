@@ -22,6 +22,8 @@ import { alertItem, ALERT_CSS, ALERT_JS, type AlertRow } from "./alerts";
 
 export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
+  /** sign-up gate for new GitHub accounts (an open-core hook) */
+  accountOk?: (me: { created_at?: string; public_repos?: number; followers?: number }) => boolean;
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string;
   accept: (e: C.Envelope) => { status: number; body: any }; erase: (id: string) => void;
   dataDir: string; publicUrl: string; privateUrl?: string;
@@ -34,25 +36,22 @@ export interface GhCtx {
     recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null; unlockState?: (id: string) => C.UnlockState | null;
     connections?: (id: string) => Conn | null; friendAct?: (me: string, to: string) => { status: number; body: any };
     alerts?: { forOwner: (id: string) => AlertRow[]; markRead: (id: string, ids: string[]) => void };
-    circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void } };
+    circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void };
+    /** what they're building: their tags and how many introductions wait for an answer */
+    building?: (id: string) => { tags: { t: string; kind: string }[]; intros: number } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
 /** Daily summary email hooks for the /me page (implemented in the hub's email module). */
-export interface EmailHooks { status: (owner: string) => { email: string; confirmed: boolean } | null; subscribe: (owner: string, email: string) => Promise<string>; unsubscribe: (owner: string) => void }
+export interface EmailHooks { status: (owner: string) => { email: string; confirmed: boolean } | null; subscribe: (owner: string, email: string) => Promise<string>; unsubscribe: (owner: string) => void;
+  suggest?: (owner: string, email: string, verified: boolean, source: string) => void; promptFor?: (owner: string) => { suggestion: { email: string; verified: boolean } | null } | null; dismissPrompt?: (owner: string) => void }
 const GROUP = /^[a-z0-9][a-z0-9-]{1,29}$/;
 const groupsFrom = (s: unknown) => [...new Set(String(s || "").toLowerCase().split(/[\s,]+/).map(g => g.replace(/^#/, "")).filter(g => GROUP.test(g)))].slice(0, 8);
 type App = { id: number; slug: string; client_id: string; client_secret: string; pem: string; html_url?: string; owner?: { login: string } };
 const DAY = 86_400_000;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-
-/** GitHub sign-up gate: refuse only accounts under 3 days old with no public repos and no followers (bot-shaped). */
-export function githubAccountOk(me: { created_at?: string; public_repos?: number; followers?: number }, now = Date.now()): boolean {
-  const age = now - (Date.parse(String(me.created_at || "")) || now), has = (Number(me.public_repos) || 0) + (Number(me.followers) || 0) > 0;
-  return age >= 3 * 86_400_000 || has;
-}
 
 export function github(ctx: GhCtx) {
   const { q } = ctx, F = ctx.fetch || fetch;
@@ -84,7 +83,7 @@ export function github(ctx: GhCtx) {
   // ------------------------------------------------------------------ cookies + sessions
   const cookies = (req: http.IncomingMessage) => Object.fromEntries(String(req.headers.cookie || "").split(/;\s*/).filter(Boolean).map(c => { const i = c.indexOf("="); return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))]; }));
   // where to land after signing in: a page on this hub only (a profile, city, note, the world, people or a group)
-  const safeBack = (v: unknown): string => { const s0 = String(v || ""); return s0.length < 200 && /^\/(@[a-z0-9-]+\/[A-Za-z0-9._\/-]*|world|people|g\/[a-z0-9-]+)$/.test(s0) && !s0.includes("..") ? s0 : ""; };
+  const safeBack = (v: unknown): string => { const s0 = String(v || ""); return s0.length < 200 && /^\/(@[a-z0-9-]+\/[A-Za-z0-9._\/-]*|world|people|feed|feed\/p\/[0-9a-f]{12}|g\/[a-z0-9-]+)$/.test(s0) && !s0.includes("..") ? s0 : ""; };
   const setCookie = (res: http.ServerResponse, name: string, val: string, maxAge: number) => {
     const prev = res.getHeader("set-cookie"); const list = Array.isArray(prev) ? prev : prev ? [String(prev)] : [];
     res.setHeader("set-cookie", [...list, `${name}=${encodeURIComponent(val)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`]);
@@ -107,10 +106,10 @@ export function github(ctx: GhCtx) {
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>
 .me{max-width:760px;margin:0 auto;padding:28px 16px 64px}.me h1{font-family:'Source Serif 4',Georgia,serif;font-size:2rem;margin:.2em 0}.me .card{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0}
-.me label{display:block;font-weight:500;margin:10px 0 4px}.me input[type=text],.me textarea{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:8px 10px;font:inherit}
+.me label{display:block;font-weight:500;margin:10px 0 4px}.me input[type=text],.me input[type=email],.me textarea{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:8px 10px;font:inherit}
 .me textarea{min-height:84px}.me .mut{color:var(--text-muted,#9A9AA6);font-size:.92em}.me code,.me pre{font-family:'IBM Plex Mono',monospace;font-size:12px}.me pre{white-space:pre-wrap;word-break:break-all;background:var(--bg,#0E0B16);border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px;max-height:220px;overflow:auto}
 .me .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.me .who{display:flex;gap:14px;align-items:center}.me .who img{width:64px;height:64px;border-radius:50%}.me .danger{color:#F0716A}
-.me button.btn{cursor:pointer}</style></head><body>${bar || (ctx.siteNav ? ctx.siteNav() : `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header>`)}<main class="me">${body}</main><script src="/assets/site.js" defer></script>
+.me button.btn{cursor:pointer}</style></head><body>${bar || (ctx.siteNav ? ctx.siteNav() : `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header>`)}<main class="me">${body}</main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer><script src="/assets/site.js" defer></script>
 <script>document.querySelectorAll('[data-copy-text]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-copy-text')).textContent;navigator.clipboard.writeText(t).then(function(){b.textContent='Copied'},function(){})})})</script></body></html>`);
   };
 
@@ -252,6 +251,29 @@ export function github(ctx: GhCtx) {
 
   // ------------------------------------------------------------------ the /me page
   const peopleOf = async (a: any): Promise<GhPerson[]> => { try { return (await ctx.social?.circle?.people(a.profile_id)) || []; } catch { return []; } };
+  /** GitHub's primary verified address (needs the app's "Email addresses: read" permission, which users accept on their next
+   *  sign-in) else the public profile email: stored sealed, only to prefill the daily-summary opt-in. Never blocks sign-in. */
+  async function captureEmail(owner: string, access: string, me: any) {
+    const em = ctx.social?.email; if (!em?.suggest) return;
+    try {
+      const list = await Promise.race([gh(access, "/user/emails"), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000))]) as any[];
+      const pick = Array.isArray(list) ? (list.find(x => x.primary && x.verified) || list.find(x => x.verified)) : null;
+      if (pick?.email && !/noreply\.github\.com$/i.test(pick.email)) { em.suggest(owner, String(pick.email), true, "github-verified"); return; }
+    } catch { /* 403/404: the permission isn't granted (yet) - fall back to the public address */ }
+    if (typeof me?.email === "string" && me.email) em.suggest(owner, me.email, false, "github-public");
+  }
+  /** The first thing a member sees until they've answered it: where to send the daily summary (prefilled, one click). */
+  function emailCaptureCard(owner: string): string {
+    const em = ctx.social?.email, pr = em?.promptFor?.(owner); if (!pr) return "";
+    const sug = pr.suggestion;
+    return `<form method="post" class="card" id="email" style="border:1px solid var(--accent,#8B6CF6);box-shadow:0 0 0 3px var(--accent-soft,rgba(139,108,246,.15))"><input type="hidden" name="do" value="email-capture">
+<h2 style="margin:0 0 4px;font-family:'Source Serif 4',Georgia,serif;font-size:1.3rem">Where should we send your daily summary?</h2>
+<p class="mut" style="margin:0 0 10px">Who visited your page, new friends and kudos, people to meet, and a nudge when your page needs attention. Only on days something happens, one-click unsubscribe.</p>
+<input type="email" name="email" inputmode="email" autocomplete="email" required placeholder="you@example.com" value="${esc(sug?.email || "")}" style="width:100%">
+${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your verified GitHub address. Change it if you like.</p>` : ""}
+<label style="margin:10px 0"><input type="checkbox" name="on" checked> Email me a daily summary</label>
+<div class="row"><button class="btn" type="submit">Continue</button><button class="btn ghost small" type="submit" name="do" value="email-dismiss" formnovalidate>Not now</button></div></form>`;
+  }
   function mePage(res: http.ServerResponse, a: any, note = "", people: GhPerson[] = []) {
     const pr = q("SELECT * FROM profiles WHERE id=?").get(a.profile_id) as any, edits = JSON.parse(a.edits || "{}");
     const url = `${pub}/@${a.handle}/`, ak = q("SELECT key, secret FROM agent_keys WHERE owner=?").get(a.profile_id) as any;
@@ -280,9 +302,9 @@ export function github(ctx: GhCtx) {
     const panel = connectionsPanel({ pub, handle: a.handle, conn, sites, app: ap ? { slug: ap.slug } : null, installation: !!a.installation, email: em?.email,
       livePrompt: C.featurePrompt("live", { hubUrl: pub, handle: a.handle, hosted: true }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
       agentPrompt: agentPrompt || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }) });
-    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
+    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}${emailCaptureCard(a.profile_id)}
 <div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)} &middot; <a href="${esc(url)}">your page</a></div></div></div>
-${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["/me/building", "What you're building"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
 ${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
 ${sectionHead("alerts", "Alerts")}${alertsList(a.profile_id, "set")}
 ${sectionHead("page", "Your page")}<div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span></div>
@@ -320,9 +342,9 @@ ${sectionHead("account", "Account")}<div class="card danger-zone"><div class="ro
     const links: [string, string][] = Array.isArray(b.links) ? b.links.filter((l: any) => Array.isArray(l)).slice(0, 20) : [];
     const ro = (label: string, val: string) => `<div style="margin:8px 0"><span class="mut" style="display:block;font-size:13px">${esc(label)}</span>${val || `<span class="mut">Not set</span>`}</div>`;
     const yes = (on: boolean, t: string) => `<div style="margin:6px 0"><span class="conn-dot${on ? " on" : ""}" style="display:inline-block;margin-right:8px;vertical-align:middle"></span>${t}</div>`;
-    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
+    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}${emailCaptureCard(owner)}
 <div class="who">${b.photos?.avatar ? `<img src="${esc(url)}${esc(String(b.photos.avatar).replace(/^\.?\//, ""))}" alt="">` : ""}<div><h1>${esc(pr.name || handle)}</h1><div class="mut">@${esc(handle)} &middot; published from Obsidian &middot; <a href="${esc(url)}">your page</a></div></div></div>
-${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${settingsNav([["connections", "Connections"], ["alerts", "Alerts"], ["page", "Your page"], ["people", "People"], ["/me/building", "What you're building"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
 ${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
 ${sectionHead("alerts", "Alerts")}${alertsList(owner, "set")}
 ${sectionHead("page", "Your page", "Edited from Obsidian (<code>Caldera/profile.md</code>). Change it there, or have your AI do it; the page republishes about a minute after you save.")}
@@ -388,7 +410,7 @@ ${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="
   function emailCard(a: any, edits: any): string {
     const soc = ctx.social, me = a.profile_id as string, em = soc?.email?.status(me);
     const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
-    return `${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
+    return `${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests and kudos. Never shown on your page. Unsubscribe in one click.</p>
 ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
   }
   function growthCards(a: any, edits: any): string {
@@ -405,6 +427,11 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
 <div class="card"><b>Share your page</b><p class="mut">This is the picture people see when you post your link.</p><img src="${esc(url)}card.png" alt="Your link preview" style="width:100%;max-width:600px;border-radius:10px;border:1px solid var(--line,#2A2440);display:block;margin:6px 0 10px">
 <div class="row"><a class="btn small" href="https://x.com/intent/post?text=${text}" target="_blank" rel="noopener">Post on X</a><a class="btn small" href="https://bsky.app/intent/compose?text=${text}" target="_blank" rel="noopener">Bluesky</a><a class="btn small" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a></div>
 <p style="margin:12px 0 4px"><b>Invite a friend</b> <span class="mut">(you get ${25} help credits when they join)</span></p><pre id="inv">${esc(invite)}</pre><button class="btn small" type="button" data-copy-text="inv">Copy invite link</button></div>
+${(() => { const bd = ctx.social?.building?.(a.profile_id); if (!bd) return "";
+  return `<div class="card" id="building"><b>What you're building</b>${bd.intros ? ` <span class="mut">&middot; ${bd.intros} introduction${bd.intros === 1 ? "" : "s"} waiting</span>` : ""}
+<p class="mut">Tags from your public repos help people building the same things find you. Private repos only ever add a language.</p>
+${bd.tags.length ? `<div class="row" style="gap:6px">${bd.tags.slice(0, 10).map(t => `<a href="/people?tag=${encodeURIComponent(t.t)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 11px;border-radius:999px;font-size:13px;text-decoration:none;${t.kind === "stack" ? "border:1px solid var(--line,#2A2440);color:var(--text,#E6E6EA)" : "background:var(--accent-soft,#2A2440);color:var(--accent-text,#C9B8FF)"}">${esc(t.t)}</a>`).join("")}</div>` : `<p class="mut">No tags yet. They're worked out from your public GitHub within a few minutes.</p>`}
+<div class="row" style="margin-top:10px"><a class="btn small" href="/me/building">${bd.intros ? "Answer introductions" : "Edit tags"}</a></div></div>`; })()}
 <div class="card" id="friends"><b>Friends</b>
 ${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
 ${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.why && (f.kind === "repo" || f.kind === "github") ? ` <span class="mut">(${f.kind === "repo" ? "both work on " : ""}${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
@@ -467,17 +494,17 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
-            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); done(backTo || `/@${pr.handle}/`); return true;
+            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
         }
         if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
-          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); done(backTo || "/me"); return true;
+          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); await captureEmail(acct.profile_id, tok.access, me); done(backTo || "/me"); return true;
         }
         // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
-        if (!githubAccountOk(me)) {
+        if (!(ctx.accountOk ? ctx.accountOk(me) : true)) {
           page(res, 403, "Almost", `<h1>Your GitHub account is brand new</h1><p>To keep bots out, Caldera waits until a GitHub account is a few days old, or has a public repo or a follower. Push a repo (even an empty one) and <a class="btn" href="/auth/github">try again</a>, or come back in a couple of days.</p><p class="mut">Use Obsidian? You can <a href="/#install">set up Caldera from your vault</a> right now.</p>`); return true;
         }
         if (!ctx.allowNewProfile(req)) { page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
@@ -487,7 +514,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         q(`INSERT INTO gh_accounts (gh_id, login, profile_id, handle, key_sealed, token_sealed, edits, cache, created) VALUES (?,?,?,?,?,?,?,?,?)`)
           .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), JSON.stringify(edits0), "{}", new Date().toISOString());
         acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id);
-        startSession(res, me.id);
+        startSession(res, me.id); await captureEmail(id.id, tok.access, me);
         if (ck.cal_inv) setCookie(res, "cal_inv", "", 0);
         if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);
         // the first build reads the whole GitHub account (slow): send them to /me now, build in the background
@@ -578,11 +605,17 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         }
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(me, em)); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(me); pre = "Daily summary emails are off."; }
+        if (act === "email-capture" && ctx.social?.email) {
+          const em = (f.get("email") || "").trim().slice(0, 200);
+          if (f.get("on")) { try { pre = esc(await ctx.social.email.subscribe(me, em)); } catch (e: any) { pre = esc(e.message); } }
+          else { ctx.social.email.dismissPrompt?.(me); pre = "No daily summary. You can turn it on any time under Notifications."; }
+        }
+        if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(me); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
         vaultPage(res, q("SELECT * FROM profiles WHERE id=?").get(me), pre); return true;
       }
       const acct = who.acct;
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
-        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
+        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.${safeBack(url.searchParams.get("back")) ? ` <a href="${esc(safeBack(url.searchParams.get("back")))}">Continue where you were &rarr;</a>` : ""} <span class="mut" style="font-size:12.5px">By using Caldera you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span>` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
       if (req.method === "POST") {
         const origin = String(req.headers.origin || ""); if (origin && origin !== pub && !(origin === "null" && req.headers["sec-fetch-site"] === "same-origin")) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
@@ -614,6 +647,12 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
         if (act === "gh-invite" && ctx.social?.circle) { try { pre = esc(await ctx.social.circle.invite(acct.profile_id, String(f.get("login") || ""))); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
+        if (act === "email-capture" && ctx.social?.email) {   // the welcome card: ticked = subscribe (a GitHub-verified address needs no confirmation)
+          const em = (f.get("email") || "").trim().slice(0, 200);
+          if (f.get("on")) { try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
+          else { ctx.social.email.dismissPrompt?.(acct.profile_id); pre = "No daily summary. You can turn it on any time under Notifications."; }
+        }
+        if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(acct.profile_id); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
         let note = pre || (act === "claim" ? `Here's your code: <code>${esc(claimCode)}</code>. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up). It works once, for 30 minutes.` : "");
         if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
@@ -668,5 +707,10 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
     }
     return null;
   }
-  return { route, privateRoute, build, account, ghLoginsOf, signOut, anyToken, configured: () => !!app() };
+  /** a hosted member's own GitHub token (their own rate budget), or null for profiles whose key we don't hold */
+  async function tokenOf(profileId: string): Promise<string | null> {
+    const acct = q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL AND token_sealed<>''").get(profileId) as any;
+    if (!acct) return null; try { return await tokenFor(acct); } catch { return null; }
+  }
+  return { route, privateRoute, build, account, ghLoginsOf, signOut, anyToken, tokenOf, configured: () => !!app() };
 }

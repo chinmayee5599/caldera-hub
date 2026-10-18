@@ -5,19 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import * as C from "@caldera/core";
 import { createHub, makeAlertBatcher } from "../dist/server.js";
-import { githubAccountOk } from "../dist/server.js";
 
 const DAY = 86_400_000;
-test("GitHub sign-up gate: only brand-new AND empty accounts wait", () => {
-  const now = Date.parse("2026-10-18T00:00:00Z"), ago = d => new Date(now - d * DAY).toISOString();
-  assert.equal(githubAccountOk({ created_at: ago(0.5), public_repos: 0, followers: 0 }, now), false, "hours-old empty account waits");
-  assert.equal(githubAccountOk({ created_at: ago(2.9), public_repos: 0, followers: 0 }, now), false);
-  assert.equal(githubAccountOk({ created_at: ago(3.1), public_repos: 0, followers: 0 }, now), true, "3+ days old is fine even when empty");
-  assert.equal(githubAccountOk({ created_at: ago(0.1), public_repos: 1, followers: 0 }, now), true, "a brand-new account with a repo is fine");
-  assert.equal(githubAccountOk({ created_at: ago(0.1), public_repos: 0, followers: 2 }, now), true, "or with a follower");
-  assert.equal(githubAccountOk({ created_at: ago(20), public_repos: 0, followers: 0 }, now), true, "the old 30-day rule is gone");
-});
-
 test("signup alerts: first 10 a day one by one, then one hourly digest", () => {
   const sent = []; let t = Date.parse("2026-10-18T10:00:00Z");
   const a = makeAlertBatcher((s, x) => sent.push([s, x]), "https://hub.test", 10, () => t);

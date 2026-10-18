@@ -43,7 +43,8 @@ export const SETTINGS_CSS = `<style>
 .danger-zone{border-color:rgba(240,113,106,.45)!important}
 </style>`;
 
-export const settingsNav = (items: [string, string][]) => `<nav class="set-nav" aria-label="Settings sections">${items.map(([id, label]) => `<a href="#${id}">${esc(label)}</a>`).join("")}</nav>`;
+/** Section links; an item whose id starts with "/" is a page of its own (e.g. /me/building, the tags editor). */
+export const settingsNav = (items: [string, string][]) => `<nav class="set-nav" aria-label="Settings sections">${items.map(([id, label]) => `<a href="${id.startsWith("/") ? id : "#" + id}">${esc(label)}</a>`).join("")}</nav>`;
 export const sectionHead = (id: string, title: string, sub = "") => `<h2 class="set-h" id="${id}">${esc(title)}</h2>${sub ? `<p class="set-sub">${sub}</p>` : ""}`;
 
 /** One row: light, title, status line, and (when there's something to do) an expandable in-page flow. */
@@ -77,7 +78,7 @@ export function connectionsPanel(o: PanelOpts): string {
   // Obsidian
   let ob: string;
   if (conn.obsidian.on) ob = "";
-  else ob = `<p class="mut">Your vault adds a daily journal, your notes as a garden, the underground under your city, and end-to-end encrypted sharing with friends. Your page keeps its address and friends.</p><ol>
+  else ob = `<p class="mut">Your vault adds a daily journal, AI usage, the underground under your city, and end-to-end encrypted sharing with friends. Your page keeps its address and friends.</p><ol>
 <li><b>Install Caldera in Obsidian.</b><br><a class="btn small" href="obsidian://show-plugin?id=caldera" style="margin-top:6px">Open in Obsidian</a> <a href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">or find it in the plugin directory</a><br><span class="mut">No Obsidian yet? <a href="https://obsidian.md/download" target="_blank" rel="noopener">Get it free</a>, open it and create a vault.</span></li>
 <li><b>Get your code.</b><br><span class="conn-code" id="claim-box"><button class="btn small" type="button" id="claim-get">Get my code</button></span><br><span class="mut" id="claim-note">The code works once, for 30 minutes.</span></li>
 <li><b>Paste it in Obsidian:</b> Settings &rarr; Caldera &rarr; <b>Import a GitHub sign-up</b>. <span class="conn-wait" id="claim-wait" hidden><i></i>Waiting for Obsidian&hellip; this turns green by itself.</span></li></ol>`;

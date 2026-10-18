@@ -9,10 +9,10 @@ Sign up at caldera.social with GitHub and Caldera builds a city from your repos 
 A city of your repos. Buildings are repos and districts group them. Public repos are named and link to GitHub. Private repos, only if you want. Install the Caldera GitHub app on the repos you choose. They appear as padlocked buildings with no names. The app has read-only access to repository metadata and cannot open your files. Live visitors. Add one script tag to a site and its visitors parachute into your city as they arrive; signups and sales get their own celebrations. AI agents as drones. A small hook shows your coding agents over the repo they are working in. The time of day. The sky follows the viewer's clock, from dawn to night. Pop the city out into a small window and watch it all day. People. Add friends, start a group at caldera.social/g/name, and get a daily summary by email.
 
 ### How to do it
-Go to caldera.social/auth/github and sign in with GitHub. Your account needs to be at least 30 days old with a public repo or a follower. Your page and city are built from your public repos and open on your account page. Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.
+Go to caldera.social/auth/github and sign in with GitHub. Brand-new, empty GitHub accounts wait a few days before they can sign up. Your page and city are built from your public repos and open on your account page. Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.
 
 ### Use Obsidian too?
-Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, a digital garden and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to Caldera/profile.md and Caldera builds your city from your public repos. See What is Caldera?
+Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, AI usage and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to Caldera/profile.md and Caldera builds your city from your public repos. See What is Caldera?
 
 ### Questions
 Q: Does Caldera read my code?
@@ -25,7 +25,7 @@ A: On your account page, choose Delete my Caldera profile. Your page is erased a
 ## What is Caldera?
 URL: https://caldera.social/what-is-caldera
 
-Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile and a digital garden. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only "gravity". It is private by default
+Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only "gravity". It is private by default
 
 ### What Caldera does
 GitHub city. Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names. Living profile. With Obsidian, a public page built on your own device from your vault and republished automatically. Friends between vaults. Add friends by handle. Share any note as an end-to-end encrypted card that lands in their vault as a normal note. Help exchange. Post asks ("I could use help with...") and offers, with optional help-credit bounties. Credits have no cash value. Gravity. Positive-only recognition that fades over a month. No likes, downvotes or follower counts. AI-native setup. One copy-paste prompt lets Claude Code, Codex or Cursor install it and run a daily journal routine.
@@ -40,7 +40,7 @@ The plugin reads your vault locally and never uploads it. Only counts, the profi
 Q: Is Caldera free?
 A: Yes. The plugin, your profile and friends are free and open source.
 Q: Does Caldera need Obsidian?
-A: No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and a garden, and a GitHub sign-up can move into a vault any time.
+A: No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and AI usage, and a GitHub sign-up can move into a vault any time.
 Q: Is Caldera an official Obsidian or GitHub product?
 A: No. Caldera is an independent, open-source project made by mjonesone, LLC.
 
