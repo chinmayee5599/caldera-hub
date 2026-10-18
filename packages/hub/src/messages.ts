@@ -142,7 +142,7 @@ export function messages(c: MsgCtx) {
   }
   /** a thread for its participant: the other person, the messages (marked read as they're shown), and what can be done */
   function thread(me: string, handle: string, after = "") {
-    const them = c.byHandle(String(handle || "").toLowerCase()); if (!them) return null;
+    const them = c.byHandle(String(handle || "").toLowerCase()); if (!them || them.id === me) return null;
     const t = threadOf(me, them.id), friends = c.areFriends(me, them.id);
     const youBlocked = blocked(me, them.id);
     let msgs: any[] = [];

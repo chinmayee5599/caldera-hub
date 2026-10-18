@@ -49,6 +49,10 @@ test("friends message directly; strangers send one request that waits for Accept
     S.friends("ana", "bo");
     const r1 = await S.send("ana", "bo", "Hi Bo"); assert.equal(r1.status, 200); assert.equal(r1.body.state, "sent");
     assert.equal(await S.unread("bo"), 1);
+    // THE header carries Messages with the unread badge, left of the bell; signed out it is not there
+    const feed = await (await S.get("bo", "/feed")).text();
+    assert.match(feed, /<a class="ch-icon ch-msgs" href="[^"]*\/messages" aria-label="Messages, 1 unread"[^>]*>[\s\S]*?<span class="ch-badge">1<\/span><\/a><details class="ch-bell"/);
+    assert.ok(!(await (await fetch(S.base + "/feed")).text()).includes("ch-msgs"));
     const tb = await S.thread("bo", "ana"); assert.equal(tb.state, "open"); assert.equal(tb.messages.length, 1); assert.equal(tb.messages[0].mine, false);
     assert.equal(await S.unread("bo"), 0, "reading marks it read");
     // a stranger: the first message is a request; no second message until accepted
