@@ -37,7 +37,6 @@ The full setup prompt (safe to paste again; it covers everything below and asks 
 - Timeline with eras and links: fed by "timeline" in Caldera/profile.md: "Year | milestone | detail" lines, chapters as "era | Name | 2015-2020", links as [[Name|https://...]]. Only things already public; linked names also become links in the side menu.
 - Side menu groups: fed by "sidebar" in Caldera/profile.md (Group | item, item | optional vault folder). Hand-pick companies, projects or sources to list; items named in your timeline or projects link to their sites.
 - Local graph and backlinks: fed by "graph" (note names) and "backlinks" (Title | context) in Caldera/profile.md. Pick names you're comfortable showing; the page shows how many notes link to each.
-- Help exchange (asks and offers): fed by asks and offers you post. Run "Caldera: Post an ask" / "Caldera: Post an offer" in Obsidian.
 - Your own sections (modules): fed by one Markdown note per section in Caldera/modules/ (frontmatter: title, place main | side, order, publish). Write one yourself, or ask your AI: "add a Reading list module". Lists, tables, links and vault images all work.
 - Elsewhere (links): fed by "links" in Caldera/profile.md (Label | https://url). Your site, GitHub, socials.
 - Masthead and photo: fed by "banner" and "photo" in Caldera/profile.md (images inside the vault). Choose images in Private view, or copy the masthead prompt for your AI.

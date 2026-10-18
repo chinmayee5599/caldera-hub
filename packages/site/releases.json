@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.24.0",
+      "date": "2026-10-18",
+      "title": "Simpler pages: the help exchange is retired",
+      "items": [
+        "The help exchange (asks, offers and help credits) is gone from pages, commands and settings. To ask for help or recommend something, post on the Feed: it goes to the people who match.",
+        "The old friends / gravity / help credits strip is replaced by the friends, followers and following counts under your name."
+      ]
+    },
+    {
       "version": "0.23.0",
       "date": "2026-10-18",
       "title": "Follow people; friends follow each other",
