@@ -44,6 +44,12 @@ type App = { id: number; slug: string; client_id: string; client_secret: string;
 const DAY = 86_400_000;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+/** GitHub sign-up gate: refuse only accounts under 3 days old with no public repos and no followers (bot-shaped). */
+export function githubAccountOk(me: { created_at?: string; public_repos?: number; followers?: number }, now = Date.now()): boolean {
+  const age = now - (Date.parse(String(me.created_at || "")) || now), has = (Number(me.public_repos) || 0) + (Number(me.followers) || 0) > 0;
+  return age >= 3 * 86_400_000 || has;
+}
+
 export function github(ctx: GhCtx) {
   const { q } = ctx, F = ctx.fetch || fetch;
   q(`CREATE TABLE IF NOT EXISTS gh_accounts (gh_id INTEGER PRIMARY KEY, login TEXT, profile_id TEXT, handle TEXT, key_sealed TEXT, token_sealed TEXT,
@@ -219,12 +225,24 @@ export function github(ctx: GhCtx) {
     return `${pub}/@${handle}/`;
   }
 
-  // refresh every hosted (unclaimed) profile every 6 hours, spread out
-  const timer = setInterval(async () => {
+  // every build reads a whole GitHub account (dozens of API calls + rendering): a launch can bring many at once, so
+  // builds run at most BUILD_CONCURRENCY at a time and the rest wait their turn (first builds and refreshes alike)
+  const BUILD_CONCURRENCY = 2; let buildsRunning = 0; const buildWaiters: (() => void)[] = [];
+  async function queuedBuild(acct: any): Promise<string> {
+    if (buildsRunning >= BUILD_CONCURRENCY) await new Promise<void>(r => buildWaiters.push(r));
+    buildsRunning++;
+    try { return await build(acct); } finally { buildsRunning--; buildWaiters.shift()?.(); }
+  }
+
+  // refresh every hosted (unclaimed) profile every 6 hours, spread out; a first build cut short by a restart has
+  // refreshed IS NULL and is picked up here (first pass 30 s after start)
+  const refreshDue = async () => {
     if (!app()) return;
     const due = q("SELECT * FROM gh_accounts WHERE claimed IS NULL AND (refreshed IS NULL OR refreshed < ?) LIMIT 5").all(new Date(Date.now() - 6 * 3600_000).toISOString()) as any[];
-    for (const a of due) { try { await build(a); } catch (e: any) { q("UPDATE gh_accounts SET refreshed=? WHERE gh_id=?").run(new Date().toISOString(), a.gh_id); console.error("github refresh", a.login, e.message); } }
-  }, 10 * 60_000); timer.unref?.();
+    for (const a of due) { try { await queuedBuild(a); } catch (e: any) { q("UPDATE gh_accounts SET refreshed=? WHERE gh_id=?").run(new Date().toISOString(), a.gh_id); console.error("github refresh", a.login, e.message); } }
+  };
+  const timer = setInterval(refreshDue, 10 * 60_000); timer.unref?.();
+  const firstPass = setTimeout(refreshDue, 30_000); firstPass.unref?.();
 
   // ------------------------------------------------------------------ the /me page
   const peopleOf = async (a: any): Promise<GhPerson[]> => { try { return (await ctx.social?.circle?.people(a.profile_id)) || []; } catch { return []; } };
@@ -246,6 +264,10 @@ export function github(ctx: GhCtx) {
 <div style="margin-top:10px">${people.slice(0, 30).map(x => `<div class="row" style="justify-content:space-between;margin:6px 0"><span class="row"><img src="${esc(x.avatar)}" alt="" width="28" height="28" style="border-radius:50%"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">@${esc(x.login)}</a> <span class="mut">${esc(x.relation)}</span></span>`
       + (x.invited ? `<span class="mut">invited</span>` : x.canEmail ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="gh-invite"><input type="hidden" name="login" value="${esc(x.login)}"><button class="btn small ghost" type="submit">Email invite</button></form>` : `<span class="mut">no public email: send the message</span>`) + `</div>`).join("")}</div></div>` : "";
     const growth = growthCards(a, edits) + ghp;
+    if (!pr) {   // first build still running (or queued behind other sign-ups): show progress, refresh until it lands
+      page(res, 200, "Building your city", `<meta http-equiv="refresh" content="5"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. This page refreshes by itself.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
+      return;
+    }
     page(res, 200, "Your Caldera", `${note ? `<div class="card">${note}</div>` : ""}
 <div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
 <div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
@@ -335,14 +357,15 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (grp && !signed.claimed) {   // already here: join the group and republish
           const ed = JSON.parse(signed.edits || "{}"); ed.groups = [...new Set([...(ed.groups || []), grp])];
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(ed), signed.gh_id);
-          try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(signed.gh_id)); } catch { /* next refresh */ }
+          try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(signed.gh_id)); } catch { /* next refresh */ }
           redirect(res, `/me?joined=${grp}`); return true;
         }
         redirect(res, "/me"); return true;
       }
       if (inv) setCookie(res, "cal_inv", inv, 30 * 86400);
       if (grp) setCookie(res, "cal_grp", grp, 30 * 86400);
-      const state = crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
+      // a double-click or a second tab reuses the pending state, so whichever GitHub tab finishes still matches
+      const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(a.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}`); return true;
     }
@@ -360,7 +383,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       if (code) { const pr = new Promise<{ cookies: string[]; loc: string } | null>(r => { settle = r; }); cbResults.set(code, { state: st, at: Date.now(), p: pr }); for (const [k, v] of cbResults) if (Date.now() - v.at > 120_000) cbResults.delete(k); }
       const done = (loc: string) => { const c = res.getHeader("set-cookie"); settle({ cookies: Array.isArray(c) ? c.map(String) : c ? [String(c)] : [], loc }); redirect(res, loc); };
       try {
-      if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "Try again", `<h1>That sign-in link expired</h1><p><a class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; }
+      if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "One more click", `<h1>That sign-in took a little too long</h1><p>For your safety, a GitHub sign-in has to finish within 10 minutes in the same browser. Start again and it takes a few seconds.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
       setCookie(res, "cal_oauth", "", 0);
       try {
         const tok = await exchange({ code: url.searchParams.get("code") || "", redirect_uri: pub + "/auth/github/callback" });
@@ -381,11 +404,11 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
           startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); done("/me"); return true;
         }
-        // new account: a little history keeps bots out
-        if (Date.now() - Date.parse(me.created_at) < 30 * DAY || (Number(me.public_repos) || 0) + (Number(me.followers) || 0) < 1) {
-          page(res, 403, "Not yet", `<h1>We can't create a profile for this GitHub account yet</h1><p>To keep bots out, GitHub sign-up needs an account that's at least 30 days old with at least one public repo or follower. You can still <a href="/#install">use Caldera with Obsidian</a>.</p>`); return true;
+        // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
+        if (!githubAccountOk(me)) {
+          page(res, 403, "Almost", `<h1>Your GitHub account is brand new</h1><p>To keep bots out, Caldera waits until a GitHub account is a few days old, or has a public repo or a follower. Push a repo (even an empty one) and <a class="btn" href="/auth/github">try again</a>, or come back in a couple of days.</p><p class="mut">Use Obsidian? You can <a href="/#install">set up Caldera from your vault</a> right now.</p>`); return true;
         }
-        if (!ctx.allowNewProfile(req)) { page(res, 429, "Slow down", "<h1>Too many new profiles from this network today</h1><p>Try again tomorrow.</p>"); return true; }
+        if (!ctx.allowNewProfile(req)) { page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
         const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);
         const edits0: any = grp0.length ? { groups: grp0 } : {};
         if (typeof me.email === "string" && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(me.email)) edits0.ghEmail = me.email.slice(0, 200);   // public GitHub email: only a suggestion for the summary-email field
@@ -397,13 +420,20 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);
         // the first build reads the whole GitHub account (slow): send them to /me now, build in the background
         const acct0 = acct, inv = ck.cal_inv;
-        void build(acct0).catch((e: any) => console.error("github first build", e.message)).finally(() => {
+        void queuedBuild(acct0).catch((e: any) => console.error("github first build", e.message)).finally(() => {
           // joined from a friend's invite: thank the inviter, and send them a friend request from the new member
           const inviter = inv ? ctx.social?.recordReferral(id.id, inv, "github") : null;
           if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
         });
         done("/me?welcome=1"); return true;
-      } catch (e: any) { settle(null); page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true; }
+      } catch (e: any) {
+        settle(null);
+        // a used or expired one-time code (a reload, a retried request, a restart mid-sign-in): one more click fixes it,
+        // and if the account was already created the retry simply signs them in
+        if (/incorrect or expired|bad_verification_code/i.test(String(e.message))) { page(res, 400, "One more click", `<h1>That GitHub sign-in link was already used</h1><p>No problem: this happens when a page reloads mid-sign-in. Continue and you'll land on your page.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
+        console.error("github callback", String(e?.message || e));
+        page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true;
+      }
       } finally { settle(null); }   // every other outcome (errors, refusals) settles too, so a duplicate never waits
     }
     if (req.method === "GET" && p === "/auth/github/installed") {   // after installing the app on private repos
@@ -412,7 +442,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       if (inst && /^\d+$/.test(inst)) {
         try { const tok = await tokenFor(acct), r = await gh(tok, "/user/installations") as any;   // only an installation this user can see
           if ((r.installations || []).some((i: any) => String(i.id) === inst)) q("UPDATE gh_accounts SET installation=? WHERE gh_id=?").run(inst, acct.gh_id); } catch { /* ignore */ }
-        try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch { /* next refresh */ }
+        try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch { /* next refresh */ }
       }
       redirect(res, "/me"); return true;
     }
@@ -425,7 +455,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       const dir = upDir(acct.gh_id); fs.mkdirSync(dir, { recursive: true });
       for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(dir, `${kind}.${ext}`), { force: true });
       fs.writeFileSync(path.join(dir, `${kind}.${img.ext}`), img.data);
-      try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch (e: any) { ctx.json(res, 502, { error: "Saved, but republishing failed: " + e.message }); return true; }
+      try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch (e: any) { ctx.json(res, 502, { error: "Saved, but republishing failed: " + e.message }); return true; }
       ctx.json(res, 200, { ok: true }); return true;
     }
     if (p === "/me") {
@@ -467,7 +497,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (act === "gh-invite" && ctx.social?.circle) { try { pre = esc(await ctx.social.circle.invite(acct.profile_id, String(f.get("login") || ""))); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
         let note = pre || (act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "");
-        if (act === "save" || act === "refresh" || act === "remove-banner") { try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
+        if (act === "save" || act === "refresh" || act === "remove-banner") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
       }
     }

@@ -11,6 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import * as C from "@caldera/core";
 import { github } from "./github";
+export { githubAccountOk } from "./github";
 import { repoConnector } from "./repoconnect";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
 import { emailer, type Mail } from "./email";
@@ -24,7 +25,7 @@ export interface HubOptions { dataDir: string; port?: number; publicUrl?: string
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
   privatePort?: number; privateUrl?: string;
-  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; /** run the shared-repo friendship job every 6 hours (the server binary turns it on; tests call it directly) */ repoJob?: boolean; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
+  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; /** run the shared-repo friendship job every 6 hours (the server binary turns it on; tests call it directly) */ repoJob?: boolean; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number; newProfilesPerMinute?: number };
   /** daily summary emails: Resend key (production) or a send hook (tests); schedule starts the daily job */
   email?: { resendKey?: string; send?: (m: Mail) => Promise<void>; schedule?: boolean }; }
 
@@ -606,10 +607,20 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const f = path.join(cardDir, pr.handle + ".png"), idx = path.join(opts.dataDir, "profiles", pr.handle, "index.html");
     const fresh = Math.max(Date.parse(pr.updated) || 0, fs.existsSync(idx) ? fs.statSync(idx).mtimeMs : 0);
     if (fs.existsSync(f) && fs.statSync(f).mtimeMs >= fresh) return fs.readFileSync(f);
-    const png = await toPng(cardSvg({ handle: pr.handle, name: pr.name, headline: pr.headline, host: hubUrl().replace(/^https?:\/\//, ""), city: cityOf(pr.handle) }));
-    fs.mkdirSync(cardDir, { recursive: true }); fs.writeFileSync(f, png);
-    return png;
+    // one render per card at a time (link-preview bots and a launch crowd ask together), at most 2 renders at once
+    const key = pr.handle + ":" + fresh, live = cardInflight.get(key); if (live) return live;
+    const job = (async () => {
+      if (cardsRendering >= 2) await new Promise<void>(r => cardWaiters.push(r));
+      cardsRendering++;
+      try {
+        const png = await toPng(cardSvg({ handle: pr.handle, name: pr.name, headline: pr.headline, host: hubUrl().replace(/^https?:\/\//, ""), city: cityOf(pr.handle) }));
+        fs.mkdirSync(cardDir, { recursive: true }); fs.writeFileSync(f, png);
+        return png;
+      } finally { cardsRendering--; cardWaiters.shift()?.(); cardInflight.delete(key); }
+    })();
+    cardInflight.set(key, job); return job;
   }
+  const cardInflight = new Map<string, Promise<Buffer>>(); let cardsRendering = 0; const cardWaiters: (() => void)[] = [];
   function previewTags(handle: string, rel: string): string {
     const pr = byHandle(handle); if (!pr) return "";
     const v = String(Date.parse(pr.updated) || 0).slice(-8), base = `${hubUrl()}/@${handle}/`;
@@ -847,8 +858,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml" , ".md": "text/plain; charset=utf-8", ".zip": "application/zip", ".ico": "image/x-icon", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8", };
 
   const buckets = new Map<string, { n: number; w: number; reset: number }>();
-  const newProfiles = new Map<string, { n: number; day: string }>();
-  const L = { perMinute: 240, writesPerMinute: 40, newProfilesPerDay: 5, ...(opts.limits || {}) };
+  const newProfiles = new Map<string, { n: number; day: string; min: number; minN: number }>();
+  // A conference room or an office shares one address: a page view is ~20-30 requests (page, images, styles, live
+  // polls), so the per-address budget is sized for a room full of people, and new profiles allow a crowd signing
+  // up together (with a per-minute burst cap) while bots are held back by the GitHub account checks.
+  const L = { perMinute: 3000, writesPerMinute: 400, newProfilesPerDay: 300, newProfilesPerMinute: 20, ...(opts.limits || {}) };
   // Behind nginx, X-Real-IP is set by the proxy from the TCP peer (clients cannot spoof it); X-Forwarded-For is not trusted.
   const ipOf = (req: http.IncomingMessage) => (opts.trustProxy ? String(req.headers["x-real-ip"] || "").trim() : "") || req.socket.remoteAddress || "?";
   function limited(req: http.IncomingMessage): boolean {
@@ -859,9 +873,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     return b.n > L.perMinute || b.w > L.writesPerMinute;
   }
   function allowNewProfile(req: http.IncomingMessage): boolean {
-    const ip = ipOf(req), day = new Date().toISOString().slice(0, 10); const r = newProfiles.get(ip);
-    if (!r || r.day !== day) { newProfiles.set(ip, { n: 1, day }); return true; }
-    r.n++; return r.n <= L.newProfilesPerDay;
+    const ip = ipOf(req), day = new Date().toISOString().slice(0, 10), min = Math.floor(Date.now() / 60_000); const r = newProfiles.get(ip);
+    if (!r || r.day !== day) { newProfiles.set(ip, { n: 1, day, min, minN: 1 }); return true; }
+    if (r.min !== min) { r.min = min; r.minN = 0; }
+    r.n++; r.minN++; return r.n <= L.newProfilesPerDay && r.minN <= L.newProfilesPerMinute;
   }
 
   /** What happened to one person since `since`, for their daily summary email. */
@@ -1308,7 +1323,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
 
       if (req.method === "POST" && p === "/v1/envelopes") {
         const env = await readBody(req);
-        if (env?.type === "profile.manifest" && !profile(env.from) && !allowNewProfile(req)) return json(res, 429, { error: "too many new profiles from this address today" });
+        if (env?.type === "profile.manifest" && !profile(env.from) && !allowNewProfile(req)) return json(res, 429, { error: "Lots of people are signing up from your network right now. Wait a minute and try again." });
         const r = accept(env); return json(res, r.status, r.body);
       }
 
@@ -1318,7 +1333,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const body = await readBody(req);
         if (body.manifest?.from !== m[1]) return json(res, 403, { error: "manifest must be signed by the profile" });
         { const newer = staleClient(m[1], "bundle", body.v); if (newer) return json(res, 409, { error: `Caldera ${newer} already published this profile; update Caldera on this device (you have ${body.v || "an older version"})` }); }
-        if (!profile(m[1]) && !allowNewProfile(req)) return json(res, 429, { error: "too many new profiles from this address today" });
+        if (!profile(m[1]) && !allowNewProfile(req)) return json(res, 429, { error: "Lots of people are signing up from your network right now. Wait a minute and try again." });
         const r = accept(body.manifest); if (r.status !== 200) return json(res, r.status, r.body);
         const handle = r.body.handle; if (!handle) return json(res, 400, { error: "a handle is required to host a page" });
         const dir = path.join(opts.dataDir, "profiles", handle);
@@ -1879,22 +1894,51 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
 
+
+/** Owner alerts for sign-ups and deletions: the first `perDay` events each UTC day are sent one by one; after that they
+ *  queue and flush() sends one digest ("37 new profiles in the last hour: @a, @b, ..."). */
+export function makeAlertBatcher(send: (subject: string, text: string) => void, site: string, perDay = 10, now = () => Date.now()) {
+  let day = "", sent = 0; let queue: { type: string; handle?: string; name?: string; total: number }[] = [];
+  const who = (h?: string) => h ? `@${h}` : "(no handle)";
+  return {
+    event(ev: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) {
+      const d = new Date(now()).toISOString().slice(0, 10); if (d !== day) { day = d; sent = 0; }
+      if (sent < perDay) {
+        sent++;
+        if (ev.type === "signup") send(`New Caldera profile: ${who(ev.handle)} (${ev.total} total)`, `New Caldera profile: ${who(ev.handle)}${ev.name ? ` (${ev.name})` : ""}\nTotal profiles: ${ev.total}\n${site}/@${ev.handle || ""}/\n\nAll profiles: ${site}/people` + (sent === perDay ? `\n\nThat's ${perDay} today: further sign-ups today arrive as one email an hour.` : ""));
+        else send(`Caldera profile deleted: ${who(ev.handle)} (${ev.total} total)`, `Caldera profile deleted: ${who(ev.handle)}. Total profiles: ${ev.total}`);
+        return;
+      }
+      queue.push(ev);
+    },
+    flush() {
+      if (!queue.length) return;
+      const q = queue; queue = [];
+      const ups = q.filter(e => e.type === "signup"), dels = q.filter(e => e.type === "delete"), total = q[q.length - 1].total;
+      const subject = `${ups.length} new Caldera profile${ups.length === 1 ? "" : "s"} in the last hour${dels.length ? `, ${dels.length} deleted` : ""} (${total} total)`;
+      const text = [ups.length ? `New: ${ups.map(e => who(e.handle) + (e.name ? ` (${e.name})` : "")).join(", ")}` : "", dels.length ? `Deleted: ${dels.map(e => who(e.handle)).join(", ")}` : "", `Total profiles: ${total}`, `${site}/people?sort=new`].filter(Boolean).join("\n\n");
+      send(subject, text);
+    },
+    pending: () => queue.length,
+  };
+}
+
 // CLI: node dist/server.js  (env: CALDERA_DATA, PORT, CALDERA_PUBLIC_URL)
 if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(process.argv[1] || "")) {
   // Owner alerts on signups/deletions: Telegram and/or email (Resend). Both optional, fire-and-forget.
   const tg = process.env.CALDERA_TELEGRAM_TOKEN, chat = process.env.CALDERA_TELEGRAM_CHAT, site = process.env.CALDERA_PUBLIC_URL || "https://caldera.social";
   const resend = process.env.CALDERA_RESEND_KEY, mailTo = process.env.CALDERA_NOTIFY_EMAIL, mailFrom = process.env.CALDERA_NOTIFY_FROM || "Caldera <inbox@caldera.social>";
-  const onEvent: HubOptions["onEvent"] = (tg && chat) || (resend && mailTo) ? (ev) => {
-    const who = ev.handle ? `@${ev.handle}` : "(no handle)";
-    const subject = ev.type === "signup" ? `New Caldera profile: ${who} (${ev.total} total)` : `Caldera profile deleted: ${who} (${ev.total} total)`;
-    const text = ev.type === "signup" ? `New Caldera profile: ${who}${ev.name ? ` (${ev.name})` : ""}\nTotal profiles: ${ev.total}\n${site}/@${ev.handle || ""}/\n\nAll profiles: ${site}/people.html`
-      : `Caldera profile deleted: ${who}. Total profiles: ${ev.total}`;
-    const warn = (what: string) => (r: Response) => { if (!r.ok) console.error(what + " notify failed", r.status); };
+  const warn = (what: string) => (r: Response) => { if (!r.ok) console.error(what + " notify failed", r.status); };
+  const sendAlert = (subject: string, text: string) => {
     if (tg && chat) fetch(`https://api.telegram.org/bot${tg}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) })
       .then(warn("telegram")).catch(err => console.error("telegram notify error", String(err)));
     if (resend && mailTo) fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: "Bearer " + resend, "content-type": "application/json" }, body: JSON.stringify({ from: mailFrom, to: [mailTo], subject, text }) })
       .then(warn("email")).catch(err => console.error("email notify error", String(err)));
-  } : undefined;
+  };
+  // a launch can bring hundreds of sign-ups: the first 10 a day arrive one by one, the rest as one email an hour
+  const alerts = makeAlertBatcher(sendAlert, site);
+  const onEvent: HubOptions["onEvent"] = (tg && chat) || (resend && mailTo) ? (ev) => alerts.event(ev) : undefined;
+  if (onEvent) setInterval(() => alerts.flush(), 3600_000).unref?.();
   const hub = createHub({ dataDir: process.env.CALDERA_DATA || "./data", port: Number(process.env.PORT || 8787), publicUrl: process.env.CALDERA_PUBLIC_URL || "",
     siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent, founder: process.env.CALDERA_FOUNDER || undefined, repoJob: process.env.CALDERA_REPO_JOB !== "0",
     email: resend ? { resendKey: resend, schedule: true } : undefined,
