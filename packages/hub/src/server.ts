@@ -20,6 +20,7 @@ export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
 import { building } from "./building";
 import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards";
 import { feed } from "./feed";
+import { gifts } from "./gifts";
 import { messages } from "./messages";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -757,7 +758,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const per = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed)
       .filter(pr => sitesOf(pr.id).length || q("SELECT 1 FROM agents WHERE owner=? LIMIT 1").get(pr.id))
       .map(pr => ({ handle: pr.handle as string, live: scrubPrivateLive(liveStats(pr.id, false, since), PM.modeFor(pr)) }));
-    return foldLive(per, now());
+    return { ...foldLive(per, now()), lit: GIFTS ? GIFTS.litNow() : {} };
   }
   /** THE site header (logo, How it works, People, World, Guide, What's new, FAQ, Sign in, Get started), taken from the site's
    *  guide.html so hub-rendered pages match the static ones; current = the nav href to mark (e.g. "/world"). */
@@ -794,8 +795,9 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
+  let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id); PM.erase(id);
+    FEED?.erase(id); MSG?.erase(id); GIFTS?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -1590,6 +1592,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   }
 
 
+  GIFTS = gifts({ q, now, profile, byHandle, listed, modOf, memberOf, sameOrigin, readBody, json, tooMany, founder: opts.founder ? opts.founder.toLowerCase() : null,
+    publicRepos: (h) => ((publicCityOf(h)?.districts || []) as any[]).flatMap((d: any) => (d.repos || []).filter((r: any) => !r.locked && r.name).map((r: any) => String(r.name))),
+    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "gifts" }); },
+    onChange: () => FEED?.invalidate() });
   FEED = feed({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, listed, modOf, areFriends, befriend: (a, b, kind, ts, why) => { befriend(a, b, kind, ts, why); worldCache = null; },
     memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags,
     tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, stackVocab: ext.tagVocab().stack, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
@@ -1644,6 +1650,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "OPTIONS") return json(res, 204, {});
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
+      if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
       if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
       if (/^\/(me\/building\/?|v1\/tags|v1\/people\/[a-z0-9-]+\/similar-stack$|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 

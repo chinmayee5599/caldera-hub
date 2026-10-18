@@ -473,7 +473,7 @@ export function feed(c: FeedCtx) {
   }
 
   // ---------------------------------------------------------------- the activity stream
-  type Item = { kind: "join" | "city" | "obsidian" | "friends" | "kudos" | "release" | "post" | "rec"; ts: string; who?: any; other?: any; text?: string; n?: number; via?: string; emoji?: string; post?: any; title?: string; url?: string };
+  type Item = { kind: "join" | "city" | "obsidian" | "friends" | "kudos" | "release" | "post" | "rec" | "gift"; ts: string; who?: any; other?: any; text?: string; n?: number; via?: string; emoji?: string; post?: any; title?: string; url?: string };
   let cache: { at: number; items: Item[] } | null = null;
   function activity(): Item[] {
     if (cache && Date.now() - cache.at < 30_000) return cache.items;
@@ -499,11 +499,14 @@ export function feed(c: FeedCtx) {
     }
     if (q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='alerts'").get())
       for (const a of q("SELECT id, title, ts, version FROM alerts WHERE version IS NOT NULL AND audience='all' AND target IS NULL ORDER BY ts DESC LIMIT 20").all() as any[]) items.push({ kind: "release", ts: a.ts, title: a.title, url: "/alerts" });
+    // light-ups on the world map: "@a lit up @b's city (for repo)"
+    if (q("SELECT 1 FROM sqlite_master WHERE type='table' AND name='gifts'").get())
+      for (const g of q("SELECT giver, recipient, repo, ts FROM gifts ORDER BY ts DESC LIMIT 200").all() as any[]) { const A = pub.get(g.giver), B = pub.get(g.recipient); if (A && B) items.push({ kind: "gift", ts: g.ts, who: who(A), other: who(B), text: g.repo || "" }); }
     for (const r of q("SELECT * FROM posts WHERE status<>'hidden' ORDER BY ts DESC LIMIT 300").all() as any[]) { const A = pub.get(r.author); if (A) items.push({ kind: r.type === "recommend" ? "rec" : "post", ts: r.ts, who: who(A), post: r }); }
     items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
     cache = { at: Date.now(), items }; return items;
   }
-  const FILTER: Record<string, Item["kind"][]> = { all: ["join", "city", "obsidian", "friends", "kudos", "release", "post", "rec"], posts: ["post"], recommends: ["rec"], members: ["join", "obsidian"], cities: ["city"], kudos: ["kudos"] };
+  const FILTER: Record<string, Item["kind"][]> = { all: ["join", "city", "obsidian", "friends", "kudos", "release", "post", "rec", "gift"], posts: ["post"], recommends: ["rec"], members: ["join", "obsidian"], cities: ["city", "gift"], kudos: ["kudos", "gift"] };
   function page(type: string, before: string, viewer: string | null, n = 30, author = "") {
     const kinds = FILTER[type] || FILTER.all;
     const by = (i: Item) => !author || i.who?.handle === author || i.other?.handle === author;
@@ -639,12 +642,13 @@ ${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec |
     return `<section class="fd-cm" id="comments" data-cm="${esc(postId)}" aria-label="Comments"><h2 class="fd-c-n">${n ? `${n} comment${n === 1 ? "" : "s"}` : "Comments"}</h2>${form}<ol class="fd-thread fd-top-t">${t.map(v => commentHtml(v, v.replies, viewer, postAuthor, 0)).join("")}</ol></section>`;
   }
   function actHtml(i: any) {
-    const icon: Record<string, string> = { join: "\u{1F44B}", city: "\u{1F3D9}️", obsidian: "\u{1F48E}", friends: "\u{1F91D}", kudos: i.emoji || "✨", release: "\u{1F680}" };
+    const icon: Record<string, string> = { gift: "\u2726", join: "\u{1F44B}", city: "\u{1F3D9}️", obsidian: "\u{1F48E}", friends: "\u{1F91D}", kudos: i.emoji || "✨", release: "\u{1F680}" };
     const text = i.kind === "join" ? `${whoLink(i.who)} joined Caldera${i.via ? ` with ${esc(i.via)}` : ""}`
       : i.kind === "city" ? `${whoLink(i.who)}'s city is up. <a href="${esc(i.url)}">Walk the city</a>`
       : i.kind === "obsidian" ? `${whoLink(i.who)} connected Obsidian`
       : i.kind === "friends" ? `${whoLink(i.who)} and ${whoLink(i.other)} are now friends`
       : i.kind === "kudos" ? `${whoLink(i.who)} sent ${whoLink(i.other)} ${esc(i.emoji || "kudos")}`
+      : i.kind === "gift" ? `${whoLink(i.who)} lit up ${whoLink(i.other)}'s city${i.text ? ` for <b>${esc(i.text)}</b>` : ""}. <a href="/world">See it on the map</a>`
       : `<a href="${esc(i.url || "/alerts")}">${esc(i.title || "New in Caldera")}</a>`;
     const thumb = i.kind === "city" ? `<a href="${esc(i.url)}" tabindex="-1" aria-hidden="true"><img class="fd-thumb" src="/@${esc(i.who.handle)}/card.png" alt="" loading="lazy"></a>` : "";
     return `<div class="fd-act" data-ts="${esc(i.ts)}"><span class="ic" aria-hidden="true">${icon[i.kind] || "•"}</span>${i.who ? avatarHtml(i.who) : ""}<span class="t">${text}</span>${thumb}<time datetime="${esc(i.ts)}">${ago(i.ts)}</time></div>`;

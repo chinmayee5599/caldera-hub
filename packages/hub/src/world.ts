@@ -131,14 +131,14 @@ export function worldPage(w: World, o: { hub: string; nav: string }): string {
 .w-legend i{display:inline-block;width:18px;height:4px;border-radius:2px;background:linear-gradient(90deg,#B98CFF,#FFC46B,#B98CFF);vertical-align:middle;margin-right:6px;box-shadow:0 0 6px rgba(200,160,255,.8)}.w-legend-stack i{background:repeating-linear-gradient(90deg,#FF7A96 0 4px,transparent 4px 7px);box-shadow:none}</style></head><body>
 ${o.nav}
 <main class="w-main">
-<div class="w-head"><h1>The world</h1><p>${n} neighborhood${n === 1 ? "" : "s"} &middot; ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"} &middot; rays of light are friendships, dashed coral lines are similar stacks &middot; click a name to fly there, again to walk in</p></div>
+<div class="w-head"><h1>The world</h1><p>${n} neighborhood${n === 1 ? "" : "s"} &middot; ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"} &middot; rays of light are friendships, dashed coral lines are similar stacks &middot; click a name to fly there, again to walk in &middot; &#10022; light up a city you like (one gift a day)</p></div>
 <div class="c-stage" id="stage"><canvas id="city" aria-label="Isometric world map of ${n} member cities"></canvas>
 <div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-fr" aria-pressed="true" aria-label="Friendships" title="Friendships between neighborhoods, drawn as rays of light">&#x2727;<span class="t-txt"> Friendships</span></button><button id="t-topics" aria-pressed="false" aria-label="Color by topic" title="Tint each neighborhood by what they're building"><span class="t-sw" aria-hidden="true"></span><span class="t-txt"> Topics</span></button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
 <div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
 <div class="c-card" id="card" hidden></div><div class="c-hint">Drag to move &middot; scroll or pinch to zoom &middot; click a name to fly there</div></div>
 <div class="w-foot"><span class="w-legend"><i></i>Friendships are rays of light</span><span class="w-legend w-legend-stack"><i></i>Dashed coral: builds with a similar stack</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
 </main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>
-<script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })}</script>
+<script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })};window.CALDERA_GIFTS=${safeJson({ url: "/v1/gifts" })}</script>
 <script type="application/json" id="city-data">${safeJson(data)}</script>
 <script>${CITY_JS}</script></body></html>`;
 }
