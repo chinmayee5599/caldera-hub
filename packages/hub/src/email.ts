@@ -193,7 +193,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (cons.length) sec("New connections", `<p style="margin:0;line-height:1.7">${cons.map(f => { const b = because(f);
         return f.joined ? `${who(f.handle, f.name)} just joined Caldera${b ? ` - you're connected because ${esc(b)}` : " - you're connected"}` : b ? `You and ${who(f.handle, f.name)} are now connected: ${esc(b)}` : `You and ${who(f.handle, f.name)} are now friends`; }).join("<br>")}</p>`,
       cons.map(f => { const b = because(f); return f.joined ? `@${f.handle} just joined Caldera${b ? ` - you're connected because ${b}` : ""}` : `You and @${f.handle} are now connected${b ? ": " + b : ""}`; }).join("\n"));
-    if (d.invited.length) sec("Your invites", `<p style="margin:0">${d.invited.map(i => "@" + esc(i.handle)).join(", ")} joined from your invite${d.credits ? `: +${d.credits} help credits` : ""}.</p>`, `${d.invited.map(i => "@" + i.handle).join(", ")} joined from your invite${d.credits ? ` (+${d.credits} credits)` : ""}.`);
+    if (d.invited.length) sec("Your invites", `<p style="margin:0">${d.invited.map(i => "@" + esc(i.handle)).join(", ")} joined from your invite.</p>`, `${d.invited.map(i => "@" + i.handle).join(", ")} joined from your invite.`);
     if (d.gravity.length) sec("Gravity", d.gravity.map(g => `<p style="margin:4px 0">@${esc(g.handle)}${g.reason ? `: ${esc(g.reason)}` : ""}</p>`).join(""), d.gravity.map(g => `@${g.handle}${g.reason ? ": " + g.reason : ""}`).join("\n"));
     // 6. your page
     const pg: string[] = [], pt: string[] = [];
@@ -214,7 +214,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (d.alerts?.length) { H.push(`<p style="margin:18px 0 0;font-size:13.5px;color:#55525E"><b>From Caldera:</b> ${d.alerts.map(a => `<a href="${esc(a.url)}" style="color:#6E4FE0">${esc(a.title)}</a>`).join(" &middot; ")}</p>`);
       T.push(`FROM CALDERA\n${d.alerts.map(a => `${a.title}: ${a.url}`).join("\n")}`); }
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
-    H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:13.5px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a> (you get 25 help credits when they join).</p>`);
+    H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:13.5px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a>.</p>`);
     T.push(`Bring a friend: ${invite}`);
     return { to: "", subject, html: shell(quiet ? "This week on Caldera" : `Your day on Caldera, @${esc(d.handle)}`, H.join(""), unsub), text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`),
       headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };

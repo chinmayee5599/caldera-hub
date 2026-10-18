@@ -1378,6 +1378,14 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
     const fr = q("SELECT kind, why FROM friends WHERE a=? AND b=?").get(me, pr.id) as any;
     return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state, why: fr?.why && fr.kind === "repo" ? `both work on ${fr.why}` : fr?.why && fr.kind === "github" ? String(fr.why) : undefined };
   }
+  /** The help exchange (asks, offers, help credits) is retired: pages built by older plugin versions lose the section,
+   *  its "On this page" link, and the friends / gravity / help credits strip (the counts under the name replace it). */
+  function dropHelpExchange(html: string): string {
+    const at = html.indexOf('<h2 id="help-exchange">');
+    if (at >= 0) { const rest = html.slice(at + 10); const nx = rest.search(/<h2[ >]|<div class="stat-strip">|<div class="foot">/); if (nx >= 0) html = html.slice(0, at) + rest.slice(nx); }
+    return html.replace(/<a class="tree-row toc-row" href="#help-exchange">[^<]*<\/a>/, "")
+      .replace(/<div class="stat-strip">(?:<div class="stat"><div class="v">[^<]*<\/div><div class="l">(?:friends|gravity|help credits)<\/div><\/div>){3}<\/div>/, "");
+  }
   /** Points this week from a member's own published scoreboard (the daily scores their page shows): the 7 full days
    *  before today. Cached by file time; null when the page has no scoreboard. */
   const pointsCache = new Map<string, { mt: number; pts: number | null }>();
@@ -1721,6 +1729,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           if (prS) html = privatePage(prS, rel, html);   // private repos: anonymous or hidden, whatever version built the page
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           if (prS && rel === "index.html") html = realLeaderboard(html, prS, !!own);
+          if (rel === "index.html") html = dropHelpExchange(html);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
