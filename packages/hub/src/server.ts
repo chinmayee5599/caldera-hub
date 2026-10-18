@@ -1377,6 +1377,43 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
     const fr = q("SELECT kind, why FROM friends WHERE a=? AND b=?").get(me, pr.id) as any;
     return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state, why: fr?.why && fr.kind === "repo" ? `both work on ${fr.why}` : fr?.why && fr.kind === "github" ? String(fr.why) : undefined };
   }
+  /** Points this week from a member's own published scoreboard (the daily scores their page shows): the 7 full days
+   *  before today. Cached by file time; null when the page has no scoreboard. */
+  const pointsCache = new Map<string, { mt: number; pts: number | null }>();
+  function weekPoints(handle: string): number | null {
+    const f = path.join(opts.dataDir, "profiles", handle, "index.html");
+    let mt = 0; try { mt = fs.statSync(f).mtimeMs; } catch { return null; }
+    const hit = pointsCache.get(handle); let pts: number | null = null;
+    if (hit && hit.mt === mt) pts = hit.pts;
+    else {
+      const bars = fs.readFileSync(f, "utf8").match(/<div class="sb-bars"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+      if (bars) { pts = 0;
+        const today = new Date(); today.setUTCHours(0, 0, 0, 0); const from = new Date(today.getTime() - 7 * DAY).toISOString().slice(0, 10), to = today.toISOString().slice(0, 10);
+        for (const x of bars.matchAll(/title="(\d{4}-\d{2}-\d{2}): (\d+)"/g)) if (x[1] >= from && x[1] < to) pts += Number(x[2]); }
+      pointsCache.set(handle, { mt, pts });
+    }
+    return pts;
+  }
+  /** The scoreboard's leaderboard, filled in on the hub: the page's owner and their friends, by points this week (from each
+   *  page's own scoreboard). Visitors see the owner's name, the owner sees "You"; empty slots keep the invite button. */
+  function realLeaderboard(html: string, pr: any, isOwner: boolean): string {
+    const at = html.indexOf('<div class="lb-wrap">'); if (at < 0) return html;
+    const end = html.indexOf('<div class="invite-pop"', at); const close = html.indexOf("</div></div>", at), stop = end > 0 ? end : close > 0 ? close + 6 : -1;
+    if (stop < 0) return html;
+    const block = html.slice(at, stop), empty = block.match(/<div class="lb-row empty">[\s\S]*?<\/div>/)?.[0] || "";
+    const esc = (x: string) => x.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    const mine = weekPoints(pr.handle) ?? 0;
+    const rows = [{ h: pr.handle as string, name: isOwner ? "You" : (pr.name || "@" + pr.handle), pts: mine, me: true }];
+    for (const f of q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=?").all(pr.id) as any[]) {
+      if (!f.handle || modOf(f.handle)) continue; const pts = weekPoints(f.handle); if (pts == null) continue;
+      rows.push({ h: f.handle, name: f.name || "@" + f.handle, pts, me: false });
+    }
+    rows.sort((a, b) => b.pts - a.pts || (a.me ? -1 : 1));
+    const top = rows.slice(0, 5); if (!top.some(r => r.me)) top[4] = rows.find(r => r.me)!;
+    const out = top.map((r, i) => `<div class="lb-row${r.me ? " me" : ""}"><span class="rank">${rows.indexOf(r) + 1}</span>${r.me ? `<span class="who">${esc(r.name)}</span>` : `<a class="who" href="${PUB()}/@${esc(r.h)}/" target="_blank" rel="noopener">${esc(r.name)}</a>`}<span class="num">${r.pts.toLocaleString("en-US")}</span></div>`);
+    for (let i = out.length; i < 4 && empty; i++) out.push(empty.replace(/<span class="rank">\d+<\/span>/, `<span class="rank">${i + 1}</span>`));
+    return html.slice(0, at) + `<div class="lb-wrap"><div class="label">Leaderboard / friends, points this week</div>` + out.join("") + html.slice(stop);
+  }
   /** Add-friend links in pages built by any plugin version (obsidian:// links, the 0.19.3+ data-caldera-friend link and the
    *  garden home button) become the inline control, labelled for this viewer. The page owner sees no Add-friend link. */
   function rewriteFriendLinks(html: string, handle: string, v: BarViewer | null, isOwner: boolean): string {
@@ -1667,6 +1704,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           html = liveBlocks(m[1], rel, html);
           if (prS) html = privatePage(prS, rel, html);   // private repos: anonymous or hidden, whatever version built the page
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
+          if (prS && rel === "index.html") html = realLeaderboard(html, prS, !!own);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
