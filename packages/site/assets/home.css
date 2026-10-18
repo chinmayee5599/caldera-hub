@@ -1,0 +1,48 @@
+/* Homepage: GitHub + Obsidian layout (hero with a live city, two doors, GitHub start). Tokens from theme.css. */
+.gh-ic { flex: none; margin-right: 8px; }
+.btn.gh { background: var(--text-strong); color: var(--bg); }
+.btn.gh:hover { filter: none; opacity: .9; }
+
+.home-hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 80px 0 64px; }
+.home-hero h1 { font-size: clamp(42px, 5.4vw, 74px); text-wrap: balance; }
+.home-hero .lead { max-width: 560px; }
+.hh-cta .btn { min-width: 0; }
+.hh-city { position: relative; display: block; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--line-strong); background: #080b14; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .55); transition: transform .2s, border-color .2s; }
+.hh-city:hover { transform: translateY(-2px); border-color: var(--accent); text-decoration: none; }
+.hh-city img { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630; object-fit: cover; }
+.hh-cap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 11px 16px; border-top: 1px solid rgba(140, 170, 220, .18); background: #0b1020; color: #E8EEF8; font-size: 13.5px; }
+.hh-cap b { color: #9CC4FF; font-weight: 600; margin-left: auto; white-space: nowrap; }
+.hh-live { width: 8px; height: 8px; border-radius: 50%; background: #4FB89A; box-shadow: 0 0 0 0 rgba(79, 184, 154, .6); animation: hhpulse 2.4s ease-out infinite; flex: none; }
+@keyframes hhpulse { 0% { box-shadow: 0 0 0 0 rgba(79, 184, 154, .6); } 70% { box-shadow: 0 0 0 8px rgba(79, 184, 154, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 184, 154, 0); } }
+
+.doors { margin: 8px 0 72px; }
+.doors h2 { font-family: var(--font-display); font-weight: 600; font-size: clamp(30px, 4vw, 42px); color: var(--text-strong); margin: 8px 0 24px; text-wrap: balance; }
+.door-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.door { display: flex; flex-direction: column; gap: 12px; padding: 24px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-raised); }
+.door h3 { display: flex; align-items: center; margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; color: var(--text-strong); }
+.door ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.door li { font-size: 15px; color: var(--text); padding-left: 18px; position: relative; }
+.door li::before { content: ""; position: absolute; left: 0; top: 9px; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
+.door li b { color: var(--text-strong); }
+.door .fine { margin: 0; }
+.door .btn { align-self: flex-start; margin-top: auto; }
+.door-join { margin: 18px 0 0; color: var(--text); max-width: 760px; }
+.door-join b { color: var(--text-strong); }
+
+.gh-start { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; padding: 22px 24px; margin: 6px 0 40px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-raised); }
+.gh-start > div { flex: 1 1 420px; min-width: 0; }
+.gh-start h3, .ob-h { display: flex; align-items: center; margin: 0 0 10px; font-family: var(--font-display); font-weight: 600; font-size: 21px; color: var(--text-strong); }
+.gh-steps { margin: 0 0 8px; padding-left: 20px; color: var(--text); }
+.gh-steps li { margin: 3px 0; }
+.gh-start .fine { margin: 0; }
+
+@media (max-width: 900px) {
+  .home-hero { grid-template-columns: 1fr; gap: 28px; padding: 56px 0 44px; }
+  .door-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .hh-cta .btn { flex: 1 1 100%; justify-content: center; }
+  .door .btn, .gh-start .btn { align-self: stretch; justify-content: center; width: 100%; }
+  .hh-cap b { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .hh-live { animation: none; } .hh-city { transition: none; } }

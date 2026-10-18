@@ -1,12 +1,34 @@
 # Caldera - full text
 
+## Turn your GitHub into a living city
+URL: https://caldera.social/github-profile-city
+
+Sign up at caldera.social with GitHub and Caldera builds a city from your repos in about 30 seconds, with nothing to install. Each building is a repo, its height grows with your commits over the last year, and windows light up for repos you committed to this week. The city sits on a public profile page that rebuilds from GitHub every 6 hours, and it can show visitors to your sites and your AI agents live.
+
+### What you get
+A city of your repos. Buildings are repos and districts group them. Public repos are named and link to GitHub. Private repos, only if you want. Install the Caldera GitHub app on the repos you choose. They appear as padlocked buildings with no names. The app has read-only access to repository metadata and cannot open your files. Live visitors. Add one script tag to a site and its visitors parachute into your city as they arrive; signups and sales get their own celebrations. AI agents as drones. A small hook shows your coding agents over the repo they are working in. The time of day. The sky follows the viewer's clock, from dawn to night. Pop the city out into a small window and watch it all day. People. Add friends, start a group at caldera.social/g/name, and get a daily summary by email.
+
+### How to do it
+Go to caldera.social/auth/github and sign in with GitHub. Your account needs to be at least 30 days old with a public repo or a follower. Your page and city are built from your public repos and open on your account page. Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.
+
+### Use Obsidian too?
+Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, a digital garden and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to Caldera/profile.md and Caldera builds your city from your public repos. See What is Caldera?
+
+### Questions
+Q: Does Caldera read my code?
+A: No. It reads repo names, languages, sizes, commit counts and your public activity. The optional GitHub app for private repos has read-only access to repository metadata, which does not include file contents.
+Q: Is it free?
+A: Yes. Your page, your city and friends are free, and the code is open source.
+Q: How do I delete it?
+A: On your account page, choose Delete my Caldera profile. Your page is erased and Caldera's access to your GitHub is revoked.
+
 ## What is Caldera?
 URL: https://caldera.social/what-is-caldera
 
-Caldera is a free, open-source plugin for Obsidian that turns your notes vault into a living public profile page and connects vaults to each other. Your page updates itself from your notes (a daily journal, activity, topics, projects and the notes you choose to share), and friends can share notes as end-to-end encrypted cards, post asks and offers for help, and give positive-only "gravity". It is private by default: nothing leaves your vault unless you switch it on.
+Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile and a digital garden. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only "gravity". It is private by default
 
 ### What Caldera does
-Living profile. A public page at caldera.social/@you, built on your own device from your vault and republished automatically. Friends between vaults. Add friends by handle. Share any note as an end-to-end encrypted card that lands in their vault as a normal note. Help exchange. Post asks ("I could use help with...") and offers, with optional help-credit bounties. Credits have no cash value. Gravity. Positive-only recognition that fades over a month. No likes, downvotes or follower counts. AI-native setup. One copy-paste prompt lets Claude Code, Codex or Cursor install it and run a daily journal routine.
+GitHub city. Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names. Living profile. With Obsidian, a public page built on your own device from your vault and republished automatically. Friends between vaults. Add friends by handle. Share any note as an end-to-end encrypted card that lands in their vault as a normal note. Help exchange. Post asks ("I could use help with...") and offers, with optional help-credit bounties. Credits have no cash value. Gravity. Positive-only recognition that fades over a month. No likes, downvotes or follower counts. AI-native setup. One copy-paste prompt lets Claude Code, Codex or Cursor install it and run a daily journal routine.
 
 ### Who makes it
 Caldera is built by mjonesone, LLC. The plugin and core library are MIT-licensed, the reference hub is AGPL-3.0 and self-hostable, and the protocol is open. Source: github.com/schoettle-cmd/caldera .
@@ -18,9 +40,9 @@ The plugin reads your vault locally and never uploads it. Only counts, the profi
 Q: Is Caldera free?
 A: Yes. The plugin, your profile and friends are free and open source.
 Q: Does Caldera need Obsidian?
-A: Yes, it is an Obsidian plugin. Obsidian is free; the Caldera install prompt can install Obsidian for you and create your first vault.
-Q: Is Caldera an official Obsidian product?
-A: No. Caldera is an independent, open-source community plugin made by mjonesone, LLC.
+A: No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and a garden, and a GitHub sign-up can move into a vault any time.
+Q: Is Caldera an official Obsidian or GitHub product?
+A: No. Caldera is an independent, open-source project made by mjonesone, LLC.
 
 ## How to make a public profile from your Obsidian vault
 URL: https://caldera.social/obsidian-public-profile

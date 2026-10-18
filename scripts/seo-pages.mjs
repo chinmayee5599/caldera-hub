@@ -1,18 +1,48 @@
 // Content for the search / AI-answer pages on caldera.social. One entry = one page at /<slug>.
 // Rules: answer the question in the first paragraph, keep claims about other tools general and current-safe,
 // every page ends in an FAQ (rendered + FAQPage JSON-LD). Edit here, then: node scripts/build-seo.mjs
-export const UPDATED = "2026-10-11";
+export const UPDATED = "2026-10-17";
 
 export const pages = [
   {
+    slug: "github-profile-city",
+    title: "Turn your GitHub into a living city",
+    description: "Sign up with GitHub and Caldera turns your repos into a living city: districts are projects, buildings are repos, and visitors and AI agents move through it live. Free and open source.",
+    h1: "Turn your GitHub into a living city",
+    answer: "Sign up at caldera.social with GitHub and Caldera builds a city from your repos in about 30 seconds, with nothing to install. Each building is a repo, its height grows with your commits over the last year, and windows light up for repos you committed to this week. The city sits on a public profile page that rebuilds from GitHub every 6 hours, and it can show visitors to your sites and your AI agents live.",
+    sections: [
+      { h2: "What you get", html: `<ul>
+<li><b>A city of your repos.</b> Buildings are repos and districts group them. Public repos are named and link to GitHub.</li>
+<li><b>Private repos, only if you want.</b> Install the Caldera GitHub app on the repos you choose. They appear as padlocked buildings with no names. The app has read-only access to repository metadata and cannot open your files.</li>
+<li><b>Live visitors.</b> Add one script tag to a site and its visitors parachute into your city as they arrive; signups and sales get their own celebrations.</li>
+<li><b>AI agents as drones.</b> A small hook shows your coding agents over the repo they are working in.</li>
+<li><b>The time of day.</b> The sky follows the viewer's clock, from dawn to night. Pop the city out into a small window and watch it all day.</li>
+<li><b>People.</b> Add friends, start a group at caldera.social/g/name, and get a daily summary by email.</li>
+</ul>` },
+      { h2: "How to do it", html: `<ol>
+<li>Go to <a href="/auth/github">caldera.social/auth/github</a> and sign in with GitHub. Your account needs to be at least 30 days old with a public repo or a follower.</li>
+<li>Your page and city are built from your public repos and open on your account page.</li>
+<li>Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.</li>
+</ol>` },
+      { h2: "Use Obsidian too?", html: `<p>Move your GitHub sign-up into an Obsidian vault any time and keep your page. Your vault adds a daily journal, a digital garden and end-to-end encrypted sharing with friends. Already on Obsidian? Add your GitHub link to <code>Caldera/profile.md</code> and Caldera builds your city from your public repos. See <a href="/what-is-caldera">What is Caldera?</a></p>` },
+    ],
+    faq: [
+      ["Does Caldera read my code?", "No. It reads repo names, languages, sizes, commit counts and your public activity. The optional GitHub app for private repos has read-only access to repository metadata, which does not include file contents."],
+      ["Is it free?", "Yes. Your page, your city and friends are free, and the code is open source."],
+      ["How do I delete it?", "On your account page, choose Delete my Caldera profile. Your page is erased and Caldera's access to your GitHub is revoked."],
+    ],
+    related: ["what-is-caldera", "obsidian-social-network", "track-ai-token-usage"],
+  },
+  {
     slug: "what-is-caldera",
-    title: "What is Caldera? The social layer for Obsidian",
-    description: "Caldera is a free, open-source Obsidian plugin that turns your vault into a living public profile and lets vaults befriend each other, share encrypted notes and help each other.",
+    title: "What is Caldera? The social network for GitHub and Obsidian",
+    description: "Caldera is a free, open-source social network for GitHub and Obsidian: your repos become a living city, your vault becomes a living profile, and members befriend each other and help each other.",
     h1: "What is Caldera?",
-    answer: "Caldera is a free, open-source plugin for Obsidian that turns your notes vault into a living public profile page and connects vaults to each other. Your page updates itself from your notes (a daily journal, activity, topics, projects and the notes you choose to share), and friends can share notes as end-to-end encrypted cards, post asks and offers for help, and give positive-only \"gravity\". It is private by default: nothing leaves your vault unless you switch it on.",
+    answer: "Caldera is a free, open-source social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city: districts are projects, buildings are repos, and visitors to your sites and your AI agents move through it live. Install the Obsidian plugin and your vault becomes a living public profile and a digital garden. Members add friends, join groups, share notes end-to-end encrypted, post asks and offers for help, and give positive-only \"gravity\". It is private by default",
     sections: [
       { h2: "What Caldera does", html: `<ul>
-<li><b>Living profile.</b> A public page at caldera.social/@you, built on your own device from your vault and republished automatically.</li>
+<li><b>GitHub city.</b> Sign up with GitHub and your public repos become a city at caldera.social/@you/city.html, rebuilt every 6 hours. Private repos appear only if you install the Caldera GitHub app, as padlocked buildings with no names.</li>
+<li><b>Living profile.</b> With Obsidian, a public page built on your own device from your vault and republished automatically.</li>
 <li><b>Friends between vaults.</b> Add friends by handle. Share any note as an end-to-end encrypted card that lands in their vault as a normal note.</li>
 <li><b>Help exchange.</b> Post asks ("I could use help with...") and offers, with optional help-credit bounties. Credits have no cash value.</li>
 <li><b>Gravity.</b> Positive-only recognition that fades over a month. No likes, downvotes or follower counts.</li>
@@ -23,10 +53,10 @@ export const pages = [
     ],
     faq: [
       ["Is Caldera free?", "Yes. The plugin, your profile and friends are free and open source."],
-      ["Does Caldera need Obsidian?", "Yes, it is an Obsidian plugin. Obsidian is free; the Caldera install prompt can install Obsidian for you and create your first vault."],
-      ["Is Caldera an official Obsidian product?", "No. Caldera is an independent, open-source community plugin made by mjonesone, LLC."],
+      ["Does Caldera need Obsidian?", "No. Sign up with GitHub and you get a page and a city with nothing to install. Obsidian adds a living profile, a journal and a garden, and a GitHub sign-up can move into a vault any time."],
+      ["Is Caldera an official Obsidian or GitHub product?", "No. Caldera is an independent, open-source project made by mjonesone, LLC."],
     ],
-    related: ["obsidian-public-profile", "obsidian-social-network", "share-obsidian-notes-privately"],
+    related: ["github-profile-city", "obsidian-public-profile", "obsidian-social-network"],
   },
   {
     slug: "obsidian-public-profile",

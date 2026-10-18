@@ -10,6 +10,7 @@ const read = f => fs.readFileSync(new URL(f, dir), "utf8");
 const write = (f, s) => fs.writeFileSync(new URL(f, dir), s);
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const strip = h => h.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+const VERSION = (() => { try { const r = JSON.parse(fs.readFileSync(new URL("../packages/site/releases.json", import.meta.url), "utf8")); return String((r.releases || r)[0]?.version || "0.18"); } catch { return "0.18"; } })();
 const ld = o => `<script type="application/ld+json">${JSON.stringify(o).replace(/</g, "\\u003c")}</script>`;
 const ORG = { "@type": "Organization", "@id": `${SITE}/#org`, name: "mjonesone, LLC", url: SITE, email: "hello@caldera.social" };
 
@@ -45,7 +46,7 @@ for (const p of pages) {
   <p class="answer">${esc(p.answer)}</p>
   <p class="fine">Updated ${UPDATED} &middot; by mjonesone, LLC</p>
 ${p.sections.map(s => `  <h2>${esc(s.h2)}</h2>\n  ${s.html}`).join("\n")}
-  <div class="cta-box"><b>Try it free.</b> One prompt in Claude Code, Codex or Cursor installs Obsidian (if needed) and Caldera. <a class="btn small" href="/#install">Install Caldera</a></div>
+  <div class="cta-box"><b>Try it free.</b> Sign up with GitHub in about 30 seconds, or install Caldera in Obsidian. <a class="btn small" href="/auth/github">Sign up with GitHub</a> <a class="btn small ghost" href="/#obsidian">Install for Obsidian</a></div>
   <h2>Questions</h2>
   <div class="faq-list">${p.faq.map(([q, a]) => `<details open><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("")}</div>
   <h2>Related</h2>
@@ -55,13 +56,13 @@ ${p.sections.map(s => `  <h2>${esc(s.h2)}</h2>\n  ${s.html}`).join("\n")}
 }
 
 // /learn index
-write("learn.html", `${head("Learn Caldera: Obsidian profiles, sharing and AI agents", "Guides to Obsidian public profiles, private note sharing, AI agents, daily journals, activity tracking and Obsidian Publish alternatives.", "learn", ld({ "@context": "https://schema.org", "@type": "CollectionPage", name: "Learn Caldera", url: `${SITE}/learn`, hasPart: pages.map(p => ({ "@type": "TechArticle", headline: p.h1, url: `${SITE}/${p.slug}` })) }))}
+write("learn.html", `${head("Learn Caldera: GitHub cities, Obsidian profiles, sharing and AI agents", "Guides to GitHub cities, Obsidian public profiles, private note sharing, AI agents, daily journals, activity tracking and Obsidian Publish alternatives.", "learn", ld({ "@context": "https://schema.org", "@type": "CollectionPage", name: "Learn Caldera", url: `${SITE}/learn`, hasPart: pages.map(p => ({ "@type": "TechArticle", headline: p.h1, url: `${SITE}/${p.slug}` })) }))}
 <body>
 ${header}
 <main class="legal guide learn-page">
   <p class="eyebrow">Learn</p>
-  <h1>Obsidian profiles, sharing and AI agents</h1>
-  <p class="lead-in">Short, practical answers about turning an Obsidian vault into a living profile, sharing notes privately, and letting AI agents help.</p>
+  <h1>GitHub cities, Obsidian profiles, sharing and AI agents</h1>
+  <p class="lead-in">Short, practical answers about turning your GitHub into a living city, your Obsidian vault into a living profile, sharing notes privately, and letting AI agents help.</p>
   <div class="learn-list">${pages.map(p => `<a class="learn-item" href="/${p.slug}"><b>${esc(p.h1)}</b><span>${esc(p.description)}</span></a>`).join("")}</div>
 </main>
 ${footer}
@@ -79,7 +80,7 @@ for (const [f, slug] of core) {
   if (f === "index.html") {
     const faq = [...s.matchAll(/<details><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map(m => ({ "@type": "Question", name: strip(m[1]), acceptedAnswer: { "@type": "Answer", text: strip(m[2]) } }));
     const app = { "@context": "https://schema.org", "@graph": [
-      { "@type": "SoftwareApplication", name: "Caldera", applicationCategory: "ProductivityApplication", operatingSystem: "Windows, macOS, Linux, iOS, Android (Obsidian plugin)", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, url: SITE, downloadUrl: `${SITE}/download/caldera-latest.zip`, softwareVersion: "0.3", license: "https://opensource.org/licenses/MIT", codeRepository: "https://github.com/schoettle-cmd/caldera", description: "Caldera is the social layer for Obsidian: a living public profile built from your vault, friends between vaults, end-to-end encrypted shared notes, asks, offers and gravity. Private by default.", publisher: { "@id": `${SITE}/#org` }, image: `${SITE}/og.jpg` },
+      { "@type": "SoftwareApplication", name: "Caldera", applicationCategory: "SocialNetworkingApplication", operatingSystem: "Web (sign up with GitHub); Windows, macOS, Linux, iOS, Android (Obsidian plugin)", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, url: SITE, downloadUrl: `${SITE}/download/caldera-latest.zip`, softwareVersion: VERSION, license: "https://opensource.org/licenses/MIT", codeRepository: "https://github.com/schoettle-cmd/caldera", description: "Caldera is the social network for GitHub and Obsidian. Sign up with GitHub and your repos become a living city; install it in Obsidian and your vault becomes a living profile and a digital garden. Friends, groups, end-to-end encrypted shared notes, asks, offers and gravity. Free, open source and private by default.", publisher: { "@id": `${SITE}/#org` }, image: `${SITE}/og.jpg` },
       { "@type": "WebSite", name: "Caldera", url: SITE, publisher: { "@id": `${SITE}/#org` } },
       { "@type": "FAQPage", mainEntity: faq }, ORG ] };
     s = s.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, "").replace("</head>", `${ld(app)}\n</head>`);
@@ -95,9 +96,11 @@ const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-Se
 write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\n\nSitemap: ${SITE}/sitemap.xml\n`);
 write("llms.txt", `# Caldera
 
-> Caldera is a free, open-source Obsidian plugin and open protocol: the social layer for Obsidian. It turns a notes vault into a living public profile that updates itself and a digital garden of notes grown in public (seedling, budding, evergreen; a license per note; links between gardens with backlinks on both sides), and lets vaults befriend each other, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself and a digital garden of notes grown in public (seedling, budding, evergreen; a license per note; links between gardens with backlinks on both sides). Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
-- Install: copy one prompt into Claude Code, Codex or Cursor (it installs Obsidian if needed, then Caldera): ${SITE}/#install
+- Sign up with GitHub (no install): ${SITE}/auth/github
+- Install for Obsidian: Obsidian community plugins (search Caldera), or copy one prompt into Claude Code, Codex or Cursor: ${SITE}/#install
+- Example city: ${SITE}/@mike/city.html
 - Example profile: ${SITE}/@mike/
 - Directory of people: ${SITE}/people
 - Recently tended gardens: ${SITE}/gardens
