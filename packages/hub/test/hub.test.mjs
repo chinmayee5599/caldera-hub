@@ -372,7 +372,8 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.ok(city.includes('"name":"web"') && city.includes("TypeScript") && !city.includes("forked"), "city from public, non-fork repos");
   const me = await (await fetch(base + "/me?welcome=1", { headers: { cookie } })).text();
   assert.ok(me.includes("Welcome to Caldera") && me.includes("/t.js") && me.includes("agent-hook.mjs"));
-  assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/auth/github", "/me needs a session");
+  assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/settings", "/me moved");
+  assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin", "/settings needs a sign-in");
   const post = (body, c = cookie, origin = "http://hub.test") => fetch(base + "/me", { method: "POST", headers: { cookie: c, origin, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship", summary: "", links: "", listed: "on" }, cookie, "https://evil.example")).includes("Wrong origin"));
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship small tools", summary: "Hello", links: "Blog | https://octo.dev", listed: "on" })).includes("Republished"));
@@ -386,7 +387,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   const prof = await (await fetch(base + "/v1/profiles/octo-cat")).json();
   assert.equal(claimed.identity.id, prof.id); assert.equal(claimed.handle, "octo-cat");
   assert.equal((await fetch(base + "/v1/github/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) })).status, 404, "single use");
-  assert.ok((await (await fetch(base + "/me", { headers: { cookie } })).text()).includes("now lives in your vault"));
+  assert.ok((await (await fetch(base + "/settings", { headers: { cookie } })).text()).includes("published from Obsidian"), "after the claim, settings shows the vault page");
   for (const f of fs.readdirSync(d).filter(f => f.startsWith("hub.sqlite"))) assert.ok(!fs.readFileSync(path.join(d, f)).includes(claimed.identity.secret || "no-secret-field"), "key not stored in clear");
   // delete (the @mike-2 account)
   const s44 = (await signIn("44")).cookie;

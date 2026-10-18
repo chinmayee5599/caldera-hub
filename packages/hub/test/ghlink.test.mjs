@@ -50,7 +50,9 @@ test("GitHub sign-in finds the Obsidian profile that lists the login: owner cook
   assert.equal(count(h, "SELECT COUNT(*) n FROM gh_accounts"), 0);
   assert.equal(count(h, "SELECT COUNT(*) n FROM gh_links"), 1);
   assert.match(await (await fetch(base + "/@mike/", { headers: { cookie: r.own, "user-agent": "Mozilla/5.0" } })).text(), /viewing your public page/);
-  assert.equal((await fetch(base + "/me", { headers: { cookie: r.own }, redirect: "manual" })).headers.get("location"), "/@mike/", "/me sends a linked owner to their page");
+  assert.equal((await fetch(base + "/me", { headers: { cookie: r.own }, redirect: "manual" })).headers.get("location"), "/settings", "/me moved to /settings");
+  const ls = await fetch(base + "/settings", { headers: { cookie: r.own }, redirect: "manual" }); assert.equal(ls.status, 200, "a linked Obsidian owner gets their settings");
+  const lt = await ls.text(); assert.match(lt, /published from Obsidian/); assert.match(lt, /Connected as <b>@/, "GitHub light is green for a linked owner");
   // signing in for a page that isn't theirs: refused, no cookie
   const wrong = await signIn("octo", "other");
   assert.equal(wrong.cb.status, 403); assert.match(wrong.body, /That GitHub account isn&#39;t the one on this page|That GitHub account isn't the one on this page/); assert.equal(wrong.own, undefined);

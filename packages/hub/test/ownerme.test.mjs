@@ -44,7 +44,8 @@ test("a GitHub sign-up signed in by email link or pairing (owner cookie only) ca
   const t = crypto.randomBytes(32).toString("hex");
   h.db.prepare("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(crypto.createHash("sha256").update(t).digest("hex"), acct.profile_id, new Date().toISOString(), Date.now() + 86_400_000);
   for (let i = 0; i < 40 && !h.db.prepare("SELECT 1 FROM profiles WHERE id=?").get(acct.profile_id); i++) await new Promise(r => setTimeout(r, 100));
-  const me = await fetch(base + "/me", { headers: { cookie: "cal_own=" + t }, redirect: "manual" });
+  const me = await fetch(base + "/settings", { headers: { cookie: "cal_own=" + t }, redirect: "manual" });
+  assert.equal((await fetch(base + "/me", { headers: { cookie: "cal_own=" + t }, redirect: "manual" })).headers.get("location"), "/settings", "/me moved to /settings");
   assert.equal(me.status, 200, "account page opens, not a redirect back to the public page");
   assert.match(await me.text(), /Your page/);
   const anon = await fetch(base + "/me", { redirect: "manual" }); assert.equal(anon.status, 302, "no cookie: off to sign in");

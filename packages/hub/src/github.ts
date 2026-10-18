@@ -17,6 +17,7 @@ import * as C from "@caldera/core";
 import { renderProfile, type ProfileData, type DailyEntry } from "../../../../caldera/packages/plugin/src/render";
 import { cityData, publicCity, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 import { cleanImage } from "./images";
+import { connectionsPanel, settingsNav, sectionHead, SETTINGS_CSS, type Conn } from "./settings";
 
 export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
@@ -30,6 +31,7 @@ export interface GhCtx {
   /** growth helpers from the hub: suggestions, open requests, referrals */
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
     recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null; unlockState?: (id: string) => C.UnlockState | null;
+    connections?: (id: string) => Conn | null; friendAct?: (me: string, to: string) => { status: number; body: any };
     circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
@@ -270,30 +272,63 @@ export function github(ctx: GhCtx) {
       page(res, 200, "Building your city", `<meta http-equiv="refresh" content="5"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. This page refreshes by itself.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
       return;
     }
-    page(res, 200, "Your Caldera", `${note ? `<div class="card">${note}</div>` : ""}
-<div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
-<div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
-<form method="post" class="row" style="margin-top:10px"><input type="hidden" name="do" value="refresh"><button class="btn small" type="submit">Refresh from GitHub now</button></form></div>
-${finishCard(a)}${unlockCard(a, sites, agentPrompt)}
-${growth}
+    const em = ctx.social?.email?.status(a.profile_id);
+    const conn: Conn = ctx.social?.connections?.(a.profile_id) || { hosted: true, github: { on: true, login: a.login }, obsidian: { on: false }, live: false, agents: false, email: !!em?.confirmed };
+    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const panel = connectionsPanel({ pub, handle: a.handle, conn, sites, app: ap ? { slug: ap.slug } : null, installation: !!a.installation, email: em?.email,
+      livePrompt: C.featurePrompt("live", { hubUrl: pub, handle: a.handle, hosted: true }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
+      agentPrompt: agentPrompt || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }) });
+    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
+<div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)} &middot; <a href="${esc(url)}">your page</a></div></div></div>
+${settingsNav([["connections", "Connections"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
+${sectionHead("page", "Your page")}<div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span></div>
+${finishCard(a)}
 <form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Edit your page</b>
 <label for="n">Name</label><input type="text" id="n" name="name" maxlength="80" value="${esc(edits.name || pr?.name || "")}">
 <label for="h">Headline</label><input type="text" id="h" name="headline" maxlength="160" value="${esc(edits.headline || pr?.headline || "")}">
 <label for="s">About you</label><textarea id="s" name="summary" maxlength="1200">${esc(edits.summary || "")}</textarea>
 <label for="l">Extra links <span class="mut">(one per line: Label | https://...)</span></label><textarea id="l" name="links">${esc(edits.links || "")}</textarea>
 <label for="g">Groups <span class="mut">(comma separated, like <code>producthunt</code>; each one is a town at caldera.social/g/name)</span></label><input type="text" id="g" name="groups" maxlength="200" value="${esc((edits.groups || []).join(", "))}">
-<label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory</label>
-<label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me with members who work on the same public GitHub repos</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
-<div class="card"><b>Private repos</b><p class="mut">Your city shows public repos. To add private ones as padlocked buildings (size and activity only, never names or code), install the Caldera GitHub app on the repos you choose. It can only read repository metadata.</p>
-${ap ? `<a class="btn small" href="https://github.com/apps/${esc(ap.slug)}/installations/new">${a.installation ? "Change which repos" : "Add private repos"}</a>` : ""}</div>
-<div class="card"><b>Live traffic on your city</b><p class="mut">Paste a district's snippet into a site's pages and every visit rides through your city live. Call <code>caldera('signup')</code> or <code>caldera('buy')</code> to mark conversions.</p>
-${sites.map(s => `<div style="margin:8px 0"><span>${esc(s.project)}</span><pre id="sn-${esc(s.key)}">&lt;script async src="${esc(pub)}/t.js" data-site="${esc(s.key)}"&gt;&lt;/script&gt;</pre></div>`).join("") || '<p class="mut">Refresh once to get your snippets.</p>'}</div>
-${ak ? `<div class="card"><b>Your AI agents in the city</b><p class="mut">Paste this into Claude Code on each computer you use. Each agent becomes a drone over the repo it's working in.</p><pre id="agent-prompt">${esc(agentPrompt)}</pre><button class="btn small" type="button" data-copy-text="agent-prompt">Copy setup prompt</button></div>` : ""}
-<div class="card"><b>Use Obsidian? Move this profile into your vault</b><p class="mut">Your vault adds the rest: a journal, your notes as a garden, the Underground under your city, and end-to-end encrypted sharing with friends. Install Caldera in Obsidian, then in its settings choose <i>Import a GitHub sign-up</i> and paste the code below. Your vault takes over the profile's key and the hub deletes its copy.</p>
-${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 minutes.</span>` : `<form method="post"><input type="hidden" name="do" value="claim"><button class="btn small" type="submit">Get a code</button></form>`}</div>
-<div class="row"><form method="post"><input type="hidden" name="do" value="logout"><button class="btn small ghost" type="submit">Sign out</button></form>
-<form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>`, ctx.owner?.bar?.(a.profile_id) || "");
+${sectionHead("people", "People")}${growth}
+${sectionHead("notifications", "Notifications")}${emailCard(a, edits)}
+${sectionHead("privacy", "Privacy")}<form method="post" class="card" id="privacy-form"><input type="hidden" name="do" value="privacy">
+<label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory and on the World map</label>
+<label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me automatically with people I know from GitHub (shared repos, mutual follows)</label>
+<div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save</button></div></form>
+${sectionHead("account", "Account")}<div class="card danger-zone"><div class="row" style="justify-content:space-between"><form method="post"><input type="hidden" name="do" value="logout"><button class="btn small ghost" type="submit">Sign out</button></form>
+<form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut" style="display:inline"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>
+<p class="mut" style="margin-top:8px">Deleting removes your page, city and data, and revokes Caldera's access to your GitHub.</p></div>`, ctx.owner?.bar?.(a.profile_id) || "");
+  }
+
+  /** /settings for a page published from Obsidian: the vault is the source of truth, so page fields are read-only here;
+   *  connections, people, notifications and sign-out work on the web. */
+  function vaultPage(res: http.ServerResponse, pr: any, note = "") {
+    const owner = pr.id as string, handle = pr.handle as string, url = `${pub}/@${handle}/`;
+    let b: any = {}; try { b = JSON.parse(pr.manifest).body || {}; } catch { /* empty */ }
+    const em = ctx.social?.email?.status(owner);
+    const conn: Conn = ctx.social?.connections?.(owner) || { hosted: false, github: { on: false }, obsidian: { on: true, updated: pr.updated }, live: false, agents: false, email: !!em?.confirmed };
+    const sites = q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(owner) as any[];
+    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const panel = connectionsPanel({ pub, handle, conn, sites, email: em?.email,
+      livePrompt: C.featurePrompt("live", { hubUrl: pub, handle }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
+      agentPrompt: C.featurePrompt("agents", { hubUrl: pub, handle }), privatePrompt: C.featurePrompt("private", { hubUrl: pub, handle }) });
+    const links: [string, string][] = Array.isArray(b.links) ? b.links.filter((l: any) => Array.isArray(l)).slice(0, 20) : [];
+    const ro = (label: string, val: string) => `<div style="margin:8px 0"><span class="mut" style="display:block;font-size:13px">${esc(label)}</span>${val || `<span class="mut">Not set</span>`}</div>`;
+    const yes = (on: boolean, t: string) => `<div style="margin:6px 0"><span class="conn-dot${on ? " on" : ""}" style="display:inline-block;margin-right:8px;vertical-align:middle"></span>${t}</div>`;
+    page(res, 200, "Settings", `${SETTINGS_CSS}${note ? `<div class="card">${note}</div>` : ""}
+<div class="who">${b.photos?.avatar ? `<img src="${esc(url)}${esc(String(b.photos.avatar).replace(/^\.?\//, ""))}" alt="">` : ""}<div><h1>${esc(pr.name || handle)}</h1><div class="mut">@${esc(handle)} &middot; published from Obsidian &middot; <a href="${esc(url)}">your page</a></div></div></div>
+${settingsNav([["connections", "Connections"], ["page", "Your page"], ["people", "People"], ["notifications", "Notifications"], ["privacy", "Privacy"], ["account", "Account"]])}
+${sectionHead("connections", "Connections", "Green means it's working. Tap anything grey to set it up right here.")}${panel}
+${sectionHead("page", "Your page", "Edited from Obsidian (<code>Caldera/profile.md</code>). Change it there, or have your AI do it; the page republishes about a minute after you save.")}
+<div class="card">${ro("Name", esc(pr.name || ""))}${ro("Headline", esc(pr.headline || ""))}${ro("Links", links.map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a>`).join(" &middot; "))}${ro("Groups", esc((Array.isArray(b.groups) ? b.groups : []).join(", ")))}
+${(() => { const t = C.editPrompt({ hubUrl: pub, handle }); return `<pre id="pr-edit" style="max-height:120px">${esc(t)}</pre><button class="btn small" type="button" data-copy-text="pr-edit">Copy prompt for my AI</button>`; })()}</div>
+${sectionHead("people", "People")}${growthCards({ profile_id: owner, handle }, {})}
+${sectionHead("notifications", "Notifications")}${emailCard({ profile_id: owner, handle }, {})}
+${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>
+${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn small ghost" href="/signout?h=${encodeURIComponent(handle)}">Sign out of this browser</a>
+<p class="mut" style="margin-top:10px">To delete your Caldera profile, run <b>Caldera: Delete my profile from the hub</b> in Obsidian. Your vault is never touched.</p></div>`, ctx.owner?.bar?.(owner) || "");
   }
 
   const photoPath = (pr: any) => { try { return String(JSON.parse(pr.manifest).body.photos?.avatar || "img/avatar.png").replace(/^\.?\//, ""); } catch { return "img/avatar.png"; } };
@@ -337,6 +372,13 @@ ${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="
   }
 
   /** Growth cards on /me: this week's visitors, share + invite, friends (requests, current, suggestions), daily email. */
+  /** Daily summary email card (Notifications). */
+  function emailCard(a: any, edits: any): string {
+    const soc = ctx.social, me = a.profile_id as string, em = soc?.email?.status(me);
+    const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
+    return `${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
+${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
+  }
   function growthCards(a: any, edits: any): string {
     const soc = ctx.social, me = a.profile_id as string, url = `${pub}/@${a.handle}/`, invite = `${pub}/?invite=${encodeURIComponent(a.handle)}`;
     const wk = new Date(Date.now() - 7 * DAY).toISOString();
@@ -347,7 +389,6 @@ ${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="
     const who = (h: string, n: string) => `<a href="${esc(pub)}/@${esc(h)}/">${esc(n || "@" + h)}</a> <span class="mut">@${esc(h)}</span>`;
     const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
     const text = encodeURIComponent(`My page on Caldera: a living profile, with my code as a city. ${url}`);
-    const em = soc?.email?.status(me);
     return `<div class="card"><b>This week</b><p style="margin:.4em 0 0">${v.u ? `<b>${v.u}</b> ${v.u === 1 ? "person" : "people"} visited your page (${v.n} views).` : "No visitors yet this week. Share your page to get the first ones."}${brought ? ` You've brought in <b>${brought}</b> ${brought === 1 ? "person" : "people"}.` : ""}</p></div>
 <div class="card"><b>Share your page</b><p class="mut">This is the picture people see when you post your link.</p><img src="${esc(url)}card.png" alt="Your link preview" style="width:100%;max-width:600px;border-radius:10px;border:1px solid var(--line,#2A2440);display:block;margin:6px 0 10px">
 <div class="row"><a class="btn small" href="https://x.com/intent/post?text=${text}" target="_blank" rel="noopener">Post on X</a><a class="btn small" href="https://bsky.app/intent/compose?text=${text}" target="_blank" rel="noopener">Bluesky</a><a class="btn small" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a></div>
@@ -357,8 +398,7 @@ ${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.i
 ${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.why && (f.kind === "repo" || f.kind === "github") ? ` <span class="mut">(${f.kind === "repo" ? "both work on " : ""}${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
 ${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
 ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
-${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
-${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
+`;
   }
 
   // ------------------------------------------------------------------ routes
@@ -479,15 +519,51 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); } catch (e: any) { ctx.json(res, 502, { error: "Saved, but republishing failed: " + e.message }); return true; }
       ctx.json(res, 200, { ok: true }); return true;
     }
-    if (p === "/me") {
-      // a GitHub sign-up who signed in another way (email link, Obsidian pairing) holds the owner cookie, not a GitHub
-      // session: that cookie is proof of ownership, so their account page opens for it too
-      const ownId = ctx.owner?.of(req), acct = account(req) || (ownId ? q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(ownId) as any : null);
-      if (!acct) {   // signed in as the owner of a profile made in Obsidian (GitHub-linked or otherwise): that page is home
-        const pr = ownId ? q("SELECT handle FROM profiles WHERE id=?").get(ownId) as any : null;
-        redirect(res, pr?.handle ? `/@${pr.handle}/` : "/auth/github"); return true;
+    if (p === "/me" && req.method === "GET") { redirect(res, "/settings" + url.search); return true; }   // the account page moved to /settings
+    // who is this? a GitHub sign-up (session or owner cookie) -> hosted; anyone else signed in as an owner -> their vault page
+    const settingsOwner = (): { acct?: any; vault?: any } | null => {
+      const ownId = ctx.owner?.of(req), ga = account(req);
+      const acct = (ga && !ga.claimed ? ga : null) || (ownId ? q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(ownId) as any : null);
+      if (acct) return { acct };
+      const vOwner = ownId || (ga?.claimed ? ga.profile_id : null);   // a GitHub sign-up that moved into Obsidian keeps its way in
+      const vault = vOwner ? q("SELECT * FROM profiles WHERE id=?").get(vOwner) as any : null;
+      return vault?.handle ? { vault } : null;
+    };
+    const sameOrigin = () => { const o = String(req.headers.origin || ""); return !o || o === pub || (o === "null" && req.headers["sec-fetch-site"] === "same-origin"); };
+    if (p === "/settings/status" && req.method === "GET") {   // the Connections panel polls this while you connect Obsidian
+      const who = settingsOwner(); if (!who) { ctx.json(res, 401, { error: "sign in" }); return true; }
+      const id = who.acct ? who.acct.profile_id : who.vault.id;
+      ctx.json(res, 200, { conn: ctx.social?.connections?.(id) || null }); return true;
+    }
+    if (p === "/settings/claim" && req.method === "POST") {   // Connect Obsidian: a one-time code, right in the page
+      const who = settingsOwner(); if (!who?.acct) { ctx.json(res, 400, { error: "Only GitHub sign-ups move into Obsidian with a code." }); return true; }
+      if (!sameOrigin()) { ctx.json(res, 403, { error: "wrong origin" }); return true; }
+      const code = "CAL-" + crypto.randomBytes(9).toString("base64url"), expires = Date.now() + 30 * 60_000;
+      q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(code, expires, who.acct.gh_id);
+      ctx.json(res, 200, { code, expires }); return true;
+    }
+    if (p === "/me" || p === "/settings") {
+      const who = settingsOwner();
+      if (!who) { redirect(res, "/signin"); return true; }
+      if (who.vault) {
+        const vpr = who.vault, me = vpr.id as string;
+        if (req.method === "GET") { vaultPage(res, vpr, url.searchParams.get("connected") === "obsidian" ? "<b>Obsidian is connected.</b> Your vault publishes this page now." : ""); return true; }
+        if (req.method !== "POST") { redirect(res, "/settings"); return true; }
+        if (!sameOrigin()) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
+        const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
+        const f = new URLSearchParams(Buffer.concat(chunks).toString("utf8").slice(0, 20_000)), act = f.get("do");
+        if (act === "logout") { redirect(res, "/signout"); return true; }
+        let pre = "";
+        if ((act === "accept" || act === "add") && ctx.social?.friendAct) {   // Obsidian keys never leave the vault: queued, sent on the next sync
+          const to = String(f.get("to") || ""), h = (q("SELECT handle FROM profiles WHERE id=?").get(to) as any)?.handle;
+          const r = ctx.social.friendAct(me, to);
+          pre = r.status === 200 ? (r.body.state === "queued" ? `Queued. Your request to @${esc(h)} sends from Obsidian the next time it's open.` : `Done: @${esc(h)}.`) : `Couldn't do that: ${esc(r.body?.error || "error")}`;
+        }
+        if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(me, em)); } catch (e: any) { pre = esc(e.message); } }
+        if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(me); pre = "Daily summary emails are off."; }
+        vaultPage(res, q("SELECT * FROM profiles WHERE id=?").get(me), pre); return true;
       }
-      if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
+      const acct = who.acct;
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
         mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
       if (req.method === "POST") {
@@ -503,11 +579,13 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         }
         if (act === "save") {
           const prev = JSON.parse(acct.edits || "{}");
-          const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on", groups: groupsFrom(f.get("groups")), autoConnectRepos: f.get("autoConnectRepos") === "on" };
+          const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), groups: groupsFrom(f.get("groups")) };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
+        if (act === "privacy") { const prev = JSON.parse(acct.edits || "{}"); q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify({ ...prev, listed: f.get("listed") === "on", autoConnectRepos: f.get("autoConnectRepos") === "on" }), acct.gh_id); }
         if (act === "remove-banner") { for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(upDir(acct.gh_id), `banner.${ext}`), { force: true }); }
-        if (act === "claim") { const code = "CAL-" + crypto.randomBytes(9).toString("base64url"); q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(code, Date.now() + 30 * 60_000, acct.gh_id); }
+        let claimCode = "";
+        if (act === "claim") { claimCode = "CAL-" + crypto.randomBytes(9).toString("base64url"); q("UPDATE gh_accounts SET claim_code=?, claim_expires=? WHERE gh_id=?").run(claimCode, Date.now() + 30 * 60_000, acct.gh_id); }
         let pre = "";
         if (act === "accept" || act === "add") {   // friends, signed with the hosted profile's key
           const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity, to = String(f.get("to") || "");
@@ -519,8 +597,8 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
         if (act === "gh-invite" && ctx.social?.circle) { try { pre = esc(await ctx.social.circle.invite(acct.profile_id, String(f.get("login") || ""))); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
-        let note = pre || (act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "");
-        if (act === "save" || act === "refresh" || act === "remove-banner") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
+        let note = pre || (act === "claim" ? `Here's your code: <code>${esc(claimCode)}</code>. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up). It works once, for 30 minutes.` : "");
+        if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
       }
     }

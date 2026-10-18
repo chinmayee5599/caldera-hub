@@ -11,6 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import * as C from "@caldera/core";
 import { github } from "./github";
+import { connDots, type Conn } from "./settings";
 export { githubAccountOk } from "./github";
 import { repoConnector } from "./repoconnect";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
@@ -56,7 +57,7 @@ export type FriendState = "self" | "friends" | "incoming" | "requested" | "queue
 export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
-export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number }
+export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number; settings?: string; conn?: { github: boolean; obsidian: boolean } }
 const LOGO = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
 const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:8px 12px;min-height:46px;box-sizing:border-box;padding:7px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:#D6D6DC}
 #caldera-bar a{text-decoration:none}#caldera-bar .cb-l,#caldera-bar .cb-r{display:inline-flex;align-items:center;gap:10px;min-width:0}
@@ -68,7 +69,7 @@ const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;a
 #caldera-bar .cb-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:#18171D;border:1px solid #2E2A40;border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column}
 #caldera-bar .cb-menu a{padding:8px 10px;border-radius:8px;color:#E6E6EA}#caldera-bar .cb-menu a:hover{background:#26232F}#caldera-bar .cb-menu small{padding:4px 10px 6px;color:#8A8A93;font-size:11.5px;line-height:1.35}
 #caldera-bar .cb-stale{color:#F2C46D;font-size:12.5px;white-space:nowrap}#caldera-bar .cb-short{display:none}
-@media (max-width:620px){#caldera-bar .cb-tag,#caldera-bar .cb-v,#caldera-bar .cb-word{display:none}#caldera-bar .cb-l>.cb-brand:first-child:not(:last-child){width:22px}#caldera-bar{flex-wrap:wrap}#caldera-bar .cb-sw a{padding:5px 10px}#caldera-bar .cb-short{display:inline}#caldera-bar.cb-anon .cb-l .cb-brand span:first-of-type{display:none}#caldera-bar .cb-r{gap:8px}}</style>`;
+@media (max-width:620px){#caldera-bar .cb-tag,#caldera-bar .cb-v,#caldera-bar .cb-word{display:none}#caldera-bar .cb-l>.cb-brand:first-child:not(:last-child){width:22px}#caldera-bar{flex-wrap:wrap}#caldera-bar .cb-sw a{padding:5px 10px}#caldera-bar .cb-short{display:inline}#caldera-bar.cb-anon .cb-l .cb-brand span:first-of-type{display:none}#caldera-bar .cb-r{gap:8px}#caldera-bar .cb-cl{display:none}}</style>`;
 
 /** Views and kudos on every hosted page: a public tally plus "+ Kudos", which opens a small first-party window on the hub
  *  (profile pages are sandboxed, so the member's sign-in can only ride along there). */
@@ -145,10 +146,11 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     + `<a href="${e(own.publicHref)}"${own.current === "public" ? ' aria-current="page"' : ""} title="Your page as everyone sees it">&#127760;<span class="cb-v"> Public view</span></a>`
     + `<a href="${e(own.privateHref)}"${ext}${own.current === "private" ? ' aria-current="page"' : ""} title="Your page with the private sections only you see">&#128274;<span class="cb-v"> Private view</span></a></span>`;
   const menu = `<details><summary aria-label="Account">@${e(own.handle)} <span aria-hidden="true">&#9662;</span></summary><span class="cb-menu">`
-    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>`
+    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>${own.settings ? `<a href="${e(own.settings)}">Settings</a>` : ""}`
     + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
+  const dots = own.conn && own.settings ? connDots(own.settings, own.conn) : "";
   return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
-    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
+    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${dots}${menu}</span></div>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -919,14 +921,25 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(owner) as any;
     return hosted ? { live, agents } : { live, agents, private: !!pv && pv.ts > wk };
   }
+  /** The owner's connection lights for /settings and the owner bar: GitHub, Obsidian, live visitors, agents, private view, email. */
+  function connectionsFor(owner: string): Conn | null {
+    const pr = profile(owner); if (!pr?.handle) return null;
+    const acct = q("SELECT login, claimed FROM gh_accounts WHERE profile_id=? ORDER BY (claimed IS NULL) DESC LIMIT 1").get(owner) as any;
+    const link = q("SELECT login FROM gh_links WHERE profile_id=? ORDER BY ts DESC LIMIT 1").get(owner) as any;
+    const hosted = !!acct && !acct.claimed, listed = GH.ghLoginsOf(pr)[0];
+    const login: string | undefined = hosted ? acct.login : link?.login || (acct?.claimed && listed && String(acct.login).toLowerCase() === listed ? acct.login : undefined);
+    const u = unlockStateFor(owner) || {} as C.UnlockState;
+    return { hosted, github: { on: !!login, login, listed: login ? undefined : listed }, obsidian: { on: !hosted, updated: hosted ? undefined : pr.updated },
+      live: !!u.live, agents: !!u.agents, private: hosted ? undefined : !!u.private, email: mail.hasConfirmed(owner) };
+  }
   function nudgeFor(owner: string, hosted: boolean) {
     const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
     const st = pageStateFor(owner), n = st && C.nextStep(st);
     if (!n) {   // basics done: one "unlock more" feature instead
       const u = st ? C.unlockChecklist(unlockStateFor(owner) || {}).find(i => !i.done) : undefined; if (!u) return undefined;
-      return { label: u.label.toLowerCase(), why: u.why, how: hosted ? "Set it up from your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/me#unlock` : "obsidian://caldera?open=finish" };
+      return { label: u.label.toLowerCase(), why: u.why, how: hosted ? "Set it up from your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/settings#connections` : "obsidian://caldera?open=finish" };
     }
-    return { label: n.label.toLowerCase(), why: n.why, how: hosted ? "Do it on your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/me#finish` : "obsidian://caldera?open=finish" };
+    return { label: n.label.toLowerCase(), why: n.why, how: hosted ? "Do it on your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/settings#finish` : "obsidian://caldera?open=finish" };
   }
 
   function digestFor(owner: string, since: string) {
@@ -957,7 +970,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
-    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, connections: connectionsFor, friendAct: (me: string, to: string) => friendAct(me, profile(to)), email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
       circle: { people: (id: string) => githubPeople(id), invite: (id: string, login: string) => githubInvite(id, login), signedIn: (id: string) => circleHooks.signedIn?.(id) } } });
 
   // shared-repo friendships: members who both contributed to the same public GitHub repo become friends (kind "repo")
@@ -1061,9 +1074,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
   function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
     const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
-    const privateHref = priv ? priv + sub : hosted ? `${PUB()}/me` : "obsidian://caldera?open=private";
+    const privateHref = priv ? priv + sub : hosted ? `${PUB()}/settings` : "obsidian://caldera?open=private";
+    const cn = connectionsFor(pr.id);
     return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref, privateExternal: !priv && !hosted, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale,
-      note: priv ? "Private view opens your private address (your Tailscale devices only)." : hosted ? "Private view is your account page." : "Private view opens Caldera in Obsidian on this computer." };
+      settings: `${PUB()}/settings`, conn: cn ? { github: cn.github.on, obsidian: cn.obsidian.on } : undefined,
+      note: priv ? "Private view opens your private address (your Tailscale devices only)." : hosted ? "Private view is your settings page." : "Private view opens Caldera in Obsidian on this computer." };
   }
   /** Is this request from the owner of `handle`? Returns their nav for the public page, or null. */
   function ownerBar(req: http.IncomingMessage, handle: string, rel = "index.html"): OwnerNav | null {
@@ -1297,7 +1312,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
-      if (/^\/(auth\/github|me$|me\/upload$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
+      if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
 
       if (req.method === "GET" && p === "/v1/weather") { const w = await WX.forIp(ipOf(req)); res.setHeader("cache-control", "no-store"); return json(res, 200, w || { c: null }); }   // the requester's own weather, never stored
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
@@ -1505,7 +1520,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         q("DELETE FROM owner_sessions WHERE expires < ?").run(Date.now());
         q("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(hashToken(t), pr.id, now(), Date.now() + OWN_AGE * 1000);
         const to = url.searchParams.get("to") || "", sub = /^[a-z0-9][a-z0-9._/-]{0,120}$/i.test(to) && !to.includes("..") ? to : "";   // a page inside their profile
-        res.writeHead(302, { location: `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
+        res.writeHead(302, { location: to === "settings" ? "/settings" : `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
       }
       if (req.method === "GET" && p === "/v1/own/out") {   // older bars: every sign-out goes through /signout
         const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -1680,7 +1695,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
-        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts, unlock: unlockStateFor(m[1]) || {} });
+        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts, unlock: unlockStateFor(m[1]) || {}, connections: connectionsFor(m[1]) });
       }
       // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
