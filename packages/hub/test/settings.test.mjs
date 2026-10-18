@@ -85,6 +85,8 @@ test("alerts: pinned first, audience, unread badge on the owner's bar, seen beac
   const t = crypto.randomBytes(32).toString("hex");
   h.db.prepare("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(crypto.createHash("sha256").update(t).digest("hex"), mk.id, new Date().toISOString(), Date.now() + 86_400_000);
   const ck = { cookie: "cal_own=" + t, "user-agent": "Mozilla/5.0" };
+  const nw = C.newIdentity(); await publish(nw, { name: "New", handle: "newbie", links: [] });
+  h.db.prepare("UPDATE profiles SET created=? WHERE id=?").run("2020-01-01T00:00:00.000Z", mk.id);   // Mike joined long before the news below
   const old = h.admin.alertPost({ title: "Older news", body: "Hello **there** and [the guide](/guide)\n\n- one\n- two", ts: new Date(Date.now() - 60_000).toISOString() }).posted;
   const pin = h.admin.alertPost({ title: "Welcome to Caldera - from Mike", body: "Hi.", pinned: true, copyText: "THE PROMPT", copyLabel: "Copy the setup prompt", ctaLabel: "Read the guide", ctaUrl: "/guide", ts: new Date(Date.now() - 120_000).toISOString() }).posted;
   h.admin.alertPost({ title: "GitHub people only", body: "x", audience: "github" });
@@ -95,6 +97,10 @@ test("alerts: pinned first, audience, unread badge on the owner's bar, seen beac
   assert.match(page, /Welcome to Caldera - from Mike/); assert.doesNotMatch(page, /GitHub people only/);
   assert.match(page, /Older news/, "the bell lists titles; bodies are on /alerts");
   assert.ok(page.indexOf("Welcome to Caldera") < page.indexOf("Older news"), "pinned listed first");
+  // a member who joined after that news starts at zero unread, except the pinned welcome
+  { const t2 = crypto.randomBytes(32).toString("hex");
+    h.db.prepare("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(crypto.createHash("sha256").update(t2).digest("hex"), nw.id, new Date().toISOString(), Date.now() + 86_400_000);
+    assert.match(await (await fetch(base + "/@newbie/", { headers: { cookie: "cal_own=" + t2, "user-agent": "Mozilla/5.0" } })).text(), /<span class="ch-badge">1<\/span>/, "only the pinned welcome is unread"); }
   // anonymous visitors see no bell
   assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: { "user-agent": "Mozilla/5.0" } })).text(), /ch-bell/);
   // the seen beacon (signed token) clears the badge; a forged token does nothing
