@@ -79,6 +79,8 @@ export function github(ctx: GhCtx) {
 
   // ------------------------------------------------------------------ cookies + sessions
   const cookies = (req: http.IncomingMessage) => Object.fromEntries(String(req.headers.cookie || "").split(/;\s*/).filter(Boolean).map(c => { const i = c.indexOf("="); return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))]; }));
+  // where to land after signing in: a page on this hub only (a profile, city, note, the world, people or a group)
+  const safeBack = (v: unknown): string => { const s0 = String(v || ""); return s0.length < 200 && /^\/(@[a-z0-9-]+\/[A-Za-z0-9._\/-]*|world|people|g\/[a-z0-9-]+)$/.test(s0) && !s0.includes("..") ? s0 : ""; };
   const setCookie = (res: http.ServerResponse, name: string, val: string, maxAge: number) => {
     const prev = res.getHeader("set-cookie"); const list = Array.isArray(prev) ? prev : prev ? [String(prev)] : [];
     res.setHeader("set-cookie", [...list, `${name}=${encodeURIComponent(val)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`]);
@@ -368,7 +370,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       const a = app(); if (!a) { page(res, 503, "Coming soon", `<h1>Sign up with GitHub is almost ready</h1><p>Install the <a href="/#install">Obsidian plugin</a> in the meantime.</p>`); return true; }
       const inv = (url.searchParams.get("invite") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31), grp = groupsFrom(url.searchParams.get("group"))[0];
       const forH = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
-      const signed = forH ? null : account(req);
+      const signed = forH ? null : account(req), back = safeBack(url.searchParams.get("back"));
       if (signed) {
         if (grp && !signed.claimed) {   // already here: join the group and republish
           const ed = JSON.parse(signed.edits || "{}"); ed.groups = [...new Set([...(ed.groups || []), grp])];
@@ -376,13 +378,14 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(signed.gh_id)); } catch { /* next refresh */ }
           redirect(res, `/me?joined=${grp}`); return true;
         }
-        redirect(res, "/me"); return true;
+        redirect(res, back || "/me"); return true;
       }
       if (inv) setCookie(res, "cal_inv", inv, 30 * 86400);
       if (grp) setCookie(res, "cal_grp", grp, 30 * 86400);
       // a double-click or a second tab reuses the pending state, so whichever GitHub tab finishes still matches
       const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
+      setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(a.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
@@ -406,19 +409,20 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         const me = await gh(tok.access, "/user") as any;
         let acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id) as any;
         const wantH = String(cookies(req).cal_h || "").toLowerCase(); setCookie(res, "cal_h", "", 0);
+        const backTo = safeBack(cookies(req).cal_back); if (backTo) setCookie(res, "cal_back", "", 0);
         // an existing profile that lists this GitHub account (made in Obsidian): sign in as its owner, never make another
         if (!acct || acct.claimed || (wantH && wantH !== acct.handle)) {
           const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
-            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); done(`/@${pr.handle}/`); return true;
+            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); done(backTo || `/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
         }
         if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
-          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); done("/me"); return true;
+          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); done(backTo || "/me"); return true;
         }
         // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
         if (!githubAccountOk(me)) {
@@ -441,7 +445,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           const inviter = inv ? ctx.social?.recordReferral(id.id, inv, "github") : null;
           if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
         });
-        done("/me?welcome=1"); return true;
+        done("/me?welcome=1" + (backTo ? "&back=" + encodeURIComponent(backTo) : "")); return true;
       } catch (e: any) {
         settle(null);
         // a used or expired one-time code (a reload, a retried request, a restart mid-sign-in): one more click fixes it,

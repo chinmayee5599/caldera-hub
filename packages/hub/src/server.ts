@@ -116,9 +116,9 @@ const BAR_ACT_CSS = `<style>.cb-row{display:flex;flex-wrap:wrap;align-items:cent
 
 /** The social row under the person's name on their profile and city: views, kudos and Add friend belong to the person,
  *  not to the site bar. Carries the sign-in prompt and the inline actions script. */
-export function socialRow(hub: string, handle: string, so: BarSocial): string {
+export function socialRow(hub: string, handle: string, so: BarSocial, back = ""): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
-  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
+  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
   return BAR_ACT_CSS + `<div class="cb-row">${socialChips(base, handle, so)}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
 }
 
@@ -126,6 +126,7 @@ export function socialRow(hub: string, handle: string, so: BarSocial): string {
  *  (public page with the owner cookie, or the private address): logo, the [Public view | Private view] switch in the same
  *  place on both addresses, then the account menu (@handle, Your public page, Private view, Sign out). Same height either way. */
 export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial): string {
+  const back = `/@${handle}/`;   // sign-in from this page comes back here
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
   const chips = social && !social.inPage ? socialChips(base, handle, social) : "";
@@ -133,7 +134,7 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     const v = social?.viewer || null;
     // anyone tapping kudos or Add friend without being signed in gets this small prompt (sign-in opens in a new window:
     // the page is sandboxed and can't navigate the top window)
-    const need = social && !social.inPage ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
+    const need = social && !social.inPage ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
     const right = v ? `<a href="${base}/@${encodeURIComponent(v.handle)}/" title="Signed in as @${e(v.handle)}" style="color:#B8B8C2;font-size:12.5px;white-space:nowrap">@${e(v.handle)}</a>`
       : `<a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;white-space:nowrap"><span class="cb-tag">Owner? </span>Sign in</a>`;
     return BAR_CSS + (social && !social.inPage ? BAR_ACT_CSS : "") + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social network for GitHub and Obsidian</span></a></span>`
@@ -1411,7 +1412,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
-          if (inPage && soc && rowAt) { const hd = m[1]; html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc)); }
+          if (inPage && soc && rowAt) { const hd = m[1]; html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`)); }
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
         }
