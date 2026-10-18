@@ -66,7 +66,8 @@ test("link previews: og tags on profile pages, a PNG card, city shapes sanitised
 test("groups: town page lists listed members with their cities, cleaned", async () => {
   const html = await (await get("/g/producthunt")).text();
   assert.ok(html.includes("@mike") && html.includes("@ana") && !html.includes("@bo"));
-  assert.ok(html.includes("<polygon") && !html.includes("<script") && !html.includes("javascript:"), "only clean polygons");
+  assert.ok(html.includes("<polygon") && !/<script(?![^>]*src="\/assets\/site\.js")/.test(html) && !html.includes("javascript:"), "only clean polygons (the one script is the site's own nav script)");
+  assert.ok(html.includes('<header class="nav">') || html.includes("/world"), "site header on group pages");
   assert.ok(html.includes("/auth/github?group=producthunt") && html.includes("obsidian://caldera?group=producthunt"));
   assert.equal((await get("/g/x")).status, 404, "slug too short");
 });

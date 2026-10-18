@@ -97,5 +97,6 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     [["Your public page", s.page], ["Private view", s["private"], s.privateExternal], ["Sign out", s.signout]].forEach(function (x) {
       var a = document.createElement("a"); a.textContent = x[0]; a.href = x[1]; if (x[2]) { a.target = "_blank"; a.rel = "noopener"; } m.appendChild(a); });
     d.appendChild(m); link.replaceWith(d);
+    var cta = document.querySelector('.nav > a.btn'); if (cta && s.page) { cta.textContent = "Your page"; cta.href = s.page; }   // signed in: the header button goes to your page
   }).catch(function () {});
 })();

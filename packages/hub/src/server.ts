@@ -55,9 +55,7 @@ export type FriendState = "self" | "friends" | "incoming" | "requested" | "queue
 export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
-export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number;
-  /** extra account-menu items [label, href, opens elsewhere?], and an optional button before the menu (e.g. "Open in Obsidian") */
-  extra?: [string, string, boolean?][]; action?: string }
+export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number }
 const LOGO = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
 const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:8px 12px;min-height:46px;box-sizing:border-box;padding:7px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:#D6D6DC}
 #caldera-bar a{text-decoration:none}#caldera-bar .cb-l,#caldera-bar .cb-r{display:inline-flex;align-items:center;gap:10px;min-width:0}
@@ -145,10 +143,10 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     + `<a href="${e(own.publicHref)}"${own.current === "public" ? ' aria-current="page"' : ""} title="Your page as everyone sees it">&#127760;<span class="cb-v"> Public view</span></a>`
     + `<a href="${e(own.privateHref)}"${ext}${own.current === "private" ? ' aria-current="page"' : ""} title="Your page with the private sections only you see">&#128274;<span class="cb-v"> Private view</span></a></span>`;
   const menu = `<details><summary aria-label="Account">@${e(own.handle)} <span aria-hidden="true">&#9662;</span></summary><span class="cb-menu">`
-    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>` + (own.extra || []).map(([l, hr, x]) => `<a href="${e(hr)}"${x ? ' target="_blank" rel="noopener"' : ""}>${e(l)}</a>`).join("")
+    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>`
     + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
   return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
-    + chips + `<span class="cb-r">${own.action || ""}${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
+    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -1025,66 +1023,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
   function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
     const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
-    const extra: [string, string, boolean?][] = [];
-    if (hosted) extra.push(["Account settings", `${PUB()}/me`]);
-    if (priv) extra.push(["Private address (Tailscale)", priv + sub, true]);
-    return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref: `${PUB()}/@${h}/private/${sub}`, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale, extra,
-      note: hosted ? "Private view: your page with the parts only you see." : "Private view: your page with the private sections pushed from Obsidian, shown only to you." };
+    const privateHref = priv ? priv + sub : hosted ? `${PUB()}/me` : "obsidian://caldera?open=private";
+    return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref, privateExternal: !priv && !hosted, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale,
+      note: priv ? "Private view opens your private address (your Tailscale devices only)." : hosted ? "Private view is your account page." : "Private view opens Caldera in Obsidian on this computer." };
   }
-  /** The signed-in owner of this profile, for the web private view: "fresh" (owner sign-in under 30 days old, or this hosted
-   *  profile's GitHub session), "stale" (signed in, but too long ago), or null (not the owner: they get a plain 404). */
-  function ownerFresh(req: http.IncomingMessage, pr: any): "fresh" | "stale" | null {
-    const t = reqCookies(req)[OWN_COOKIE];
-    const row = t ? q("SELECT created FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now()) as any : null;
-    if (row) return Date.now() - Date.parse(row.created) < 30 * DAY ? "fresh" : "stale";
-    const a = GH.account(req); return a && !a.claimed && a.profile_id === pr.id ? "fresh" : null;
-  }
-  /** /@h/private/...: the same page the private (Tailscale) address shows, on the public hub, for the signed-in owner.
-   *  Static files (images, css) are the public ones and are served to anyone; HTML only to the owner. Returns false = 404. */
-  async function servePrivateWeb(req: http.IncomingMessage, res: http.ServerResponse, pr: any, sub: string): Promise<boolean> {
-    const h = pr.handle as string, dir = path.join(opts.dataDir, "profiles", h);
-    if (!sub) { res.writeHead(301, { location: `/@${h}/private/` }); res.end(); return true; }
-    let rel = sub.slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
-    const file = path.join(dir, path.normalize(rel)), isHtml = /\.html$/i.test(rel);
-    if (!isHtml && rel !== "live.json") {   // the page's own assets: identical to the public ones
-      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return false;
-      res.writeHead(200, { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "cache-control": "no-cache", "x-robots-tag": "noindex" }); fs.createReadStream(file).pipe(res); return true;
-    }
-    if (rel === "live.json") {   // the private city polls this; the token in the page (not a cookie: the page is sandboxed) proves it's the owner's page
-      const url = new URL(req.url || "/", "http://hub"), t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10);
-      if (t !== liveToken(h) && t !== liveToken(h, y)) return false;
-      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" });
-      res.end(JSON.stringify(liveStats(pr.id, true, url.searchParams.get("since")) || { at: now(), districts: {} })); return true;
-    }
-    const who = ownerFresh(req, pr); if (!who) return false;
-    const base = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "vary": "Cookie", "referrer-policy": "no-referrer" };
-    if (who === "stale") { res.writeHead(200, base); res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in again - Caldera</title></head><body><main style="max-width:520px;margin:0 auto;padding:48px 16px"><h1>Sign in again to see your private view</h1><p>For your privacy, the private view needs a sign-in from the last 30 days.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(h)}">Sign in</a></p></main></body></html>`)); return true; }
-    const row = q("SELECT blob, built FROM owner_private WHERE owner=?").get(pr.id) as any;
-    if (!row && !hostedOf(pr.id)) {   // the owner hasn't turned it on in Obsidian yet: tell them how (only the owner ever sees this)
-      res.writeHead(200, base); res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Private view - Caldera</title></head><body><main style="max-width:560px;margin:0 auto;padding:48px 16px"><h1>Turn on your private view</h1><p>Your private sections (journal details, people, private repos in your city) live in your vault. To see them here, open Obsidian, go to Settings &rsaquo; Caldera and turn on <b>Private web view</b>. Obsidian then pushes them, encrypted, to caldera.social, and only you see them when signed in.</p><p><a class="btn" href="obsidian://caldera?open=private">Open Caldera in Obsidian</a> <a class="btn ghost" href="/@${encodeURIComponent(h)}/">Back to your public page</a></p></main></body></html>`)); return true;
-    }
-    let priv: { layer: string; pages: Record<string, string>; vault?: string } = { layer: "", pages: {} };
-    if (row) { try { const s = unseal(row.blob); priv = s.startsWith('{"layer"') ? JSON.parse(s) : { layer: s, pages: {} }; } catch { priv = { layer: "<p>Couldn't read the private layer. Push again from Obsidian.</p>", pages: {} }; } }
-    const own = priv.pages[rel];
-    if (!own && (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory())) return false;
-    let html = own || liveBlocks(h, rel, fs.readFileSync(file, "utf8"));
-    const headers: Record<string, string> = { ...base, "content-security-policy": PROFILE_CSP };
-    if (rel === "index.html" && row) html = html.replace("<!--caldera:owner-->", priv.layer);
-    if (rel === "city.html") {
-      if (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id)) html = injectLive(html, { url: `live.json?t=${liveToken(h)}`, mode: "private" });
-      html = cityExtras(html, pr.id); headers["content-security-policy"] = cityCsp(originOf(opts.publicUrl));
-    }
-    const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
-    const nav = navFor(pr, "private", rel);
-    nav.note = row ? `Private sections pushed from Obsidian ${ago(row.built)}. Only you see this page, while signed in.` : "Your page with the parts only you see.";
-    const openIn = hostedOf(pr.id) ? "" : `<a class="cb-obs" href="${priv.vault ? `obsidian://open?vault=${encodeURIComponent(priv.vault)}` : "obsidian://caldera?open=private"}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;border:1px solid #5B47B8;color:#F2F2F5;text-decoration:none;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap">Open in Obsidian &#8599;</a>`;
-    nav.action = openIn;
-    const bar = calderaBar(opts.publicUrl || "https://caldera.social", h, nav);
-    html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
-    res.writeHead(200, headers); res.end(html); return true;
-  }
-  /** Is the web private view on for this profile? Hosted (GitHub) profiles: always; vault profiles: once Obsidian pushed a layer. */
-  const privateWebOn = (pr: any) => hostedOf(pr.id) || !!q("SELECT 1 FROM owner_private WHERE owner=?").get(pr.id);
   /** Is this request from the owner of `handle`? Returns their nav for the public page, or null. */
   function ownerBar(req: http.IncomingMessage, handle: string, rel = "index.html"): OwnerNav | null {
     const pr = byHandle(handle); if (!pr) return null;
@@ -1394,12 +1336,6 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // /@mike (no slash, any case) 301s to /@mike/ so the page's relative img/ and assets/ paths resolve
       m = p.match(/^\/@([A-Za-z0-9-]+)$/);
       if (req.method === "GET" && m) { res.writeHead(301, { location: `/@${m[1].toLowerCase()}/${url.search}` }); return res.end(); }
-      m = p.match(/^\/@([a-z0-9-]+)\/private(\/.*)?$/);
-      if (req.method === "GET" && m) {   // the owner's private view on the web: signed-in owner only, everyone else a plain 404
-        const prv = byHandle(m[1]);
-        if (prv && !modOf(m[1]) && await servePrivateWeb(req, res, prv, m[2] || "")) return;
-        res.writeHead(404, { "vary": "Cookie" }); return res.end("not found");
-      }
       m = p.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
       if (req.method === "GET" && m) {
         if (modOf(m[1])) { res.writeHead(410, { "content-type": "text/plain" }); return res.end("This profile is not available."); }
@@ -1709,18 +1645,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
       if (req.method === "POST" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
-        const pr = profile(m[1]); if (!pr?.handle) return json(res, 403, { error: "publish your profile first" });
-        const { html, built, pages, v, vault } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown>; v?: string; vault?: string };
+        const pr = profile(m[1]); if (!pr?.handle || !privateFor(pr.handle)) return json(res, 403, { error: "no private address is set up for this profile on this hub" });
+        const { html, built, pages, v } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown>; v?: string };
         const newer = staleClient(m[1], "private", v); if (newer) return json(res, 409, { error: `Caldera ${newer} already pushed this; update Caldera here (you have ${v || "an older version"})` });
         if (typeof html !== "string" || html.length > 3_000_000) return json(res, 400, { error: "bad private layer" });
         const priv: Record<string, string> = {};   // private versions of whole pages (only the city, for now)
         for (const [k, v] of Object.entries(pages || {})) if (k === "city.html" && typeof v === "string" && v.length < 4_000_000) priv[k] = v;
-        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv, vault: typeof vault === "string" ? vault.slice(0, 200) : "" })), String(built || now()).slice(0, 40), now());
-        return json(res, 200, { ok: true, url: `${PUB()}/@${pr.handle}/private/`, tailscale: privateFor(pr.handle) });
-      }
-      if (req.method === "DELETE" && m) {   // the owner turned the private web view off: the hub forgets the layer
-        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
-        q("DELETE FROM owner_private WHERE owner=?").run(m[1]); return json(res, 200, { ok: true });
+        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv })), String(built || now()).slice(0, 40), now());
+        return json(res, 200, { ok: true, url: privateFor(pr.handle) });
       }
 
       // live traffic: the owner registers their sites (one key per district); the hub hands back each site's server secret
