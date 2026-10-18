@@ -44,7 +44,7 @@ before(async () => {
 after(() => { hub.server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 
 test("simple composer: one choice + free text; link lifted out; recommendations need a link; tags read from the text", async () => {
-  assert.equal((await as("bo", "/v1/posts", { type: "", text: "a designer for my app" })).status, 400, "a choice is required");
+  assert.equal((await as("bo", "/v1/posts", { type: "nope", text: "a designer for my app" })).status, 400, "unknown kinds refused");
   assert.equal((await as("bo", "/v1/posts", { type: "someone", text: "hi" })).status, 400, "too short");
   assert.equal((await as("bo", "/v1/posts", { type: "recommend", rec: "tool", text: "Claude Code is the best coding agent I've used" })).status, 400, "tools need a link");
   assert.equal((await as("bo", "/v1/posts", { type: "recommend", rec: "tool", text: "Great tool http://example.com/x for agents" })).status, 400, "https only");
@@ -61,8 +61,9 @@ test("simple composer: one choice + free text; link lifted out; recommendations 
   assert.match(r.body.post.text, /^@cy recommends: Claude Code - best coding agent I've used\.$/, "link lifted out of the sentence");
   assert.match(r.body.html, /class="fd-link" href="https:\/\/claude.com\/claude-code" target="_blank"/, "link chip opens in a new window");
   const feedHtml = await (await fetch(base + "/feed", { headers: { cookie: await ownerCookie("mike") } })).text();
-  assert.match(feedHtml, /<select id="fd-kind"/, "one dropdown");
-  assert.match(feedHtml, /<optgroup label="I'm looking for...">[\s\S]*<optgroup label="I recommend...">/);
+  assert.match(feedHtml, /data-fam="ask"[\s\S]*I need\.\.\.[\s\S]*data-fam="rec"[\s\S]*I recommend\.\.\./, "two big choices");
+  assert.match(feedHtml, /data-kind="someone"[\s\S]*data-kind="recommend:model"/, "tappable chips");
+  assert.doesNotMatch(feedHtml.slice(feedHtml.indexOf("fd-comp"), feedHtml.indexOf("fd-match")), /<select/, "no dropdown");
   assert.doesNotMatch(feedHtml, /name="commitment"|name="role"|data-family/, "no sub-fields");
   for (const [, js] of feedHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(js), "the page's script compiles");
   const anon = await (await fetch(base + "/feed")).text();

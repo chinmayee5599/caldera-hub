@@ -130,7 +130,7 @@ test("feed privacy: unlisted members and founder auto-links never appear; filter
   const html = await (await fetch(`${base}/feed`)).text();
   assert.match(html, /Sign in with GitHub to post/); assert.doesNotMatch(html, /never show/);
   const mine = await (await fetch(`${base}/feed`, { headers: { cookie: await ownerCookie("mike") } })).text();
-  assert.match(mine, /I'm looking for\.\.\./); assert.match(mine, /I recommend\.\.\./);
+  assert.match(mine, /I need\.\.\./); assert.match(mine, /I recommend\.\.\./);
 });
 
 test("share: permalink with og tags + a text-only card; the sharer's invite carries through sign-up", async () => {

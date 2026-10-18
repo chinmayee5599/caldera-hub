@@ -479,9 +479,21 @@ export function feed(c: FeedCtx) {
 .fd-link .lc-m{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--text-muted)}.fd-link .lc-m span{white-space:nowrap}
 .fd-fam{display:flex;gap:6px;margin:0 0 12px}.fd-fam button{all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;border:1px solid var(--line);font:600 15px var(--font-display,Georgia,serif);color:var(--text-muted)}
 .fd-fam button[aria-pressed="true"]{border-color:var(--accent);color:var(--text-strong);background:var(--accent-soft)}
-.fd-comp select,.fd-comp textarea{font:15px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;box-sizing:border-box}
-.fd-comp select{margin:0 0 10px;font-weight:600;color:var(--text-strong);cursor:pointer}.fd-comp select:focus,.fd-comp textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
-.fd-comp textarea{min-height:84px;resize:vertical;line-height:1.5}.fd-row2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 4px}.fd-row2 .fd-hint{font-size:12.5px;color:var(--accent-text)}
+.fd-big{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+.fd-big button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;min-height:64px;padding:12px 14px;border-radius:16px;border:1.5px solid var(--line);background:var(--bg);color:var(--text-strong);font:700 18px var(--font-display,'Source Serif 4',Georgia,serif);transition:transform .15s,border-color .15s,background .15s,box-shadow .15s}
+.fd-big button b{font-size:26px;line-height:1}.fd-big button:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 20px rgba(139,108,246,.18)}
+.fd-big button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(139,108,246,.25)}
+.fd-big button:focus-visible,.fd-chips2 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fd-chips2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.fd-chips2 button{all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:500 14.5px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);transition:transform .15s,border-color .15s,background .15s}
+.fd-chips2 button:hover{transform:translateY(-2px);border-color:var(--accent)}.fd-chips2 button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.fd-pop1{animation:fdpop .35s ease-out}@keyframes fdpop{40%{transform:scale(1.08)}100%{transform:scale(1)}}
+.fd-comp textarea{font:15px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;box-sizing:border-box;min-height:88px;resize:vertical;line-height:1.5}
+.fd-comp textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.fd-row2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 4px}.fd-row2 .fd-hint{font-size:12.5px;color:var(--accent-text)}
+.fd-postbtn{transition:transform .15s}.fd-postbtn:hover{transform:translateY(-1px)}
+.fd-burst{position:fixed;z-index:70;pointer-events:none;font-size:20px;animation:fdburst .9s ease-out forwards}@keyframes fdburst{to{transform:translate(var(--dx),var(--dy)) scale(1.2);opacity:0}}
+@media (max-width:420px){.fd-big button{min-height:56px;font-size:16px;gap:8px;padding:10px}.fd-big button b{font-size:22px}}
+@media (prefers-reduced-motion:reduce){.fd-big button,.fd-chips2 button,.fd-postbtn{transition:none}.fd-big button:hover,.fd-chips2 button:hover{transform:none}.fd-pop1{animation:none}}
 .fd-more{display:flex;justify-content:center;margin:16px 0}.fd-empty{color:var(--text-muted);text-align:center;padding:24px}
 .fd-tip{position:fixed;z-index:60;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 14px;border-radius:10px;background:var(--text-strong);color:var(--bg);font-size:14px;box-shadow:0 10px 26px rgba(0,0,0,.3)}
 .fd-shared{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--text)}
@@ -542,15 +554,17 @@ ${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec |
     "recommend:tool": "Claude Code - best coding agent I've used https://claude.com/claude-code", "recommend:read": "this essay on agent memory changed how I build https://...",
     "recommend:person": "@someone - writes the clearest threads on agent evals", "recommend:other": "what you recommend, and why",
   };
+  const ASK_CHIPS: [string, string][] = [["someone", "\u{1F9D1}\u200D\u{1F91D}\u200D\u{1F9D1} someone"], ["code", "\u{1F4BB} code"], ["work", "\u{1F4BC} work"], ["clients", "\u{1F91D} clients"], ["feedback", "\u{1F4AC} feedback"], ["other", "\u2728 something else"]];
+  const REC_CHIPS: [string, string][] = [["recommend:repo", "\u{1F4E6} a repo"], ["recommend:model", "\u{1F916} an AI model"], ["recommend:tool", "\u{1F6E0}\uFE0F a tool"], ["recommend:read", "\u{1F4D6} something to read"], ["recommend:person", "\u{1F464} a person"], ["recommend:other", "\u2728 something else"]];
   function composerHtml() {
-    const asks = ASK_TYPES.map(t => `<option value="${t}">${esc(t === "someone" ? "someone (collaborator, co-founder, hire)" : t === "other" ? "something else" : t)}</option>`).join("");
-    const recs = Object.entries(REC).map(([k, v]) => `<option value="recommend:${k}">${esc(v)}</option>`).join("");
+    const chips = (fam: string, list: [string, string][]) => `<div class="fd-chips2" data-chips="${fam}" role="group" aria-label="What kind" hidden>${list.map(([v, l]) => `<button type="button" data-kind="${v}" aria-pressed="false">${l}</button>`).join("")}</div>`;
     return `<section class="fd-card fd-comp" aria-label="Post to the network">
-<div class="fd-one"><label class="fd-sr" for="fd-kind">What kind of post</label><select id="fd-kind" data-kind><option value="">What's your post about?</option><optgroup label="I'm looking for...">${asks}</optgroup><optgroup label="I recommend...">${recs}</optgroup></select></div>
-<label class="fd-sr" for="fd-text">Your post</label><textarea id="fd-text" data-text maxlength="280" rows="3" placeholder="Pick one above, then say it in your own words"></textarea>
+<div class="fd-big" role="group" aria-label="What kind of post"><button type="button" data-fam="ask" aria-pressed="false"><b>\u{1F64B}</b><span>I need...</span></button><button type="button" data-fam="rec" aria-pressed="false"><b>\u{1F4A1}</b><span>I recommend...</span></button></div>
+${chips("ask", ASK_CHIPS)}${chips("rec", REC_CHIPS)}
+<div class="fd-write" data-write hidden><label class="fd-sr" for="fd-text">Your post</label><textarea id="fd-text" data-text maxlength="280" rows="3" placeholder="Say it in your own words"></textarea>
 <div class="fd-row2"><span class="fd-count" data-count>0 / 280</span><span class="fd-hint" data-hint hidden>Add a link (https://...) so people can find it.</span></div>
 <div class="fd-prev" data-prev hidden></div><p class="fd-err" data-err hidden></p>
-<div class="fd-foot" data-foot><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri" data-post-it>Post</button></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
+<div class="fd-foot" data-foot><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri fd-postbtn" data-post-it>Post</button></div></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
   }
   const SCRIPT = (me: string | null, invite: string) => `<script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
 ${sentence.toString()}
@@ -585,19 +599,26 @@ var cl=$('[data-close]',card);if(cl)cl.addEventListener('click',function(){api('
 var de=$('[data-delete]',card);if(de)de.addEventListener('click',function(){if(de.getAttribute('data-sure')!=='1'){de.setAttribute('data-sure','1');de.textContent='Delete for good?';return}api('/v1/posts/'+pid+'/delete',{}).then(function(x){if(x.ok){card.remove();tip('Deleted')}})});
 var rp=$('[data-report]',card);if(rp)rp.addEventListener('click',function(){if(rp.getAttribute('data-sure')!=='1'){rp.setAttribute('data-sure','1');rp.textContent='Report it?';return}api('/v1/posts/'+pid+'/report',{reason:'reported from the feed'}).then(function(x){if(x.ok){rp.textContent='Reported';rp.disabled=true;tip('Thanks. We will take a look.')}})})}
 $$('.fd-post').forEach(wire);
-// the composer: one choice + one text box
-var comp=$('.fd-comp');if(comp){var prev=$('[data-prev]',comp),err=$('[data-err]',comp),sel=$('[data-kind]',comp),ta=$('[data-text]',comp),cnt=$('[data-count]',comp),hint=$('[data-hint]',comp),PH=${JSON.stringify(PH)},NEEDLINK=${JSON.stringify(REC_NEEDS_LINK)};
-function vals(){var k=sel.value||'',o={text:ta.value.trim()};if(k.indexOf('recommend:')===0){o.type='recommend';o.rec=k.slice(10)}else o.type=k;return o}
+// the composer: two big choices, optional chips, one text box
+var comp=$('.fd-comp');if(comp){var prev=$('[data-prev]',comp),err=$('[data-err]',comp),ta=$('[data-text]',comp),cnt=$('[data-count]',comp),hint=$('[data-hint]',comp),write=$('[data-write]',comp),FAM=null,KIND='',PH=${JSON.stringify(PH)},NEEDLINK=${JSON.stringify(REC_NEEDS_LINK)};
+var calm=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+function pop(el){if(calm)return;el.classList.remove('fd-pop1');void el.offsetWidth;el.classList.add('fd-pop1')}
+function vals(){var k=KIND||(FAM==='rec'?'recommend:other':'other'),o={text:ta.value.trim()};if(k.indexOf('recommend:')===0){o.type='recommend';o.rec=k.slice(10)}else o.type=k;return o}
 function link(t){var m=t.match(/https?:\\/\\/[^\\s"'<>]+/i);return m?m[0].replace(/[.,;:!?)\\]]+$/,''):''}
 function render(){var o=vals(),l=link(o.text);cnt.textContent=ta.value.length+' / 280';hint.hidden=!(o.type==='recommend'&&NEEDLINK.indexOf(o.rec)>=0&&o.text.length>3&&!/^https:/.test(l));
-if(!o.type||!o.text){prev.hidden=true;return}var d=(l?o.text.replace(l,' '):o.text).replace(/\\s+/g,' ').replace(/\\s+([.,;:!?])/g,'$1').trim();prev.hidden=false;prev.textContent='';var b=document.createElement('b');b.textContent=(ME?'@'+INV:'You')+' ';prev.appendChild(b);
+if(!o.text){prev.hidden=true;return}var d=(l?o.text.replace(l,' '):o.text).replace(/\\s+/g,' ').replace(/\\s+([.,;:!?])/g,'$1').trim();prev.hidden=false;prev.textContent='';var b=document.createElement('b');b.textContent=(ME?'@'+INV:'You')+' ';prev.appendChild(b);
 sentence({simple:true,type:o.type,detail:d||o.text}).forEach(function(x){var s=document.createElement('span');if(x[1])s.className='slot';s.textContent=x[0];prev.appendChild(s)});if(l){var c=document.createElement('div');c.style.cssText='margin-top:6px;color:var(--text-muted);font-size:13px';try{c.textContent='Link: '+new URL(l).hostname.replace(/^www\\./,'')}catch(x){c.textContent='Link: '+l}prev.appendChild(c)}}
-sel.addEventListener('change',function(){ta.placeholder=PH[sel.value]||'Pick one above, then say it in your own words';err.hidden=true;render();ta.focus()});ta.addEventListener('input',render);
-$('[data-post-it]',comp).addEventListener('click',function(){var btn=this,o=vals();err.hidden=true;if(!o.type){err.textContent='Pick what your post is about.';err.hidden=false;sel.focus();return}btn.disabled=true;api('/v1/posts',o).then(function(x){btn.disabled=false;if(!x.ok){err.textContent=x.j.error||'Could not post';err.hidden=false;return}
-var list=$('.fd-list');var tmp=document.createElement('div');tmp.innerHTML=x.j.html;var card=tmp.firstElementChild;if(list&&card){list.insertBefore(card,list.firstChild);wire(card)}
-ta.value='';sel.selectedIndex=0;ta.placeholder='Pick one above, then say it in your own words';render();var nm=$('[data-newmatch]');if(x.j.notified){nm.hidden=false;nm.textContent='';var h=document.createElement('h2');h.textContent=x.j.notified.length?'Shared with '+x.j.notified.length+' people it fits':'Posted to the feed';nm.appendChild(h);
-x.j.notified.forEach(function(m){var r=document.createElement('div');r.className='fd-m';var t=document.createElement('div');t.className='t';var b=document.createElement('b');b.textContent=m.name;t.appendChild(b);var sm=document.createElement('small');sm.textContent='@'+m.handle+' \u00b7 '+m.why;t.appendChild(sm);r.appendChild(t);nm.appendChild(r)})}
-else matchesInto(nm,x.j.matches||[],x.j.post.id);nm.scrollIntoView({behavior:'smooth',block:'nearest'});tip('Posted')})})}
+function setPh(){ta.placeholder=PH[KIND]||(FAM==='rec'?'What you recommend, and why (add the link)':'What you need, in your own words')}
+$$('[data-fam]',comp).forEach(function(b){b.addEventListener('click',function(){FAM=b.getAttribute('data-fam');KIND='';$$('[data-fam]',comp).forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});pop(b);
+$$('[data-chips]',comp).forEach(function(c){c.hidden=c.getAttribute('data-chips')!==FAM});$$('[data-kind]',comp).forEach(function(x){x.setAttribute('aria-pressed','false')});write.hidden=false;err.hidden=true;setPh();render();ta.focus()})});
+$$('[data-kind]',comp).forEach(function(b){b.addEventListener('click',function(){var k=b.getAttribute('data-kind'),on=KIND!==k;KIND=on?k:'';$$('[data-kind]',comp).forEach(function(x){x.setAttribute('aria-pressed',String(on&&x===b))});if(on)pop(b);setPh();render();ta.focus()})});
+ta.addEventListener('input',render);
+function burst(el){if(calm)return;var r=el.getBoundingClientRect();['\u{1F389}','\u2728','\u{1F64C}','\u{1F4A5}','\u2B50','\u{1F680}'].forEach(function(em,i){var s=document.createElement('span');s.textContent=em;s.className='fd-burst';s.style.left=(r.left+r.width/2-10)+'px';s.style.top=(r.top-6)+'px';s.style.setProperty('--dx',(Math.cos(i)*60)+'px');s.style.setProperty('--dy',(-40-Math.random()*50)+'px');document.body.appendChild(s);setTimeout(function(){s.remove()},900)})}
+$('[data-post-it]',comp).addEventListener('click',function(){var btn=this,o=vals();err.hidden=true;btn.disabled=true;api('/v1/posts',o).then(function(x){btn.disabled=false;if(!x.ok){err.textContent=x.j.error||'Could not post';err.hidden=false;return}
+burst(btn);var list=$('.fd-list');var tmp=document.createElement('div');tmp.innerHTML=x.j.html;var card=tmp.firstElementChild;if(list&&card){list.insertBefore(card,list.firstChild);wire(card)}
+ta.value='';render();var nm=$('[data-newmatch]');if(x.j.notified){nm.hidden=false;nm.textContent='';var h=document.createElement('h2');h.textContent=x.j.notified.length?'Shared with '+x.j.notified.length+' people it fits':'Posted to the feed';nm.appendChild(h);
+x.j.notified.forEach(function(m){var r=document.createElement('div');r.className='fd-m';var t=document.createElement('div');t.className='t';var b=document.createElement('b');b.textContent=m.name;t.appendChild(b);var sm=document.createElement('small');sm.textContent='@'+m.handle+' \\u00b7 '+m.why;t.appendChild(sm);r.appendChild(t);nm.appendChild(r)})}
+else matchesInto(nm,x.j.matches||[],x.j.post.id);nm.scrollIntoView({behavior:calm?'auto':'smooth',block:'nearest'});tip('Posted')})})}
 // "For you": answers
 $$('[data-answer]').forEach(function(b){b.addEventListener('click',function(){var row=b.closest('[data-waiting]');api('/v1/posts/'+row.getAttribute('data-post')+'/answer',{from:row.getAttribute('data-from'),yes:b.getAttribute('data-answer')==='yes'}).then(function(x){if(x.ok){row.querySelector('.acts').textContent=x.j.state==='friends'?'You are now friends':'Closed';tip(x.j.state==='friends'?'Connected':'Closed')}else tip(x.j.error||'Could not answer')})})});
 // older items
