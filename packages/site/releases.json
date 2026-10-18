@@ -1,521 +1,535 @@
 {
-  "releases": [
-    {
-      "version": "0.18.1",
-      "date": "2026-10-17",
-      "title": "Floating city fix",
-      "items": [
-        "In Obsidian, Pop out my city now opens a small window that stays on top of everything in the lower-left corner of your screen, with just the city in it."
-      ]
-    },
-    {
-      "version": "0.18.0",
-      "date": "2026-10-17",
-      "title": "Watch your city all day",
-      "items": [
-        "Pop out: a new button on the city opens it alone in a small window you can park in a corner of your screen. In Chrome and Edge, click \"Keep on top\" and it floats over everything (picture-in-picture). It works on your public page and on your private address. In Obsidian, \"Pop out my city\" (button in My profile, or the command) opens your private city in a small window that stays on top in the lower-left corner.",
-        "The city follows your clock: night, dawn, day, dusk and evening, blending slowly through the day. The sky button cycles Auto, Grid, Dawn, Day, Dusk, Evening and Night, and your choice is remembered where your browser allows it. The city picture on your profile follows the time of day too.",
-        "Arrivals: every new visitor on one of your sites parachutes into its district, lands and walks into a building. A signup is a beam of light, confetti and a toast; a sale is a burst of gold coins. When lots arrive at once they queue, with a +N counter. Public pages show the same arrivals, without visitor details or private project names. Sound is off by default; turn it on with the speaker button.",
-        "GitHub from the city: click a public repo's name label, or double-click its building, to open it on GitHub. In the pop-out, one click opens the repo. Your GitHub profile is linked next to the city's title. Private and padlocked buildings never link.",
-        "Group towns and the People directory link each member's city, so you can go from a person to their city to their repos."
-      ],
-      "howto": "Open your city and click Pop out. In Chrome or Edge, hover the small window and click Keep on top. In Obsidian: My profile > the picture-in-picture button, or the command \"Caldera: Pop out my city\"."
-    },
-    {
-      "version": "0.17.0",
-      "date": "2026-10-17",
-      "title": "Set up your page without an AI",
-      "items": [
-        "New setup form: name, headline, photo, masthead, your GitHub, website, X and LinkedIn, a first note for your garden, the People listing and the daily email, all on one screen. It writes Caldera/profile.md for you, publishes, and opens the share screen. Pasting the setup prompt into your AI agent is still there as an option.",
-        "Already have a page that's still bare? Caldera offers the same form once, filled in with what your vault already has. Any time: the command \"Finish my page\", or \"Fill it in with a quick form\" on the Finish your page card in My view.",
-        "Your page updates while Obsidian is open. If it hasn't updated in 3 days, your daily summary email says so, and your own view of your public page shows \"Last updated N days ago\". Visitors never see it."
-      ],
-      "howto": "Update Caldera in Settings > Community plugins, then run \"Caldera: Finish my page\"."
-    },
-    {
-      "version": "0.16.1",
-      "date": "2026-10-17",
-      "title": "Review fix",
-      "items": [
-        "A small fix so Caldera passes the Obsidian directory review. Same features as 0.16.0: sign in from your phone, and Finish your page."
-      ]
-    },
-    {
-      "version": "0.16.0",
-      "date": "2026-10-17",
-      "title": "Sign in from your phone, and finish your page",
-      "items": [
-        "Sign in as the owner from any device: every page's top bar now has a small \"Owner? Sign in\" link. Get a one-time sign-in link at your daily summary address, sign in with GitHub (GitHub sign-ups), or pair the device from Obsidian with a 6-character code (\"Sign in another device\", also the key button in the My profile tab). Once signed in, your page shows the Private view button.",
-        "Finish your page: My view in Obsidian and your account page now show what's still missing (profile photo, masthead, headline, about, links, a garden note, a friend, a group, the daily email), each with a one-click way to do it.",
-        "Masthead: choose a wide cover image for the top of your page right from Caldera (\"Set my masthead\"), or copy a prompt that has your AI agent pick or make one and set it. GitHub sign-ups can upload a photo and a masthead on their account page; metadata like camera and location is stripped.",
-        "The daily summary email suggests one next step for your page when something is missing.",
-        "The setup prompt now offers a masthead as an optional step."
-      ],
-      "howto": "On your phone: open your page, tap \"Owner? Sign in\" at the top, then use the email link or show a code and type it into Obsidian (\"Sign in another device\")."
-    },
-    {
-      "version": "0.15.1",
-      "date": "2026-10-17",
-      "title": "From your public page back to your private view",
-      "items": [
-        "Open your page signed in as you: \"Open my public page (as owner)\" (and Open in browser in the My profile tab) opens your page with a Private view button in the Caldera bar. On your own browser it stays that way for a year; Sign out in the bar ends it.",
-        "The Private view button goes to your private web address if your hub gives you one, otherwise it opens My view in Obsidian. GitHub sign-ups get a button to their account page.",
-        "Your own visits to your page no longer count toward your view numbers.",
-        "New command: \"Open my private view\"."
-      ]
-    },
-    {
-      "version": "0.15.0",
-      "date": "2026-10-17",
-      "title": "Friends, sharing and a daily summary",
-      "items": [
-        "Share your page: after your page goes live, Caldera shows the picture people see when you post your link (your city, name and headline), with one-click posts to X, Bluesky, LinkedIn and Mastodon. Run \"Share my page\" any time, or use the Share button in the Caldera panel.",
-        "Every profile link now has a proper preview on social sites and in chat apps, built from your city.",
-        "People you might know: the Caldera panel suggests people with the same topics, languages or groups, with an Add button.",
-        "Invites count: when someone joins from your invite link, you get 25 help credits and a friend request from them. Your garden home shows how many people you've brought in.",
-        "Groups: add a group in settings (like producthunt) and your city joins a town of everyone in it at caldera.social/g/name. Anyone can join with one click from that page.",
-        "A short daily summary email, if you want one: who visited, friend requests, links into your garden. Double opt-in, only on days something happens, one-click unsubscribe.",
-        "A heads-up at most once a day when people visit your page or link to your garden.",
-        "Signed up with GitHub? Your account page now lists friend requests (with Accept), suggests people to add, and shows this week's visitors and your invite link."
-      ],
-      "howto": "Update Caldera, then open Caldera settings > Friends and sharing to add groups and your email. The share screen opens by itself after your next publish."
-    },
-    {
-      "version": "0.14.0",
-      "date": "2026-10-17",
-      "title": "Forgejo and Codeberg",
-      "items": [
-        "Code on Codeberg or your own Forgejo or Gitea server? Paste your profile address in Caldera settings (\"Forgejo or Codeberg profile\"). Your public repos become your city and your contributions fill your code chart, refreshed every 6 hours. No token needed.",
-        "The AI setup prompt now handles Forgejo, Gitea and Codeberg too, including private repos when you give your agent a token (they show only as locked buildings to visitors)."
-      ],
-      "howto": "Settings > Caldera > Forgejo or Codeberg profile: paste https://codeberg.org/you (or your server's address), then run Caldera: Publish my profile."
-    },
-    {
-      "version": "0.13.2",
-      "date": "2026-10-17",
-      "title": "Everyone gets a city",
-      "items": [
-        "No GitHub? Your city is now built from your Obsidian vault: every folder is a building, taller means more notes written this year, lit windows mean notes written this week. Folder and note names stay private on your public page.",
-        "Add your GitHub username in Caldera settings any time to build the city from your repos instead."
-      ]
-    },
-    {
-      "version": "0.13.1",
-      "date": "2026-10-17",
-      "title": "Cleaner profile header",
-      "items": [
-        "Profiles without a cover photo no longer leave an empty gap above the name: your photo now sits right above it.",
-        "The Code chart keeps a steady width when you only have a few weeks of commits, instead of one giant bar."
-      ]
-    },
-    {
-      "version": "0.13.0",
-      "date": "2026-10-17",
-      "title": "Your city up top, and one prompt for everything",
-      "items": [
-        "Your city now sits at the top of your profile: a small skyline of your repos, lit windows where you shipped this week. Click it to walk the full city.",
-        "One AI setup prompt instead of three. It connects every source it can find on your computer (calendar, email, AI usage, code, documents, your GitHub city), schedules one routine to keep your page fresh, and drafts your page text and garden for your OK. It's safe to paste again: it upgrades what's there and fills in what's missing.",
-        "My view shows what feeds your page: each source, connected or not, with a one-click copy of the setup prompt. When Caldera can track something new, it tells you to paste the prompt again."
-      ],
-      "howto": "Open My Caldera profile (ribbon icon), look at 'What feeds your page', and click Copy the setup prompt. Paste it into Claude Code, Codex or Cursor."
-    },
-    {
-      "version": "0.12.5",
-      "date": "2026-10-17",
-      "title": "Friend requests you can't miss",
-      "items": [
-        "Fixed: a friend request could disappear before you saw it, if Obsidian closed at the wrong moment or an old copy of Caldera was still running. Open requests now live on the hub until you answer them, so they always come back.",
-        "The Caldera panel shows requests you've sent that are still waiting, and you can ignore a request you don't want.",
-        "Clearer messages when a request is accepted, and a check so you can't re-request someone who's already your friend."
-      ]
-    },
-    {
-      "version": "0.12.4",
-      "date": "2026-10-16",
-      "title": "A city for everyone with a GitHub",
-      "items": [
-        "Add your GitHub username in settings (or a GitHub line in Links) and your public repos become your city, grouped by language and refreshed every 6 hours. Until now the city needed a Caldera/city.json written by your own tools."
-      ]
-    },
-    {
-      "version": "0.12.3",
-      "date": "2026-10-16",
-      "title": "Agent HQ parking grid, and no more stale pages",
-      "items": [
-        "Parked agents line up in a tidy grid on the Agent HQ pad instead of a long row.",
-        "Fixed: after an update or reload, the previous version of Caldera could keep publishing your page in the background with its old look. Old copies now stop, and the hub ignores pages from an older Caldera than the last one you used."
-      ]
-    },
-    {
-      "version": "0.12.2",
-      "date": "2026-10-16",
-      "title": "Fold the panels away",
-      "items": [
-        "Tap the Underground or LIVE panel on the city to fold it down to one line, and tap again to open it. On phones they start folded."
-      ]
-    },
-    {
-      "version": "0.12.1",
-      "date": "2026-10-16",
-      "title": "Room for your whole fleet",
-      "items": [
-        "Agent HQ now parks a whole fleet in neat rows (up to 80 agents), idle drones glow dimmer, and the pad counts how many are parked and how many are waiting on you."
-      ]
-    },
-    {
-      "version": "0.12.0",
-      "date": "2026-10-16",
-      "title": "Sign up with GitHub",
-      "items": [
-        "No Obsidian? Sign up on caldera.social with GitHub: your page and your city are built from your GitHub and refresh every 6 hours. Edit it, add your sites and agents, or add private repos as padlocked buildings.",
-        "Already on Obsidian later? Move the profile into your vault: get a code on your account page and use Settings > Import a GitHub sign-up. Same handle, same page; your vault takes over the key."
-      ]
-    },
-    {
-      "version": "0.11.0",
-      "date": "2026-10-16",
-      "title": "The Underground: your vault under the city",
-      "items": [
-        "New Underground button on the city: the ground turns to glass and your Obsidian vault appears below as a glowing network. Notes are nodes (bigger = more notes link to them), links are tunnels, and depth is age.",
-        "Notes about a project hang under its district, with roots up into its buildings, so you can see which projects have deep knowledge behind them.",
-        "Tap a note to see its links and open it. Notes you edit pulse light through their connections. Unconnected notes are counted so you can link them up.",
-        "Visitors only see the shape: no titles, except notes you've published to your garden."
-      ]
-    },
-    {
-      "version": "0.10.3",
-      "date": "2026-10-16",
-      "title": "Easier updates",
-      "items": [
-        "When a newer Caldera is out, What's new tells you which version you have and opens Community plugins so you can update in one click."
-      ]
-    },
-    {
-      "version": "0.10.2",
-      "date": "2026-10-16",
-      "title": "Full-screen city",
-      "items": [
-        "New Full screen button on the city map (Esc or Exit to leave). Works on the public page, your private address and the My profile tab.",
-        "On phones, the live panel folds down to one line; tap it to open."
-      ]
-    },
-    {
-      "version": "0.10.1",
-      "date": "2026-10-16",
-      "title": "Tidier Agent HQ",
-      "items": [
-        "Agents parked at Agent HQ no longer pile their labels on top of each other: the pad says how many are waiting on you, and you tap a drone for details."
-      ]
-    },
-    {
-      "version": "0.10.0",
-      "date": "2026-10-16",
-      "title": "Your AI agents, flying over the city",
-      "items": [
-        "Every Claude Code agent you run becomes a drone over the repo it's working in: a beam into the roof while it edits, circling while it thinks, parked at Agent HQ blinking amber when it's waiting on you.",
-        "Tap a drone to see what it's working on, its last step and tokens today (My view and your private address only). Your public city shows anonymous drones, never what they're doing.",
-        "Set it up in Settings > AI agents on your city: copy the prompt into Claude Code on each computer. A tiny hook reports the repo and a short task title; task details are encrypted on the hub."
-      ]
-    },
-    {
-      "version": "0.9.1",
-      "date": "2026-10-16",
-      "title": "Every car is a real visitor",
-      "items": [
-        "Once your sites send live traffic, the city's cars are your visitors: one car for each person on that site right now. It pulls out of their district when they arrive and fades away when they leave.",
-        "The live panel no longer scrolls: busy districts get a row, quiet ones share a single line, and a hint shows if no visits have arrived yet."
-      ]
-    },
-    {
-      "version": "0.9.0",
-      "date": "2026-10-16",
-      "title": "Live traffic in your city",
-      "items": [
-        "Your city is now live: every visit to your own websites rides out of that project's district as a light, signups pulse pink and sales fire a gold beam.",
-        "Each district gets a one-line snippet (Settings > Live traffic on your city). Paste it into your site and the traffic appears within seconds. No cookies, and visitors are only counted, never identified.",
-        "Your public city only shows how busy each district is. The numbers (live visitors, views, signups, sales) stay in My view and your private address."
-      ]
-    },
-    {
-      "version": "0.8.3",
-      "date": "2026-10-16",
-      "title": "Your city, on the Grid",
-      "items": [
-        "New default look for your city: Grid mode. Black glass towers outlined in neon (one color per language), glowing window strips, a lit grid floor, and light cycles racing the streets with light trails.",
-        "Your tallest building sends a beam of light into the sky.",
-        "Prefer daylight? The button cycles Grid, Day, Dusk and Night."
-      ]
-    },
-    {
-      "version": "0.8.2",
-      "date": "2026-10-16",
-      "title": "A much better-looking city",
-      "items": [
-        "Your city got a full visual upgrade: it now sits on a little island with a river, sidewalks, lane markings and parks.",
-        "Buildings have real shading and shadows. Big projects become stepped skyscrapers, with rooftop details: water towers, solar panels, roof gardens, a helipad, and a blinking antenna on your tallest.",
-        "Street lamps glow at night, cars have headlights, and the crane arms slowly swing. The sky switches between day, dusk and night, with clouds or stars.",
-        "It's lighter to run, so it stays smooth on phones."
-      ]
-    },
-    {
-      "version": "0.8.1",
-      "date": "2026-10-16",
-      "title": "Your whole city, private repos locked",
-      "items": [
-        "Your public city now shows every repo, so visitors see the real size of what you're building.",
-        "Private repos are locked glass buildings with a padlock: no name, language, commit history, link or exact numbers. Tapping one just says it's private.",
-        "Projects that aren't on your public profile don't show their names; their buildings sit in one district called Private."
-      ]
-    },
-    {
-      "version": "0.8.0",
-      "date": "2026-10-16",
-      "title": "Caldera City: your GitHub as a city",
-      "items": [
-        "A new City page next to your profile turns your GitHub into a little isometric city. Each project is a district and each repo a building: taller means more commits this year, lit windows mean commits this week, and a crane means it's being built right now. Cars are commit traffic.",
-        "Your Obsidian notes are the houses: every note that links to a project's note becomes a house in that district. Tap a building for its 12-week commit history, last push and the notes about it.",
-        "Private repos stay private: visitors see public repos and the projects already on your profile. Your full city, every repo included, shows only in the My profile tab (and on your private address).",
-        "Set it up by asking your AI agent to write Caldera/city.json (the setup prompt now explains how), then publish. Drag, scroll or pinch to explore; there's a day/night switch."
-      ]
-    },
-    {
-      "version": "0.7.1",
-      "date": "2026-10-16",
-      "title": "Your private view in a browser, over Tailscale",
-      "items": [
-        "Self-hosting a hub on your Tailscale network? Turn on 'Private web address (Tailscale)' in Caldera settings and your private sections open in a browser on any of your Tailscale devices, with a My view / Public view switch. Only your own Tailscale account can open it, and it's stored encrypted.",
-        "The views chart in My view now always shows the last 14 days."
-      ]
-    },
-    {
-      "version": "0.7.0",
-      "date": "2026-10-15",
-      "title": "Your profile, inside Obsidian",
-      "items": [
-        "New My profile tab: click the person icon in the left ribbon (or run 'Caldera: Open my profile in Obsidian'). Your page opens as a tab, and you can click through to your garden and notes.",
-        "My view is built from your vault right now and adds sections only you can see, never published: who visited since you last looked, what they read, gravity and new friends; today as it happens; what you were doing a week, a month and a year ago; an old note brought back every few hours; your patterns; and goals from Caldera/Goals.md.",
-        "Public view shows your live page exactly as visitors see it.",
-        "No login needed: your vault's key signs you in, so only you can see the private part.",
-        "Optional: open it automatically when Obsidian starts (Caldera settings, My profile tab)."
-      ]
-    },
-    {
-      "version": "0.6.1",
-      "date": "2026-10-15",
-      "title": "Same nav everywhere, and adding friends in one click",
-      "items": [
-        "Your profile, your garden home and every garden note now share the same left nav: your profile, Garden home and your vault tree. Clicking 'Garden' in the tree opens your garden home.",
-        "Every profile and garden page has an 'Add @handle as friend' button. It opens Obsidian and sends the request after you confirm.",
-        "The Caldera panel has an 'Invite someone new' link to copy. It walks the new person through installing, then gives them a one-click button to add you.",
-        "Add a friend by handle or by pasting their profile link. Friend requests now show who sent them and stay put if you restart Obsidian."
-      ]
-    },
-    {
-      "version": "0.6.0",
-      "date": "2026-10-15",
-      "title": "Your garden home",
-      "items": [
-        "Your garden page now opens with 'How this garden works': notes planted, links from other gardens, gravity, help credits (and how many are held in bounties), your open asks and offers, friends and your weekly rank. Read live from the hub every time someone visits.",
-        "Plain explanations on the page of how gravity (goodwill friends give) and help credits (bounties on asks) work, and how other gardens can link your notes.",
-        "The Garden section on your profile now links straight to your garden home.",
-        "The AI setup prompts walk new users through it: which sections to turn on, what gravity and credits are, and drafting their first asks and offers."
-      ]
-    },
-    {
-      "version": "0.5.4",
-      "date": "2026-10-12",
-      "title": "Your garden grows itself from your daily journal",
-      "items": [
-        "Each public project your journal keeps mentioning gets its own garden page, with a dated entry every day it comes up. Pages start as seedlings and become budding (5 days) and evergreen (20 days) on their own.",
-        "Recurring themes get a page too, but only when they're distinctive (not on nearly every day, and not a copy of another theme).",
-        "Wrote a garden note with the same name as a project? Your words stay on top and the journal log appears underneath under 'From my journal'.",
-        "Only journal text that is already public (after the privacy filter) is used. Journal entries are kept in the plugin's own data, so pages keep growing past the 45-day journal window.",
-        "Your page now republishes when a daily note's journal changes, and catches up when you open Obsidian after more than 6 hours away.",
-        "Turn it off with garden_journal: false in Caldera/profile.md or Settings -> Caldera."
-      ],
-      "howto": "Nothing to do if your daily journal is set up. Name projects the way they appear in your profile's projects list and they get pages."
-    },
-    {
-      "version": "0.5.3",
-      "date": "2026-10-12",
-      "title": "Housekeeping: the plugin has its own repository",
-      "items": [
-        "The plugin's GitHub repository now holds only the plugin, so Obsidian's review covers exactly the code you install. The website and hub moved to their own repository.",
-        "No change to the plugin or your page."
-      ],
-      "howto": "Nothing to do."
-    },
-    {
-      "version": "0.5.2",
-      "date": "2026-10-12",
-      "title": "Under the hood: cleaner code for Obsidian's plugin review",
-      "items": [
-        "Background work (inbox sync, release check, auto-publish) now handles errors instead of leaving them unhandled.",
-        "Commands and settings use Obsidian's own helpers and wording conventions.",
-        "No change to what is published or how your page looks."
-      ],
-      "howto": "Nothing to do."
-    },
-    {
-      "version": "0.5.1",
-      "date": "2026-10-12",
-      "title": "Fix: the Activity heatmap fills its column, without a stray scrollbar",
-      "items": [
-        "The Activity heatmap could show a bright scrollbar under the grid, because hovering a day zoomed it past the edge. The scrollbar is gone, and the zoom has room.",
-        "Day squares now size themselves to the page: larger on a wide screen, smaller on a phone, so all 26 weeks fit without scrolling. Month labels move with them when the window is resized.",
-        "Pages published with an older version get the fix automatically on caldera.social."
-      ],
-      "howto": "Nothing to do. Your page picks it up on its next publish (and already shows it on caldera.social)."
-    },
-    {
-      "version": "0.5.0",
-      "date": "2026-10-12",
-      "title": "Gardens: grow notes in public, linked to other people's gardens",
-      "items": [
-        "Plant any note in your garden and it becomes a full public page on your profile. Put it in a Garden folder, or run 'Caldera: Plant this note in my garden'. Nothing else in your vault is published.",
-        "Every garden note shows how finished it is: seedling, budding or evergreen (frontmatter stage:). Your profile gets a Garden section and a garden index you can filter by stage.",
-        "Choose a license per note (license:). The default is all rights reserved and not licensed for AI training; cc-by, cc-by-nc, cc0 and ai-licensable are available.",
-        "Signed authorship: every published note is hashed and listed in your signed profile manifest, so anyone can check who wrote it and when.",
-        "Link to a friend's note with [[@handle/Their note]]. Their note shows 'Linked from other gardens' with a link back to yours.",
-        "Private by default: email addresses and phone numbers are removed, %% comments %% never leave your vault, and links to notes outside the garden show as plain text. 'Caldera: Preview my garden' lists every line the privacy check flags before anything goes public.",
-        "New: caldera.social/gardens shows notes recently planted or tended across all listed gardens. Already have a garden on Quartz or Obsidian Publish? Add garden_url to Caldera/profile.md and your page links to it."
-      ],
-      "howto": "Create a folder called Garden in your vault (or run 'Caldera: Plant this note in my garden' on a note), then run 'Caldera: Preview my garden' and 'Caldera: Publish my profile'."
-    },
-    {
-      "version": "0.4.0",
-      "date": "2026-10-12",
-      "title": "Fuller pages out of the box: AI usage, Code, What it knows and a vault graph",
-      "items": [
-        "AI usage fills in by itself on desktop: tokens per day and your model mix, read from your local Claude Code and Codex logs. Counts only, never prompts.",
-        "Code: add your GitHub profile to your links and your page shows commits per week from your public contribution graph.",
-        "What it knows: how many people, projects, sources, ideas and daily notes your vault holds, using generic labels only (a private folder name never appears).",
-        "No tags or public notes yet? The sidebar and graph now show your vault's categories instead of staying empty.",
-        "After you create your profile, one button copies a prompt that has your AI fill out the rest: summary, timeline in chapters, projects, links, photo and a daily journal."
-      ],
-      "howto": "Run 'Caldera: Copy AI prompt: make my profile richer' and paste it into Claude Code, Codex or Cursor. Turn AI usage or Code off in Settings -> Caldera -> sections if you prefer."
-    },
-    {
-      "version": "0.3.13",
-      "date": "2026-10-11",
-      "title": "Fix: first profile publishes in about a second (was up to 90 seconds)",
-      "items": [
-        "Creating your profile from the Welcome screen could sit on 'Publishing...' for up to a minute and a half while Caldera waited for Obsidian to finish indexing. It now checks directly and publishes right away. Every later publish is faster too.",
-        "If publishing fails, the Welcome screen now says why, and it comes back next time you open Obsidian until your profile is live."
-      ],
-      "howto": "If you installed Caldera and your profile never appeared, run 'Caldera: Set up my profile (welcome)' from the command palette."
-    },
-    {
-      "version": "0.3.12",
-      "date": "2026-10-11",
-      "title": "AI usage shows where your tokens come from",
-      "items": [
-        "When your AI agent reports more than one source (for example coding agents on several machines and your apps' APIs), the AI usage section shows the split. Counts only."
-      ]
-    },
-    {
-      "version": "0.3.11",
-      "date": "2026-10-11",
-      "title": "One-tap invites, and your photo as the browser-tab icon",
-      "items": [
-        "'Invite a friend' on your leaderboard now opens an invite panel: copy your personal invite link, or send it by email, text or your phone's share sheet.",
-        "Friends who use your link land on the install page and see who invited them.",
-        "Your page's browser tab now shows your photo as a round icon (and on phone home screens). Pages without a photo show the Caldera mark instead of a blank globe."
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "date": "2026-10-11",
-      "title": "Activity heatmap you can read: hover any day",
-      "items": [
-        "Hover or tap any square on the Activity heatmap to see its date and count instantly. The line under the chart shows the day you're on and rolls back to today when you move away.",
-        "Click a day to pin it; arrow keys move between days, Escape returns to today.",
-        "Month and weekday labels, and today is outlined."
-      ]
-    },
-    {
-      "version": "0.3.7",
-      "date": "2026-10-11",
-      "title": "A richer Timeline: chapters, detail lines and a connected rail",
-      "items": [
-        "Timeline entries can carry a short second line: Year | what happened | detail.",
-        "Group your story into chapters with era | Name | 1995-2006.",
-        "The timeline now draws as a connected rail with a dot per milestone; a repeated year is shown once."
-      ],
-      "howto": "Ask your AI: 'Rebuild my Caldera timeline from my notes, in chapters, with a detail line per milestone. Public facts only.'"
-    },
-    {
-      "version": "0.3.6",
-      "date": "2026-10-11",
-      "title": "A working Vault sidebar: links, folding groups, note counts and an On this page guide",
-      "items": [
-        "Sidebar items now link: a project opens its site, a public note or topic jumps to it on your page. Items that match nothing stay plain text.",
-        "Groups fold and unfold, and show how many items they hold. Add a folder to a group (Group | items | folder) to show how many notes that folder has - a count only, file names never leave your vault.",
-        "Empty groups are hidden instead of showing a bare heading.",
-        "New On this page list at the top of the sidebar jumps to every section and highlights where you are as you scroll. On phones it becomes a sticky bar of section links that follows along."
-      ],
-      "howto": "Optional: in Caldera/profile.md, add a folder to a sidebar group, e.g. \"Concepts | | wiki/concepts\"."
-    },
-    {
-      "version": "0.3.2",
-      "date": "2026-10-11",
-      "title": "Stronger privacy: journal lines that look sensitive are never published",
-      "items": [
-        "Caldera now checks every journal line before publishing and drops any that mention other people's names, meetings or their times, places and addresses, secret or unannounced work, money, legal, health, HR or family matters, or contact details. Only names you already made public on your page (your projects, topics and links) are allowed.",
-        "All AI prompts carry one stricter privacy policy: never reveal who you met, where or when, secret projects, or anything that could get someone in trouble. When unsure, leave it out.",
-        "New Learn pages at caldera.social/learn answer common questions about Obsidian profiles, private sharing and AI agents."
-      ],
-      "howto": "Nothing to do: the filter runs automatically on your next publish."
-    },
-    {
-      "version": "0.3.1",
-      "date": "2026-10-10",
-      "title": "Invite friends from your page, and a Caldera bar on every profile",
-      "items": [
-        "Every profile page now has a slim Caldera bar at the top: the logo goes to caldera.social and 'Get your own page' goes straight to install. Visitors who arrive this way see who invited them.",
-        "The 'Invite a friend' rows on your leaderboard open a ready-to-send invite email with your page and install link.",
-        "New signups and deletions can alert the hub operator by email."
-      ]
-    },
-    {
-      "version": "0.3.0",
-      "date": "2026-10-10",
-      "title": "Full living profile: three columns, AI usage, activity, growth, projects, code and timeline",
-      "items": [
-        "Three-column layout: a Vault sidebar on the left, a local graph and backlinks on the right. Choose what they show in Caldera/profile.md (sidebar, graph, backlinks), or leave them empty to show your topics and public notes.",
-        "New sections: Summary, Now, Timeline and Projects, written in Caldera/profile.md. Links like [[Label|https://...]] and **bold** work.",
-        "Activity heatmap (26 weeks) and Growth chart, computed from your vault. Counts only.",
-        "What it knows, Inbox to knowledge and Code (GitHub) sections, filled from Caldera/activity.json by your own tools or AI agent.",
-        "AI usage: total tokens, tokens per day, and your model and provider mix as charts. Your AI agent fills it from local Claude Code and Codex logs - counts only, never prompts or costs.",
-        "Scoreboard now shows a leaderboard and your best other days.",
-        "Fixes: dates use your local day (not UTC), and link counts wait until Obsidian has finished indexing."
-      ],
-      "howto": "Run 'Caldera: Edit my profile' and fill in summary, now, timeline and projects - or paste the 'change my profile' prompt into your AI."
-    },
-    {
-      "version": "0.2.0",
-      "date": "2026-10-10",
-      "title": "Edit your page by talking to your AI, a People directory, and What's new alerts",
-      "items": [
-        "Your public fields now live in a note, Caldera/profile.md. Edit it, or ask your AI agent to, and your page republishes itself about a minute after you save.",
-        "New copy-paste prompt: 'Change my profile'. Paste it into Claude Code, Codex or Cursor and describe the change.",
-        "People directory at caldera.social/people. Switch 'List me in the directory' off in Settings or profile.md to stay link-only.",
-        "One-screen Welcome: pick a name and handle, and your profile publishes and opens in your browser.",
-        "What's new alerts like this one, shown only to you, inside Obsidian.",
-        "Fixes: publishing on caldera.social, and note links written in properties now count toward your stats."
-      ],
-      "howto": "Try it: Command palette -> 'Caldera: Edit my profile', or 'Caldera: Copy AI prompt: change my profile'."
-    },
-    {
-      "version": "0.1.0",
-      "date": "2026-10-10",
-      "title": "Caldera is open: the social layer for Obsidian",
-      "items": [
-        "A living profile built from your vault: daily journal, activity score, topics, public notes.",
-        "Friends between vaults, end-to-end encrypted shared notes, asks and offers with help credits, and positive-only gravity.",
-        "Private by default: nothing leaves your vault unless you switch a section on or mark a note caldera: public.",
-        "Copy-paste AI prompts to install Caldera and run your daily journal."
-      ]
-    }
-  ]
+ "releases": [
+  {
+   "version": "0.19.0",
+   "date": "2026-10-17",
+   "title": "Views and kudos",
+   "items": [
+    "Every page now shows its view count (one per visitor per day; your own visits never count). Prefer to keep it to yourself? Settings > Show my view count. You still see it, in the bar when you're signed in and in your private view.",
+    "Kudos: tap + Kudos on anyone's page or city and pick ❤️ 👍 🔥 or ✨. Kudos come from Caldera members, one per person per day, and the tally shows on their page. You see who sent you kudos in your private view, in your daily email, as a notice in Obsidian, and as a little burst over your private city.",
+    "In Obsidian, Kudos buttons sit next to your friends and the people you might know in the Caldera panel.",
+    "One bar everywhere: when you're signed in, the top of your page shows the same [Public view | Private view] switch on your public page, your private address and your account page, with @you and Sign out on the right. The site's menu shows @you too.",
+    "In Obsidian, the profile tab's switch now reads Public view | Private view, in the same order as the web.",
+    "Signed up with GitHub? Add a friend right from the kudos window on their page, no Obsidian needed."
+   ],
+   "howto": "Open someone's page, tap + Kudos at the top and pick one. On your phone, sign in once from your page (Sign in, top right)."
+  },
+  {
+   "version": "0.18.1",
+   "date": "2026-10-17",
+   "title": "Floating city fix",
+   "items": [
+    "In Obsidian, Pop out my city now opens a small window that stays on top of everything in the lower-left corner of your screen, with just the city in it."
+   ]
+  },
+  {
+   "version": "0.18.0",
+   "date": "2026-10-17",
+   "title": "Watch your city all day",
+   "items": [
+    "Pop out: a new button on the city opens it alone in a small window you can park in a corner of your screen. In Chrome and Edge, click \"Keep on top\" and it floats over everything (picture-in-picture). It works on your public page and on your private address. In Obsidian, \"Pop out my city\" (button in My profile, or the command) opens your private city in a small window that stays on top in the lower-left corner.",
+    "The city follows your clock: night, dawn, day, dusk and evening, blending slowly through the day. The sky button cycles Auto, Grid, Dawn, Day, Dusk, Evening and Night, and your choice is remembered where your browser allows it. The city picture on your profile follows the time of day too.",
+    "Arrivals: every new visitor on one of your sites parachutes into its district, lands and walks into a building. A signup is a beam of light, confetti and a toast; a sale is a burst of gold coins. When lots arrive at once they queue, with a +N counter. Public pages show the same arrivals, without visitor details or private project names. Sound is off by default; turn it on with the speaker button.",
+    "GitHub from the city: click a public repo's name label, or double-click its building, to open it on GitHub. In the pop-out, one click opens the repo. Your GitHub profile is linked next to the city's title. Private and padlocked buildings never link.",
+    "Group towns and the People directory link each member's city, so you can go from a person to their city to their repos."
+   ],
+   "howto": "Open your city and click Pop out. In Chrome or Edge, hover the small window and click Keep on top. In Obsidian: My profile > the picture-in-picture button, or the command \"Caldera: Pop out my city\"."
+  },
+  {
+   "version": "0.17.0",
+   "date": "2026-10-17",
+   "title": "Set up your page without an AI",
+   "items": [
+    "New setup form: name, headline, photo, masthead, your GitHub, website, X and LinkedIn, a first note for your garden, the People listing and the daily email, all on one screen. It writes Caldera/profile.md for you, publishes, and opens the share screen. Pasting the setup prompt into your AI agent is still there as an option.",
+    "Already have a page that's still bare? Caldera offers the same form once, filled in with what your vault already has. Any time: the command \"Finish my page\", or \"Fill it in with a quick form\" on the Finish your page card in My view.",
+    "Your page updates while Obsidian is open. If it hasn't updated in 3 days, your daily summary email says so, and your own view of your public page shows \"Last updated N days ago\". Visitors never see it."
+   ],
+   "howto": "Update Caldera in Settings > Community plugins, then run \"Caldera: Finish my page\"."
+  },
+  {
+   "version": "0.16.1",
+   "date": "2026-10-17",
+   "title": "Review fix",
+   "items": [
+    "A small fix so Caldera passes the Obsidian directory review. Same features as 0.16.0: sign in from your phone, and Finish your page."
+   ]
+  },
+  {
+   "version": "0.16.0",
+   "date": "2026-10-17",
+   "title": "Sign in from your phone, and finish your page",
+   "items": [
+    "Sign in as the owner from any device: every page's top bar now has a small \"Owner? Sign in\" link. Get a one-time sign-in link at your daily summary address, sign in with GitHub (GitHub sign-ups), or pair the device from Obsidian with a 6-character code (\"Sign in another device\", also the key button in the My profile tab). Once signed in, your page shows the Private view button.",
+    "Finish your page: My view in Obsidian and your account page now show what's still missing (profile photo, masthead, headline, about, links, a garden note, a friend, a group, the daily email), each with a one-click way to do it.",
+    "Masthead: choose a wide cover image for the top of your page right from Caldera (\"Set my masthead\"), or copy a prompt that has your AI agent pick or make one and set it. GitHub sign-ups can upload a photo and a masthead on their account page; metadata like camera and location is stripped.",
+    "The daily summary email suggests one next step for your page when something is missing.",
+    "The setup prompt now offers a masthead as an optional step."
+   ],
+   "howto": "On your phone: open your page, tap \"Owner? Sign in\" at the top, then use the email link or show a code and type it into Obsidian (\"Sign in another device\")."
+  },
+  {
+   "version": "0.15.1",
+   "date": "2026-10-17",
+   "title": "From your public page back to your private view",
+   "items": [
+    "Open your page signed in as you: \"Open my public page (as owner)\" (and Open in browser in the My profile tab) opens your page with a Private view button in the Caldera bar. On your own browser it stays that way for a year; Sign out in the bar ends it.",
+    "The Private view button goes to your private web address if your hub gives you one, otherwise it opens My view in Obsidian. GitHub sign-ups get a button to their account page.",
+    "Your own visits to your page no longer count toward your view numbers.",
+    "New command: \"Open my private view\"."
+   ]
+  },
+  {
+   "version": "0.15.0",
+   "date": "2026-10-17",
+   "title": "Friends, sharing and a daily summary",
+   "items": [
+    "Share your page: after your page goes live, Caldera shows the picture people see when you post your link (your city, name and headline), with one-click posts to X, Bluesky, LinkedIn and Mastodon. Run \"Share my page\" any time, or use the Share button in the Caldera panel.",
+    "Every profile link now has a proper preview on social sites and in chat apps, built from your city.",
+    "People you might know: the Caldera panel suggests people with the same topics, languages or groups, with an Add button.",
+    "Invites count: when someone joins from your invite link, you get 25 help credits and a friend request from them. Your garden home shows how many people you've brought in.",
+    "Groups: add a group in settings (like producthunt) and your city joins a town of everyone in it at caldera.social/g/name. Anyone can join with one click from that page.",
+    "A short daily summary email, if you want one: who visited, friend requests, links into your garden. Double opt-in, only on days something happens, one-click unsubscribe.",
+    "A heads-up at most once a day when people visit your page or link to your garden.",
+    "Signed up with GitHub? Your account page now lists friend requests (with Accept), suggests people to add, and shows this week's visitors and your invite link."
+   ],
+   "howto": "Update Caldera, then open Caldera settings > Friends and sharing to add groups and your email. The share screen opens by itself after your next publish."
+  },
+  {
+   "version": "0.14.0",
+   "date": "2026-10-17",
+   "title": "Forgejo and Codeberg",
+   "items": [
+    "Code on Codeberg or your own Forgejo or Gitea server? Paste your profile address in Caldera settings (\"Forgejo or Codeberg profile\"). Your public repos become your city and your contributions fill your code chart, refreshed every 6 hours. No token needed.",
+    "The AI setup prompt now handles Forgejo, Gitea and Codeberg too, including private repos when you give your agent a token (they show only as locked buildings to visitors)."
+   ],
+   "howto": "Settings > Caldera > Forgejo or Codeberg profile: paste https://codeberg.org/you (or your server's address), then run Caldera: Publish my profile."
+  },
+  {
+   "version": "0.13.2",
+   "date": "2026-10-17",
+   "title": "Everyone gets a city",
+   "items": [
+    "No GitHub? Your city is now built from your Obsidian vault: every folder is a building, taller means more notes written this year, lit windows mean notes written this week. Folder and note names stay private on your public page.",
+    "Add your GitHub username in Caldera settings any time to build the city from your repos instead."
+   ]
+  },
+  {
+   "version": "0.13.1",
+   "date": "2026-10-17",
+   "title": "Cleaner profile header",
+   "items": [
+    "Profiles without a cover photo no longer leave an empty gap above the name: your photo now sits right above it.",
+    "The Code chart keeps a steady width when you only have a few weeks of commits, instead of one giant bar."
+   ]
+  },
+  {
+   "version": "0.13.0",
+   "date": "2026-10-17",
+   "title": "Your city up top, and one prompt for everything",
+   "items": [
+    "Your city now sits at the top of your profile: a small skyline of your repos, lit windows where you shipped this week. Click it to walk the full city.",
+    "One AI setup prompt instead of three. It connects every source it can find on your computer (calendar, email, AI usage, code, documents, your GitHub city), schedules one routine to keep your page fresh, and drafts your page text and garden for your OK. It's safe to paste again: it upgrades what's there and fills in what's missing.",
+    "My view shows what feeds your page: each source, connected or not, with a one-click copy of the setup prompt. When Caldera can track something new, it tells you to paste the prompt again."
+   ],
+   "howto": "Open My Caldera profile (ribbon icon), look at 'What feeds your page', and click Copy the setup prompt. Paste it into Claude Code, Codex or Cursor."
+  },
+  {
+   "version": "0.12.5",
+   "date": "2026-10-17",
+   "title": "Friend requests you can't miss",
+   "items": [
+    "Fixed: a friend request could disappear before you saw it, if Obsidian closed at the wrong moment or an old copy of Caldera was still running. Open requests now live on the hub until you answer them, so they always come back.",
+    "The Caldera panel shows requests you've sent that are still waiting, and you can ignore a request you don't want.",
+    "Clearer messages when a request is accepted, and a check so you can't re-request someone who's already your friend."
+   ]
+  },
+  {
+   "version": "0.12.4",
+   "date": "2026-10-16",
+   "title": "A city for everyone with a GitHub",
+   "items": [
+    "Add your GitHub username in settings (or a GitHub line in Links) and your public repos become your city, grouped by language and refreshed every 6 hours. Until now the city needed a Caldera/city.json written by your own tools."
+   ]
+  },
+  {
+   "version": "0.12.3",
+   "date": "2026-10-16",
+   "title": "Agent HQ parking grid, and no more stale pages",
+   "items": [
+    "Parked agents line up in a tidy grid on the Agent HQ pad instead of a long row.",
+    "Fixed: after an update or reload, the previous version of Caldera could keep publishing your page in the background with its old look. Old copies now stop, and the hub ignores pages from an older Caldera than the last one you used."
+   ]
+  },
+  {
+   "version": "0.12.2",
+   "date": "2026-10-16",
+   "title": "Fold the panels away",
+   "items": [
+    "Tap the Underground or LIVE panel on the city to fold it down to one line, and tap again to open it. On phones they start folded."
+   ]
+  },
+  {
+   "version": "0.12.1",
+   "date": "2026-10-16",
+   "title": "Room for your whole fleet",
+   "items": [
+    "Agent HQ now parks a whole fleet in neat rows (up to 80 agents), idle drones glow dimmer, and the pad counts how many are parked and how many are waiting on you."
+   ]
+  },
+  {
+   "version": "0.12.0",
+   "date": "2026-10-16",
+   "title": "Sign up with GitHub",
+   "items": [
+    "No Obsidian? Sign up on caldera.social with GitHub: your page and your city are built from your GitHub and refresh every 6 hours. Edit it, add your sites and agents, or add private repos as padlocked buildings.",
+    "Already on Obsidian later? Move the profile into your vault: get a code on your account page and use Settings > Import a GitHub sign-up. Same handle, same page; your vault takes over the key."
+   ]
+  },
+  {
+   "version": "0.11.0",
+   "date": "2026-10-16",
+   "title": "The Underground: your vault under the city",
+   "items": [
+    "New Underground button on the city: the ground turns to glass and your Obsidian vault appears below as a glowing network. Notes are nodes (bigger = more notes link to them), links are tunnels, and depth is age.",
+    "Notes about a project hang under its district, with roots up into its buildings, so you can see which projects have deep knowledge behind them.",
+    "Tap a note to see its links and open it. Notes you edit pulse light through their connections. Unconnected notes are counted so you can link them up.",
+    "Visitors only see the shape: no titles, except notes you've published to your garden."
+   ]
+  },
+  {
+   "version": "0.10.3",
+   "date": "2026-10-16",
+   "title": "Easier updates",
+   "items": [
+    "When a newer Caldera is out, What's new tells you which version you have and opens Community plugins so you can update in one click."
+   ]
+  },
+  {
+   "version": "0.10.2",
+   "date": "2026-10-16",
+   "title": "Full-screen city",
+   "items": [
+    "New Full screen button on the city map (Esc or Exit to leave). Works on the public page, your private address and the My profile tab.",
+    "On phones, the live panel folds down to one line; tap it to open."
+   ]
+  },
+  {
+   "version": "0.10.1",
+   "date": "2026-10-16",
+   "title": "Tidier Agent HQ",
+   "items": [
+    "Agents parked at Agent HQ no longer pile their labels on top of each other: the pad says how many are waiting on you, and you tap a drone for details."
+   ]
+  },
+  {
+   "version": "0.10.0",
+   "date": "2026-10-16",
+   "title": "Your AI agents, flying over the city",
+   "items": [
+    "Every Claude Code agent you run becomes a drone over the repo it's working in: a beam into the roof while it edits, circling while it thinks, parked at Agent HQ blinking amber when it's waiting on you.",
+    "Tap a drone to see what it's working on, its last step and tokens today (My view and your private address only). Your public city shows anonymous drones, never what they're doing.",
+    "Set it up in Settings > AI agents on your city: copy the prompt into Claude Code on each computer. A tiny hook reports the repo and a short task title; task details are encrypted on the hub."
+   ]
+  },
+  {
+   "version": "0.9.1",
+   "date": "2026-10-16",
+   "title": "Every car is a real visitor",
+   "items": [
+    "Once your sites send live traffic, the city's cars are your visitors: one car for each person on that site right now. It pulls out of their district when they arrive and fades away when they leave.",
+    "The live panel no longer scrolls: busy districts get a row, quiet ones share a single line, and a hint shows if no visits have arrived yet."
+   ]
+  },
+  {
+   "version": "0.9.0",
+   "date": "2026-10-16",
+   "title": "Live traffic in your city",
+   "items": [
+    "Your city is now live: every visit to your own websites rides out of that project's district as a light, signups pulse pink and sales fire a gold beam.",
+    "Each district gets a one-line snippet (Settings > Live traffic on your city). Paste it into your site and the traffic appears within seconds. No cookies, and visitors are only counted, never identified.",
+    "Your public city only shows how busy each district is. The numbers (live visitors, views, signups, sales) stay in My view and your private address."
+   ]
+  },
+  {
+   "version": "0.8.3",
+   "date": "2026-10-16",
+   "title": "Your city, on the Grid",
+   "items": [
+    "New default look for your city: Grid mode. Black glass towers outlined in neon (one color per language), glowing window strips, a lit grid floor, and light cycles racing the streets with light trails.",
+    "Your tallest building sends a beam of light into the sky.",
+    "Prefer daylight? The button cycles Grid, Day, Dusk and Night."
+   ]
+  },
+  {
+   "version": "0.8.2",
+   "date": "2026-10-16",
+   "title": "A much better-looking city",
+   "items": [
+    "Your city got a full visual upgrade: it now sits on a little island with a river, sidewalks, lane markings and parks.",
+    "Buildings have real shading and shadows. Big projects become stepped skyscrapers, with rooftop details: water towers, solar panels, roof gardens, a helipad, and a blinking antenna on your tallest.",
+    "Street lamps glow at night, cars have headlights, and the crane arms slowly swing. The sky switches between day, dusk and night, with clouds or stars.",
+    "It's lighter to run, so it stays smooth on phones."
+   ]
+  },
+  {
+   "version": "0.8.1",
+   "date": "2026-10-16",
+   "title": "Your whole city, private repos locked",
+   "items": [
+    "Your public city now shows every repo, so visitors see the real size of what you're building.",
+    "Private repos are locked glass buildings with a padlock: no name, language, commit history, link or exact numbers. Tapping one just says it's private.",
+    "Projects that aren't on your public profile don't show their names; their buildings sit in one district called Private."
+   ]
+  },
+  {
+   "version": "0.8.0",
+   "date": "2026-10-16",
+   "title": "Caldera City: your GitHub as a city",
+   "items": [
+    "A new City page next to your profile turns your GitHub into a little isometric city. Each project is a district and each repo a building: taller means more commits this year, lit windows mean commits this week, and a crane means it's being built right now. Cars are commit traffic.",
+    "Your Obsidian notes are the houses: every note that links to a project's note becomes a house in that district. Tap a building for its 12-week commit history, last push and the notes about it.",
+    "Private repos stay private: visitors see public repos and the projects already on your profile. Your full city, every repo included, shows only in the My profile tab (and on your private address).",
+    "Set it up by asking your AI agent to write Caldera/city.json (the setup prompt now explains how), then publish. Drag, scroll or pinch to explore; there's a day/night switch."
+   ]
+  },
+  {
+   "version": "0.7.1",
+   "date": "2026-10-16",
+   "title": "Your private view in a browser, over Tailscale",
+   "items": [
+    "Self-hosting a hub on your Tailscale network? Turn on 'Private web address (Tailscale)' in Caldera settings and your private sections open in a browser on any of your Tailscale devices, with a My view / Public view switch. Only your own Tailscale account can open it, and it's stored encrypted.",
+    "The views chart in My view now always shows the last 14 days."
+   ]
+  },
+  {
+   "version": "0.7.0",
+   "date": "2026-10-15",
+   "title": "Your profile, inside Obsidian",
+   "items": [
+    "New My profile tab: click the person icon in the left ribbon (or run 'Caldera: Open my profile in Obsidian'). Your page opens as a tab, and you can click through to your garden and notes.",
+    "My view is built from your vault right now and adds sections only you can see, never published: who visited since you last looked, what they read, gravity and new friends; today as it happens; what you were doing a week, a month and a year ago; an old note brought back every few hours; your patterns; and goals from Caldera/Goals.md.",
+    "Public view shows your live page exactly as visitors see it.",
+    "No login needed: your vault's key signs you in, so only you can see the private part.",
+    "Optional: open it automatically when Obsidian starts (Caldera settings, My profile tab)."
+   ]
+  },
+  {
+   "version": "0.6.1",
+   "date": "2026-10-15",
+   "title": "Same nav everywhere, and adding friends in one click",
+   "items": [
+    "Your profile, your garden home and every garden note now share the same left nav: your profile, Garden home and your vault tree. Clicking 'Garden' in the tree opens your garden home.",
+    "Every profile and garden page has an 'Add @handle as friend' button. It opens Obsidian and sends the request after you confirm.",
+    "The Caldera panel has an 'Invite someone new' link to copy. It walks the new person through installing, then gives them a one-click button to add you.",
+    "Add a friend by handle or by pasting their profile link. Friend requests now show who sent them and stay put if you restart Obsidian."
+   ]
+  },
+  {
+   "version": "0.6.0",
+   "date": "2026-10-15",
+   "title": "Your garden home",
+   "items": [
+    "Your garden page now opens with 'How this garden works': notes planted, links from other gardens, gravity, help credits (and how many are held in bounties), your open asks and offers, friends and your weekly rank. Read live from the hub every time someone visits.",
+    "Plain explanations on the page of how gravity (goodwill friends give) and help credits (bounties on asks) work, and how other gardens can link your notes.",
+    "The Garden section on your profile now links straight to your garden home.",
+    "The AI setup prompts walk new users through it: which sections to turn on, what gravity and credits are, and drafting their first asks and offers."
+   ]
+  },
+  {
+   "version": "0.5.4",
+   "date": "2026-10-12",
+   "title": "Your garden grows itself from your daily journal",
+   "items": [
+    "Each public project your journal keeps mentioning gets its own garden page, with a dated entry every day it comes up. Pages start as seedlings and become budding (5 days) and evergreen (20 days) on their own.",
+    "Recurring themes get a page too, but only when they're distinctive (not on nearly every day, and not a copy of another theme).",
+    "Wrote a garden note with the same name as a project? Your words stay on top and the journal log appears underneath under 'From my journal'.",
+    "Only journal text that is already public (after the privacy filter) is used. Journal entries are kept in the plugin's own data, so pages keep growing past the 45-day journal window.",
+    "Your page now republishes when a daily note's journal changes, and catches up when you open Obsidian after more than 6 hours away.",
+    "Turn it off with garden_journal: false in Caldera/profile.md or Settings -> Caldera."
+   ],
+   "howto": "Nothing to do if your daily journal is set up. Name projects the way they appear in your profile's projects list and they get pages."
+  },
+  {
+   "version": "0.5.3",
+   "date": "2026-10-12",
+   "title": "Housekeeping: the plugin has its own repository",
+   "items": [
+    "The plugin's GitHub repository now holds only the plugin, so Obsidian's review covers exactly the code you install. The website and hub moved to their own repository.",
+    "No change to the plugin or your page."
+   ],
+   "howto": "Nothing to do."
+  },
+  {
+   "version": "0.5.2",
+   "date": "2026-10-12",
+   "title": "Under the hood: cleaner code for Obsidian's plugin review",
+   "items": [
+    "Background work (inbox sync, release check, auto-publish) now handles errors instead of leaving them unhandled.",
+    "Commands and settings use Obsidian's own helpers and wording conventions.",
+    "No change to what is published or how your page looks."
+   ],
+   "howto": "Nothing to do."
+  },
+  {
+   "version": "0.5.1",
+   "date": "2026-10-12",
+   "title": "Fix: the Activity heatmap fills its column, without a stray scrollbar",
+   "items": [
+    "The Activity heatmap could show a bright scrollbar under the grid, because hovering a day zoomed it past the edge. The scrollbar is gone, and the zoom has room.",
+    "Day squares now size themselves to the page: larger on a wide screen, smaller on a phone, so all 26 weeks fit without scrolling. Month labels move with them when the window is resized.",
+    "Pages published with an older version get the fix automatically on caldera.social."
+   ],
+   "howto": "Nothing to do. Your page picks it up on its next publish (and already shows it on caldera.social)."
+  },
+  {
+   "version": "0.5.0",
+   "date": "2026-10-12",
+   "title": "Gardens: grow notes in public, linked to other people's gardens",
+   "items": [
+    "Plant any note in your garden and it becomes a full public page on your profile. Put it in a Garden folder, or run 'Caldera: Plant this note in my garden'. Nothing else in your vault is published.",
+    "Every garden note shows how finished it is: seedling, budding or evergreen (frontmatter stage:). Your profile gets a Garden section and a garden index you can filter by stage.",
+    "Choose a license per note (license:). The default is all rights reserved and not licensed for AI training; cc-by, cc-by-nc, cc0 and ai-licensable are available.",
+    "Signed authorship: every published note is hashed and listed in your signed profile manifest, so anyone can check who wrote it and when.",
+    "Link to a friend's note with [[@handle/Their note]]. Their note shows 'Linked from other gardens' with a link back to yours.",
+    "Private by default: email addresses and phone numbers are removed, %% comments %% never leave your vault, and links to notes outside the garden show as plain text. 'Caldera: Preview my garden' lists every line the privacy check flags before anything goes public.",
+    "New: caldera.social/gardens shows notes recently planted or tended across all listed gardens. Already have a garden on Quartz or Obsidian Publish? Add garden_url to Caldera/profile.md and your page links to it."
+   ],
+   "howto": "Create a folder called Garden in your vault (or run 'Caldera: Plant this note in my garden' on a note), then run 'Caldera: Preview my garden' and 'Caldera: Publish my profile'."
+  },
+  {
+   "version": "0.4.0",
+   "date": "2026-10-12",
+   "title": "Fuller pages out of the box: AI usage, Code, What it knows and a vault graph",
+   "items": [
+    "AI usage fills in by itself on desktop: tokens per day and your model mix, read from your local Claude Code and Codex logs. Counts only, never prompts.",
+    "Code: add your GitHub profile to your links and your page shows commits per week from your public contribution graph.",
+    "What it knows: how many people, projects, sources, ideas and daily notes your vault holds, using generic labels only (a private folder name never appears).",
+    "No tags or public notes yet? The sidebar and graph now show your vault's categories instead of staying empty.",
+    "After you create your profile, one button copies a prompt that has your AI fill out the rest: summary, timeline in chapters, projects, links, photo and a daily journal."
+   ],
+   "howto": "Run 'Caldera: Copy AI prompt: make my profile richer' and paste it into Claude Code, Codex or Cursor. Turn AI usage or Code off in Settings -> Caldera -> sections if you prefer."
+  },
+  {
+   "version": "0.3.13",
+   "date": "2026-10-11",
+   "title": "Fix: first profile publishes in about a second (was up to 90 seconds)",
+   "items": [
+    "Creating your profile from the Welcome screen could sit on 'Publishing...' for up to a minute and a half while Caldera waited for Obsidian to finish indexing. It now checks directly and publishes right away. Every later publish is faster too.",
+    "If publishing fails, the Welcome screen now says why, and it comes back next time you open Obsidian until your profile is live."
+   ],
+   "howto": "If you installed Caldera and your profile never appeared, run 'Caldera: Set up my profile (welcome)' from the command palette."
+  },
+  {
+   "version": "0.3.12",
+   "date": "2026-10-11",
+   "title": "AI usage shows where your tokens come from",
+   "items": [
+    "When your AI agent reports more than one source (for example coding agents on several machines and your apps' APIs), the AI usage section shows the split. Counts only."
+   ]
+  },
+  {
+   "version": "0.3.11",
+   "date": "2026-10-11",
+   "title": "One-tap invites, and your photo as the browser-tab icon",
+   "items": [
+    "'Invite a friend' on your leaderboard now opens an invite panel: copy your personal invite link, or send it by email, text or your phone's share sheet.",
+    "Friends who use your link land on the install page and see who invited them.",
+    "Your page's browser tab now shows your photo as a round icon (and on phone home screens). Pages without a photo show the Caldera mark instead of a blank globe."
+   ]
+  },
+  {
+   "version": "0.3.9",
+   "date": "2026-10-11",
+   "title": "Activity heatmap you can read: hover any day",
+   "items": [
+    "Hover or tap any square on the Activity heatmap to see its date and count instantly. The line under the chart shows the day you're on and rolls back to today when you move away.",
+    "Click a day to pin it; arrow keys move between days, Escape returns to today.",
+    "Month and weekday labels, and today is outlined."
+   ]
+  },
+  {
+   "version": "0.3.7",
+   "date": "2026-10-11",
+   "title": "A richer Timeline: chapters, detail lines and a connected rail",
+   "items": [
+    "Timeline entries can carry a short second line: Year | what happened | detail.",
+    "Group your story into chapters with era | Name | 1995-2006.",
+    "The timeline now draws as a connected rail with a dot per milestone; a repeated year is shown once."
+   ],
+   "howto": "Ask your AI: 'Rebuild my Caldera timeline from my notes, in chapters, with a detail line per milestone. Public facts only.'"
+  },
+  {
+   "version": "0.3.6",
+   "date": "2026-10-11",
+   "title": "A working Vault sidebar: links, folding groups, note counts and an On this page guide",
+   "items": [
+    "Sidebar items now link: a project opens its site, a public note or topic jumps to it on your page. Items that match nothing stay plain text.",
+    "Groups fold and unfold, and show how many items they hold. Add a folder to a group (Group | items | folder) to show how many notes that folder has - a count only, file names never leave your vault.",
+    "Empty groups are hidden instead of showing a bare heading.",
+    "New On this page list at the top of the sidebar jumps to every section and highlights where you are as you scroll. On phones it becomes a sticky bar of section links that follows along."
+   ],
+   "howto": "Optional: in Caldera/profile.md, add a folder to a sidebar group, e.g. \"Concepts | | wiki/concepts\"."
+  },
+  {
+   "version": "0.3.2",
+   "date": "2026-10-11",
+   "title": "Stronger privacy: journal lines that look sensitive are never published",
+   "items": [
+    "Caldera now checks every journal line before publishing and drops any that mention other people's names, meetings or their times, places and addresses, secret or unannounced work, money, legal, health, HR or family matters, or contact details. Only names you already made public on your page (your projects, topics and links) are allowed.",
+    "All AI prompts carry one stricter privacy policy: never reveal who you met, where or when, secret projects, or anything that could get someone in trouble. When unsure, leave it out.",
+    "New Learn pages at caldera.social/learn answer common questions about Obsidian profiles, private sharing and AI agents."
+   ],
+   "howto": "Nothing to do: the filter runs automatically on your next publish."
+  },
+  {
+   "version": "0.3.1",
+   "date": "2026-10-10",
+   "title": "Invite friends from your page, and a Caldera bar on every profile",
+   "items": [
+    "Every profile page now has a slim Caldera bar at the top: the logo goes to caldera.social and 'Get your own page' goes straight to install. Visitors who arrive this way see who invited them.",
+    "The 'Invite a friend' rows on your leaderboard open a ready-to-send invite email with your page and install link.",
+    "New signups and deletions can alert the hub operator by email."
+   ]
+  },
+  {
+   "version": "0.3.0",
+   "date": "2026-10-10",
+   "title": "Full living profile: three columns, AI usage, activity, growth, projects, code and timeline",
+   "items": [
+    "Three-column layout: a Vault sidebar on the left, a local graph and backlinks on the right. Choose what they show in Caldera/profile.md (sidebar, graph, backlinks), or leave them empty to show your topics and public notes.",
+    "New sections: Summary, Now, Timeline and Projects, written in Caldera/profile.md. Links like [[Label|https://...]] and **bold** work.",
+    "Activity heatmap (26 weeks) and Growth chart, computed from your vault. Counts only.",
+    "What it knows, Inbox to knowledge and Code (GitHub) sections, filled from Caldera/activity.json by your own tools or AI agent.",
+    "AI usage: total tokens, tokens per day, and your model and provider mix as charts. Your AI agent fills it from local Claude Code and Codex logs - counts only, never prompts or costs.",
+    "Scoreboard now shows a leaderboard and your best other days.",
+    "Fixes: dates use your local day (not UTC), and link counts wait until Obsidian has finished indexing."
+   ],
+   "howto": "Run 'Caldera: Edit my profile' and fill in summary, now, timeline and projects - or paste the 'change my profile' prompt into your AI."
+  },
+  {
+   "version": "0.2.0",
+   "date": "2026-10-10",
+   "title": "Edit your page by talking to your AI, a People directory, and What's new alerts",
+   "items": [
+    "Your public fields now live in a note, Caldera/profile.md. Edit it, or ask your AI agent to, and your page republishes itself about a minute after you save.",
+    "New copy-paste prompt: 'Change my profile'. Paste it into Claude Code, Codex or Cursor and describe the change.",
+    "People directory at caldera.social/people. Switch 'List me in the directory' off in Settings or profile.md to stay link-only.",
+    "One-screen Welcome: pick a name and handle, and your profile publishes and opens in your browser.",
+    "What's new alerts like this one, shown only to you, inside Obsidian.",
+    "Fixes: publishing on caldera.social, and note links written in properties now count toward your stats."
+   ],
+   "howto": "Try it: Command palette -> 'Caldera: Edit my profile', or 'Caldera: Copy AI prompt: change my profile'."
+  },
+  {
+   "version": "0.1.0",
+   "date": "2026-10-10",
+   "title": "Caldera is open: the social layer for Obsidian",
+   "items": [
+    "A living profile built from your vault: daily journal, activity score, topics, public notes.",
+    "Friends between vaults, end-to-end encrypted shared notes, asks and offers with help credits, and positive-only gravity.",
+    "Private by default: nothing leaves your vault unless you switch a section on or mark a note caldera: public.",
+    "Copy-paste AI prompts to install Caldera and run your daily journal."
+   ]
+  }
+ ]
 }
