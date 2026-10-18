@@ -202,6 +202,8 @@ export interface FeedCtx {
   hasRepos?: (pr: any) => boolean;
   /** a personal alert in the member's bell (and so their daily email); `key` folds repeats into one */
   notify?: (memberId: string, a: { title: string; body: string; ctaLabel?: string; ctaUrl?: string; key?: string }) => void;
+  /** a deleted post takes its personal alerts (kudos, sends, recommendations) with it */
+  dropNotices?: (postId: string) => void;
 }
 export const POST_KUDOS: Record<string, string> = { heart: "❤️", up: "\u{1F44D}", fire: "\u{1F525}", sparkle: "✨" };
 
@@ -283,7 +285,7 @@ export function feed(c: FeedCtx) {
   }
   function closePost(meId: string, id: string, del: boolean) {
     const row = postRow(id); if (!row || row.author !== meId) return { status: 404, body: { error: "not found" } };
-    if (del) { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); }
+    if (del) { for (const t of ["posts WHERE id", "post_links WHERE post", "post_kudos WHERE post", "post_reports WHERE post"]) q(`DELETE FROM ${t}=?`).run(id); try { c.dropNotices?.(id); } catch { /* best effort */ } }
     else q("UPDATE posts SET status='closed', closed=? WHERE id=?").run(c.now(), id);
     cache = null; return { status: 200, body: { ok: true } };
   }
@@ -432,9 +434,10 @@ export function feed(c: FeedCtx) {
     cache = { at: Date.now(), items }; return items;
   }
   const FILTER: Record<string, Item["kind"][]> = { all: ["join", "city", "obsidian", "friends", "kudos", "release", "post", "rec"], posts: ["post"], recommends: ["rec"], members: ["join", "obsidian"], cities: ["city"], kudos: ["kudos"] };
-  function page(type: string, before: string, viewer: string | null, n = 30) {
+  function page(type: string, before: string, viewer: string | null, n = 30, author = "") {
     const kinds = FILTER[type] || FILTER.all;
-    const rows = activity().filter(i => kinds.includes(i.kind) && (!before || i.ts < before)).slice(0, n);
+    const by = (i: Item) => !author || i.who?.handle === author || i.other?.handle === author;
+    const rows = activity().filter(i => kinds.includes(i.kind) && (!before || i.ts < before) && by(i)).slice(0, n);
     return rows.map(i => i.kind === "post" || i.kind === "rec" ? { kind: "post", ts: i.ts, post: postView(i.post, viewer) } : { kind: i.kind, ts: i.ts, who: i.who, other: i.other, via: i.via, emoji: i.emoji, title: i.title, url: i.url });
   }
 
@@ -480,21 +483,22 @@ export function feed(c: FeedCtx) {
 .fd-fam{display:flex;gap:6px;margin:0 0 12px}.fd-fam button{all:unset;cursor:pointer;padding:8px 14px;border-radius:10px;border:1px solid var(--line);font:600 15px var(--font-display,Georgia,serif);color:var(--text-muted)}
 .fd-fam button[aria-pressed="true"]{border-color:var(--accent);color:var(--text-strong);background:var(--accent-soft)}
 .fd-big{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
-.fd-big button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;min-height:64px;padding:12px 14px;border-radius:16px;border:1.5px solid var(--line);background:var(--bg);color:var(--text-strong);font:700 18px var(--font-display,'Source Serif 4',Georgia,serif);transition:transform .15s,border-color .15s,background .15s,box-shadow .15s}
-.fd-big button b{font-size:26px;line-height:1}.fd-big button:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 20px rgba(139,108,246,.18)}
+.fd-big button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;min-height:46px;padding:0 16px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);color:var(--text-strong);font:600 16px var(--font-body,var(--font-sans,'IBM Plex Sans',Arial,sans-serif));transition:transform .15s,border-color .15s,background .15s,box-shadow .15s}
+.fd-big button b{font-size:22px;line-height:1}.fd-big button:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 20px rgba(139,108,246,.18)}
 .fd-big button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(139,108,246,.25)}
 .fd-big button:focus-visible,.fd-chips2 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.fd-chips2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.fd-chips2 button{all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:500 14.5px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);transition:transform .15s,border-color .15s,background .15s}
+.fd-chips2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.fd-chips2 button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;min-height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:500 14px var(--font-body,var(--font-sans,'IBM Plex Sans',Arial,sans-serif));transition:transform .15s,border-color .15s,background .15s}
 .fd-chips2 button:hover{transform:translateY(-2px);border-color:var(--accent)}.fd-chips2 button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .fd-pop1{animation:fdpop .35s ease-out}@keyframes fdpop{40%{transform:scale(1.08)}100%{transform:scale(1)}}
-.fd-comp textarea{font:15px var(--font-sans,'IBM Plex Sans',Arial,sans-serif);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;box-sizing:border-box;min-height:88px;resize:vertical;line-height:1.5}
+.fd-comp textarea{font:15px var(--font-body,var(--font-sans,'IBM Plex Sans',Arial,sans-serif));color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;box-sizing:border-box;min-height:88px;resize:vertical;line-height:1.5}
 .fd-comp textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
 .fd-row2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 4px}.fd-row2 .fd-hint{font-size:12.5px;color:var(--accent-text)}
-.fd-postbtn{transition:transform .15s}.fd-postbtn:hover{transform:translateY(-1px)}
+.fd-postbtn{min-height:38px;padding:0 18px;transition:transform .15s}.fd-postbtn:hover{transform:translateY(-1px)}
 .fd-burst{position:fixed;z-index:70;pointer-events:none;font-size:20px;animation:fdburst .9s ease-out forwards}@keyframes fdburst{to{transform:translate(var(--dx),var(--dy)) scale(1.2);opacity:0}}
-@media (max-width:420px){.fd-big button{min-height:56px;font-size:16px;gap:8px;padding:10px}.fd-big button b{font-size:22px}}
+@media (max-width:420px){.fd-big button{font-size:15px;gap:8px;padding:0 10px}.fd-big button b{font-size:20px}}
 @media (prefers-reduced-motion:reduce){.fd-big button,.fd-chips2 button,.fd-postbtn{transition:none}.fd-big button:hover,.fd-chips2 button:hover{transform:none}.fd-pop1{animation:none}}
 .fd-more{display:flex;justify-content:center;margin:16px 0}.fd-empty{color:var(--text-muted);text-align:center;padding:24px}
+.fd-dots{min-width:34px;justify-content:center;font-size:18px;line-height:1}.fd-own .fd-pop{min-width:180px;left:auto;right:0}.fd-own .fd-pop button{display:block;width:100%;text-align:left}.fd-confirm{display:block;padding:8px 10px;font-size:14px;color:var(--text)}.fd-confirm button{display:inline-flex!important;width:auto!important;margin:6px 6px 0 0;padding:5px 12px!important;border-radius:999px;border:1px solid var(--line)}.fd-confirm [data-yes]{background:#E5484D;border-color:#E5484D;color:#fff}
 .fd-tip{position:fixed;z-index:60;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 14px;border-radius:10px;background:var(--text-strong);color:var(--bg);font-size:14px;box-shadow:0 10px 26px rgba(0,0,0,.3)}
 .fd-shared{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--text)}
 .fd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -524,7 +528,7 @@ export function feed(c: FeedCtx) {
       v.mine ? "" : `<span class="fd-kd" role="group" aria-label="Kudos">${kd}</span>`,
       v.mine || v.status !== "open" || rec ? "" : `<button type="button" class="fd-btn${v.helped ? "" : " pri"}" data-help${v.helped ? ' aria-disabled="true"' : ""}>${v.helped ? "Offered to help" : "I can help"}</button>`,
       `<span class="fd-menu"><button type="button" class="fd-btn" data-share aria-haspopup="true">Share</button><span class="fd-pop" hidden role="menu"></span></span>`,
-      v.mine ? `${rec ? "" : `<button type="button" class="fd-btn" data-matches>People who match</button>`}${v.status === "open" ? `<button type="button" class="fd-btn" data-close>Close</button>` : ""}<button type="button" class="fd-btn" data-delete>Delete</button>` : (viewer ? `<button type="button" class="fd-btn" data-report title="Report this post">Report</button>` : ""),
+      v.mine ? `${rec ? "" : `<button type="button" class="fd-btn" data-matches>People who match</button>`}<span class="fd-menu fd-own"><button type="button" class="fd-btn fd-dots" data-own aria-haspopup="true" aria-label="More for your post" title="More">&#8943;</button><span class="fd-pop" hidden role="menu">${v.status === "open" ? `<button type="button" role="menuitem" data-close>Close (mark done)</button>` : ""}<button type="button" role="menuitem" data-delete>Delete</button><span class="fd-confirm" hidden>Delete this post? <button type="button" data-yes>Yes</button> <button type="button" data-no>Cancel</button></span></span></span>` : (viewer ? `<button type="button" class="fd-btn" data-report title="Report this post">Report</button>` : ""),
     ].join("");
     return `<article class="fd-card fd-post" data-post="${esc(v.id)}" data-url="${esc(v.url)}" data-text="${esc(v.text)}">
 <div class="fd-top">${avatarHtml(v.author)}<div style="min-width:0;flex:1"><div class="sent"><a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a> ${sent}${/[.!?]$/.test(v.sentence.map((x: any) => x[0]).join("")) ? "" : "."}</div>
@@ -595,8 +599,10 @@ $$('.fd-kd button',card).forEach(function(b){b.addEventListener('click',function
 var help=$('[data-help]',card);if(help)help.addEventListener('click',function(){if(!ME)return need('/feed/p/'+pid);if(help.getAttribute('aria-disabled'))return;api('/v1/posts/'+pid+'/help',{}).then(function(x){if(x.ok){help.textContent='Offered to help';help.classList.remove('pri');help.setAttribute('aria-disabled','true');tip('Sent. They can accept to connect with you.')}else tip(x.j.error||'Could not send')})});
 var sh=$('[data-share]',card);if(sh)sh.addEventListener('click',function(){shareMenu(card,sh)});
 var mt=$('[data-matches]',card);if(mt)mt.addEventListener('click',function(){var box=$('.fd-matches',card);if(!box.hidden){box.hidden=true;return}api('/v1/posts/'+pid+'/matches').then(function(x){if(x.ok)matchesInto(box,x.j.matches||[],pid);else tip(x.j.error||'Could not load')})});
-var cl=$('[data-close]',card);if(cl)cl.addEventListener('click',function(){api('/v1/posts/'+pid+'/close',{}).then(function(x){if(x.ok){cl.remove();tip('Closed. It stays in the feed, marked closed.')}})});
-var de=$('[data-delete]',card);if(de)de.addEventListener('click',function(){if(de.getAttribute('data-sure')!=='1'){de.setAttribute('data-sure','1');de.textContent='Delete for good?';return}api('/v1/posts/'+pid+'/delete',{}).then(function(x){if(x.ok){card.remove();tip('Deleted')}})});
+var own=$('[data-own]',card);if(own){var op=own.parentNode.querySelector('.fd-pop'),cf=$('.fd-confirm',op);own.addEventListener('click',function(){op.hidden=!op.hidden;if(cf)cf.hidden=true;$$('[role=menuitem]',op).forEach(function(b){b.hidden=false})})}
+var cl=$('[data-close]',card);if(cl)cl.addEventListener('click',function(){api('/v1/posts/'+pid+'/close',{}).then(function(x){if(x.ok){cl.remove();if(op)op.hidden=true;var m=$('.fd-meta',card);if(m){var s=document.createElement('span');s.textContent='closed';m.appendChild(s)}tip('Closed. It stays in the feed, marked closed.')}else tip(x.j.error||'Could not close')})});
+var de=$('[data-delete]',card);if(de)de.addEventListener('click',function(){$$('[role=menuitem]',op).forEach(function(b){b.hidden=true});cf.hidden=false;$('[data-yes]',cf).focus()});
+if(de){$('[data-no]',cf).addEventListener('click',function(){cf.hidden=true;op.hidden=true});$('[data-yes]',cf).addEventListener('click',function(){api('/v1/posts/'+pid+'/delete',{}).then(function(x){if(x.ok){if(location.pathname.indexOf('/feed/p/')===0){location.href='/feed';return}card.remove();tip('Deleted')}else tip(x.j.error||'Could not delete')})})}
 var rp=$('[data-report]',card);if(rp)rp.addEventListener('click',function(){if(rp.getAttribute('data-sure')!=='1'){rp.setAttribute('data-sure','1');rp.textContent='Report it?';return}api('/v1/posts/'+pid+'/report',{reason:'reported from the feed'}).then(function(x){if(x.ok){rp.textContent='Reported';rp.disabled=true;tip('Thanks. We will take a look.')}})})}
 $$('.fd-post').forEach(wire);
 // the composer: two big choices, optional chips, one text box
@@ -623,15 +629,16 @@ else matchesInto(nm,x.j.matches||[],x.j.post.id);nm.scrollIntoView({behavior:cal
 $$('[data-answer]').forEach(function(b){b.addEventListener('click',function(){var row=b.closest('[data-waiting]');api('/v1/posts/'+row.getAttribute('data-post')+'/answer',{from:row.getAttribute('data-from'),yes:b.getAttribute('data-answer')==='yes'}).then(function(x){if(x.ok){row.querySelector('.acts').textContent=x.j.state==='friends'?'You are now friends':'Closed';tip(x.j.state==='friends'?'Connected':'Closed')}else tip(x.j.error||'Could not answer')})})});
 // older items
 var more=$('[data-more]');if(more)more.addEventListener('click',function(){var last=$$('.fd-list > [data-ts], .fd-list > article').pop();var before=last?(last.getAttribute('data-ts')||last.querySelector('time').getAttribute('datetime')):'';more.disabled=true;
-api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type'))+'&before='+encodeURIComponent(before)).then(function(x){more.disabled=false;if(!x.ok)return;var tmp=document.createElement('div');tmp.innerHTML=x.j.html||'';var n=0;while(tmp.firstElementChild){var el=tmp.firstElementChild;$('.fd-list').appendChild(el);if(el.classList.contains('fd-post'))wire(el);n++}if(!n||!x.j.more)more.parentNode.remove()})})})();</script>`;
+api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type'))+'&author='+encodeURIComponent(more.getAttribute('data-author')||'')+'&before='+encodeURIComponent(before)).then(function(x){more.disabled=false;if(!x.ok)return;var tmp=document.createElement('div');tmp.innerHTML=x.j.html||'';var n=0;while(tmp.firstElementChild){var el=tmp.firstElementChild;$('.fd-list').appendChild(el);if(el.classList.contains('fd-post'))wire(el);n++}if(!n||!x.j.more)more.parentNode.remove()})})})();</script>`;
 
   function youHtml(meId: string) {
     const n = noticesFor(meId, new Date(Date.now() - 14 * DAY).toISOString()); if (!n.waiting.length && !n.recs.length) return "";
     const recs = n.recs.slice(0, 3).map(r => `<div class="fd-m"><div class="t"><b>${esc(r.text)}</b><small>Recommended for people like you &middot; <a href="${esc(r.url)}">see it</a></small></div></div>`).join("");
     return `<section class="fd-card fd-you" aria-label="For you"><h2>For you</h2>${n.waiting.slice(0, 6).map(w => `<div class="fd-m" data-waiting data-post="${esc(w.post)}" data-from="${esc(w.from.handle)}"><div class="t"><b>${esc(w.kind === "help" ? `@${w.from.handle} can help with your post` : w.text)}</b><small>${w.kind === "help" ? "Accept to connect" : "Sent to you because you match. Accept to connect"} &middot; <a href="${esc(w.url)}">see the post</a></small></div><span class="acts"><button type="button" class="fd-btn pri" data-answer="yes">Accept</button> <button type="button" class="fd-btn" data-answer="no">Not now</button></span></div>`).join("")}${recs}</section>`;
   }
-  function feedPage(res: http.ServerResponse, type: string, me: string | null) {
-    const t = FILTER[type] ? type : "all", items = page(t, "", me), meH = me ? c.profile(me)?.handle || "" : "";
+  function feedPage(res: http.ServerResponse, type: string, me: string | null, authorIn = "") {
+    const ap = authorIn ? c.byHandle(authorIn) : null, author = ap && visible(ap) ? ap.handle as string : "";
+    const t = FILTER[type] ? type : "all", items = page(t, "", me, 30, author), meH = me ? c.profile(me)?.handle || "" : "";
     const tabs = [["all", "All"], ["posts", "Asks"], ["recommends", "Recommends"], ["members", "New members"], ["cities", "Cities"], ["kudos", "Kudos"]].map(([k, l]) => `<a href="/feed${k === "all" ? "" : "?type=" + k}"${k === t ? ' aria-current="page"' : ""}>${l}</a>`).join("");
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Feed - Caldera</title>
 <meta name="description" content="What's happening on Caldera: new members, new cities, kudos, and what people are looking for."><link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -639,8 +646,8 @@ api('/v1/feed?format=html&type='+encodeURIComponent(more.getAttribute('data-type
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><main class="fd">
 <h1>Feed</h1><p class="lede">What's happening across Caldera, and what people are looking for. Post an ask and it goes to the people who fit.</p>
 ${me ? youHtml(me) + composerHtml() : SIGNIN("/feed")}
-<nav class="fd-tabs" aria-label="Filter the feed">${tabs}</nav><div class="fd-list">${items.map(i => itemHtml(i, me)).join("") || `<p class="fd-empty">Nothing here yet.</p>`}</div>
-${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn" data-more data-type="${t}">Show older</button></div>` : ""}
+${author ? `<p class="fd-shared">Showing posts and activity from <a href="/@${esc(author)}/">@${esc(author)}</a>. <a href="/feed">Show everyone</a></p>` : ""}<nav class="fd-tabs" aria-label="Filter the feed">${tabs}</nav><div class="fd-list">${items.map(i => itemHtml(i, me)).join("") || `<p class="fd-empty">Nothing here yet.</p>`}</div>
+${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn" data-more data-type="${t}" data-author="${esc(author)}">Show older</button></div>` : ""}
 </main>${SCRIPT(me, meH)}</body></html>`;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: "Cookie" });
     res.end(c.navify(html, "/feed"));
@@ -664,7 +671,7 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
   // ---------------------------------------------------------------- routes
   const cards = new Map<string, { at: number; png: Buffer }>();
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
-    if (req.method === "GET" && (p === "/feed" || p === "/feed/")) { feedPage(res, url.searchParams.get("type") || "all", c.memberOf(req)); return true; }
+    if (req.method === "GET" && (p === "/feed" || p === "/feed/")) { feedPage(res, url.searchParams.get("type") || "all", c.memberOf(req), String(url.searchParams.get("author") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31)); return true; }
     let m = p.match(/^\/feed\/p\/([0-9a-f]{12})(\.png)?$/);
     if (req.method === "GET" && m) {
       if (!m[2]) { postPage(res, m[1], c.memberOf(req), String(url.searchParams.get("invite") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31)); return true; }
@@ -675,7 +682,8 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
       res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=3600" }); res.end(hit.png); return true;
     }
     if (req.method === "GET" && p === "/v1/feed") {
-      const me = c.memberOf(req), t = url.searchParams.get("type") || "all", items = page(FILTER[t] ? t : "all", url.searchParams.get("before") || "", me);
+      const me = c.memberOf(req), t = url.searchParams.get("type") || "all", au = String(url.searchParams.get("author") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+      const items = page(FILTER[t] ? t : "all", url.searchParams.get("before") || "", me, 30, au);
       if (url.searchParams.get("format") === "html") { c.json(res, 200, { html: items.map(i => itemHtml(i, me)).join(""), more: items.length >= 30 }); return true; }
       c.json(res, 200, { items, more: items.length >= 30 }); return true;
     }
@@ -699,6 +707,72 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
     return false;
   }
 
+  // ---------------------------------------------------------------- the profile activity card
+  /** On a member's profile: their posts (newest first), then their activity (joined, city, Obsidian, friendships, kudos),
+   *  one item at a time with ‹ › (swipe, arrow keys). Profiles are sandboxed, so actions go through the page's action token
+   *  (`/v1/act`): kudos and "I can help" for visitors, Close / Delete for the owner. Nothing when there's nothing to show. */
+  function profileCard(pr: any, o: { token: string | null; owner: boolean }): string {
+    if (!pr?.handle || !visible(pr)) return "";
+    const h = pr.handle as string, all = activity();
+    const posts = (q("SELECT * FROM posts WHERE author=? AND status<>'hidden' ORDER BY ts DESC LIMIT 20").all(pr.id) as any[]).map(r => postView(r, null));
+    const acts = all.filter(i => i.kind !== "post" && i.kind !== "rec" && i.kind !== "release" && i.kind !== "kudos" && (i.who?.handle === h || i.other?.handle === h)).slice(0, 12);
+    const given = (q("SELECT COUNT(*) n FROM kudos WHERE sender=?").get(pr.id) as any).n as number, got = (q("SELECT COUNT(*) n FROM kudos WHERE recipient=?").get(pr.id) as any).n as number;
+    if (!posts.length && !acts.length && !given && !got) return "";
+    const items: string[] = [];
+    for (const v of posts) {
+      const f = v.fields as PostFields, rec = f.type === "recommend";
+      const sent = v.sentence.map(([t, slot]: [string, boolean]) => slot ? `<span class="pc-slot">${esc(t)}</span>` : esc(t)).join("");
+      const end = /[.!?]$/.test(v.sentence.map((x: any) => x[0]).join("")) ? "" : ".";
+      const kd = Object.entries(POST_KUDOS).map(([k, em]) => `<button type="button" class="pc-k" data-k="${k}" aria-label="Send ${em}">${em}<i>${v.kudos[k] || ""}</i></button>`).join("");
+      const e2 = encodeURIComponent, share = `<span class="pc-menu"><button type="button" class="pc-b" data-share>Share</button><span class="pc-pop" hidden>`
+        + [["Post on X", `https://twitter.com/intent/tweet?text=${e2(v.text)}&url=${e2(v.url)}`], ["Share on LinkedIn", `https://www.linkedin.com/sharing/share-offsite/?url=${e2(v.url)}`], ["Post on Bluesky", `https://bsky.app/intent/compose?text=${e2(v.text + " " + v.url)}`], ["Open the post", v.url]]
+          .map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("") + `</span></span>`;
+      const ownMenu = o.owner ? `<span class="pc-menu"><button type="button" class="pc-b pc-dots" data-own aria-label="More for your post" title="More">&#8943;</button><span class="pc-pop" hidden>${v.status === "open" ? `<button type="button" data-close>Close (mark done)</button>` : ""}<button type="button" data-delete>Delete</button><span class="pc-confirm" hidden>Delete this post? <button type="button" data-yes>Yes</button> <button type="button" data-no>Cancel</button></span></span></span>` : "";
+      const acts2 = o.owner ? ownMenu : `<span class="pc-kd" role="group" aria-label="Kudos">${kd}</span>${!rec && v.status === "open" ? `<button type="button" class="pc-b pri" data-help>I can help</button>` : ""}`;
+      items.push(`<div class="pc-item" data-post="${esc(v.id)}"><div class="pc-kind">${rec ? "&#128161; Recommends" : "&#128587; Looking for"}${v.status === "closed" ? ` &middot; closed` : ""}</div><p class="pc-sent">@${esc(h)} ${sent}${end}</p>${f.link ? `<a class="pc-link" href="${esc(f.link)}" target="_blank" rel="noopener noreferrer nofollow ugc">${esc(hostOf(f.link))} &#8599;</a>` : ""}<div class="pc-acts">${acts2}${share}<time datetime="${esc(v.ts)}">${ago(v.ts)}</time></div></div>`);
+    }
+    const ic: Record<string, string> = { join: "&#128075;", city: "&#127961;&#65039;", obsidian: "&#128142;", friends: "&#129309;" };
+    for (const i of acts) {
+      const other = i.who?.handle === h ? i.other : i.who;
+      const t = i.kind === "join" ? `Joined Caldera${i.via ? ` with ${esc(i.via)}` : ""}` : i.kind === "city" ? `Their city went up. <a href="${esc(hub)}/@${esc(h)}/city.html">Walk the city</a>` : i.kind === "obsidian" ? "Connected Obsidian"
+        : i.kind === "friends" && other ? `Became friends with <a href="${esc(hub)}/@${esc(other.handle)}/">${esc(other.name || "@" + other.handle)}</a>` : "";
+      if (t) items.push(`<div class="pc-item"><div class="pc-kind">${ic[i.kind] || "&#8226;"} Activity</div><p class="pc-sent">${t}</p><div class="pc-acts"><time datetime="${esc(i.ts)}">${ago(i.ts)}</time></div></div>`);
+    }
+    if (given || got) items.push(`<div class="pc-item"><div class="pc-kind">&#10024; Kudos</div><p class="pc-sent">Sent ${given} kudos &middot; received ${got}</p></div>`);
+    const n = items.length;
+    return `<style>.pc{margin:14px 0 22px;border:1px solid var(--line,#2A2A2E);border-radius:14px;background:var(--bg-raised,#1C1C21);padding:14px 16px 12px;font:15px/1.5 var(--font-body,var(--font-sans,'IBM Plex Sans',Arial,sans-serif));color:var(--text,#D6D6DC)}
+.pc [hidden]{display:none!important}.pc-head{display:flex;align-items:center;gap:10px;margin:0 0 8px}.pc-head h3{margin:0;flex:1;font:600 13px 'IBM Plex Sans',Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#8A8A93)}
+.pc-nav{display:inline-flex;align-items:center;gap:6px}.pc-nav button{all:unset;box-sizing:border-box;cursor:pointer;width:30px;height:30px;display:inline-grid;place-items:center;border-radius:999px;border:1px solid var(--line,#2A2A2E);color:var(--text-strong,#F2F2F5);font-size:16px}.pc-nav button:disabled{opacity:.35;cursor:default}.pc-nav button:focus-visible,.pc:focus-visible{outline:2px solid var(--accent,#8B6CF6);outline-offset:2px}
+.pc-count{font:500 12.5px 'IBM Plex Mono',monospace;color:var(--text-muted,#8A8A93);min-width:44px;text-align:center}
+.pc-track{overflow:hidden;touch-action:pan-y}.pc-item{animation:pcin .25s ease-out}@keyframes pcin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.pc-kind{font-size:12.5px;color:var(--text-muted,#8A8A93);margin:0 0 4px}.pc-sent{margin:0 0 8px;color:var(--text-strong,#F2F2F5);font-size:16px}.pc-sent a{color:var(--accent-text,#B9A6FF)}.pc-slot{color:var(--accent-text,#B9A6FF);font-weight:600}
+.pc-link{display:inline-block;margin:0 0 8px;font-size:13.5px;color:var(--accent-text,#B9A6FF);text-decoration:none}
+.pc-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.pc-acts time{margin-left:auto;font-size:12.5px;color:var(--text-muted,#8A8A93)}
+.pc-kd{display:inline-flex;gap:2px;padding:1px;border-radius:999px;border:1px solid var(--line,#2A2A2E)}.pc-k{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 8px;border-radius:999px;font-size:14px}.pc-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:var(--text-muted,#B8B8C2);margin-left:3px}.pc-k:hover:not(:disabled){background:var(--bg-sunken,#2A2636)}.pc-k:disabled{opacity:.55;cursor:default}.pc-k.on{opacity:1;background:var(--accent-soft,#3A2F5C)}
+.pc-b{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line,#2A2A2E);font-size:13px;color:var(--text,#E6E6EA)}.pc-b.pri{border-color:var(--accent,#8B6CF6);color:var(--text-strong,#F2F2F5);font-weight:600}.pc-dots{padding:0 10px;font-size:17px}
+.pc-menu{position:relative}.pc-pop{position:absolute;z-index:30;bottom:calc(100% + 6px);left:0;min-width:180px;padding:6px;border-radius:12px;border:1px solid var(--line,#2A2A2E);background:var(--bg-raised,#18171D);box-shadow:0 12px 30px rgba(0,0,0,.35);display:flex;flex-direction:column}.pc-pop a,.pc-pop>button{all:unset;cursor:pointer;padding:8px 10px;border-radius:8px;font-size:14px;color:var(--text,#E6E6EA)}.pc-pop a:hover,.pc-pop>button:hover{background:var(--bg-sunken,#26232F)}
+.pc-confirm{padding:8px 10px;font-size:14px}.pc-confirm button{all:unset;cursor:pointer;display:inline-flex;margin:6px 6px 0 0;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#2A2A2E)}.pc-confirm [data-yes]{background:#E5484D;border-color:#E5484D;color:#fff}
+.pc-foot{display:flex;justify-content:flex-end;margin-top:10px;font-size:13.5px}.pc-foot a{color:var(--accent-text,#B9A6FF);text-decoration:none}.pc-tip{position:fixed;z-index:99;left:50%;bottom:20px;transform:translateX(-50%);padding:8px 13px;border-radius:10px;background:#18171D;color:#F2F2F5;font-size:13.5px;border:1px solid #2E2A40}
+@media (prefers-reduced-motion:reduce){.pc-item{animation:none}}</style>
+<section class="pc" tabindex="0" aria-roledescription="carousel" aria-label="@${esc(h)}'s posts and activity" data-api="${esc(hub)}"${o.token ? ` data-act="${esc(o.token)}"` : ""}><div class="pc-head"><h3>Posts &amp; activity</h3><span class="pc-nav"><button type="button" data-prev aria-label="Previous">&#8249;</button><span class="pc-count" aria-live="polite">1 / ${n}</span><button type="button" data-next aria-label="Next">&#8250;</button></span></div>
+<div class="pc-track">${items.map((x, i) => i ? x.replace('<div class="pc-item"', '<div class="pc-item" hidden') : x).join("")}</div>
+<div class="pc-foot"><a href="${esc(hub)}/feed?author=${encodeURIComponent(h)}" target="_blank" rel="noopener">See all in Feed &#8594;</a></div></section>
+<script>(function(){var S=document.querySelector('section.pc');if(!S)return;var it=[].slice.call(S.querySelectorAll('.pc-item')),i=0,cnt=S.querySelector('.pc-count'),pv=S.querySelector('[data-prev]'),nx=S.querySelector('[data-next]'),api=S.getAttribute('data-api'),t=S.getAttribute('data-act');
+function show(k){if(k<0||k>=it.length)return;it[i].hidden=true;i=k;it[i].hidden=false;cnt.textContent=(i+1)+' / '+it.length;pv.disabled=i===0;nx.disabled=i===it.length-1}show(0);
+pv.addEventListener('click',function(){show(i-1)});nx.addEventListener('click',function(){show(i+1)});S.addEventListener('keydown',function(e){if(e.target.closest&&e.target.closest('input,textarea'))return;if(e.key==='ArrowLeft'){show(i-1);e.preventDefault()}if(e.key==='ArrowRight'){show(i+1);e.preventDefault()}});
+var x0=null;S.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});S.addEventListener('touchend',function(e){if(x0==null)return;var d=e.changedTouches[0].clientX-x0;x0=null;if(Math.abs(d)>40)show(d<0?i+1:i-1)});
+function tip(m){var p=document.createElement('div');p.className='pc-tip';p.textContent=m;document.body.appendChild(p);setTimeout(function(){p.remove()},2400)}
+function post(o){if(!t){tip('Sign in to do that');return Promise.resolve({ok:false,j:{}})}o.t=t;return fetch(api+'/v1/act',{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,status:r.status,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera.'}}})}
+document.addEventListener('click',function(e){[].forEach.call(S.querySelectorAll('.pc-pop'),function(p){if(!p.parentNode.contains(e.target))p.hidden=true})});
+it.forEach(function(el){var pid=el.getAttribute('data-post');if(!pid)return;
+[].forEach.call(el.querySelectorAll('[data-share],[data-own]'),function(b){b.addEventListener('click',function(){var p=b.parentNode.querySelector('.pc-pop');p.hidden=!p.hidden;var c=p.querySelector('.pc-confirm');if(c){c.hidden=true;[].forEach.call(p.querySelectorAll(':scope>button'),function(x){x.hidden=false})}})});
+var ks=[].slice.call(el.querySelectorAll('.pc-k'));ks.forEach(function(b){b.addEventListener('click',function(){ks.forEach(function(x){x.disabled=true});post({action:'post-kudos',post:pid,kind:b.getAttribute('data-k')}).then(function(x){if(x.ok){b.classList.add('on');var n=b.querySelector('i');n.textContent=String((parseInt(n.textContent,10)||0)+1);tip('Kudos sent')}else{tip(x.j.error||'Could not send');if(x.status!==409)ks.forEach(function(y){y.disabled=false})}})})});
+var hp=el.querySelector('[data-help]');if(hp)hp.addEventListener('click',function(){post({action:'post-help',post:pid}).then(function(x){if(x.ok){hp.textContent='Offered to help';hp.disabled=true;tip('Sent. They can accept to connect with you.')}else tip(x.j.error||'Could not send')})});
+var cl=el.querySelector('[data-close]');if(cl)cl.addEventListener('click',function(){post({action:'post-close',post:pid}).then(function(x){if(x.ok){cl.remove();el.querySelector('.pc-kind').insertAdjacentText('beforeend',' · closed');tip('Closed. It stays visible, marked closed.')}else tip(x.j.error||'Could not close')})});
+var de=el.querySelector('[data-delete]');if(de){var cf=el.querySelector('.pc-confirm');de.addEventListener('click',function(){[].forEach.call(de.parentNode.querySelectorAll(':scope>button'),function(x){x.hidden=true});cf.hidden=false});
+cf.querySelector('[data-no]').addEventListener('click',function(){cf.parentNode.hidden=true});cf.querySelector('[data-yes]').addEventListener('click',function(){post({action:'post-delete',post:pid}).then(function(x){if(!x.ok){tip(x.j.error||'Could not delete');return}var k=it.indexOf(el);el.remove();it.splice(k,1);if(!it.length){S.remove();return}i=Math.min(k,it.length-1);it[i].hidden=false;cnt.textContent=(i+1)+' / '+it.length;pv.disabled=i===0;nx.disabled=i===it.length-1;tip('Deleted')})})}})})();</script>`;
+  }
+
   // ---------------------------------------------------------------- operator tools (admin.js)
   const admin = {
     postsList: () => (q("SELECT p.id, p.type, p.status, p.ts, pr.handle, (SELECT COUNT(*) FROM post_reports r WHERE r.post=p.id) reports FROM posts p LEFT JOIN profiles pr ON pr.id=p.author ORDER BY reports DESC, p.ts DESC LIMIT 200").all() as any[])
@@ -714,5 +788,5 @@ ${items.length >= 30 ? `<div class="fd-more"><button type="button" class="fd-btn
     for (const sql of ["DELETE FROM post_links WHERE src=? OR dst=?", "DELETE FROM post_kudos WHERE sender=?", "DELETE FROM post_reports WHERE reporter=?", "DELETE FROM post_bans WHERE member=?"]) { const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id)); }
     cache = null;
   }
-  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, invalidate: () => { cache = null; } };
+  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, profileCard, closePost, postRow, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, invalidate: () => { cache = null; } };
 }

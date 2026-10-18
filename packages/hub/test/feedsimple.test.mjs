@@ -38,7 +38,7 @@ before(async () => {
   base = "http://127.0.0.1:" + await hub.listen(0);
   for (const w of who) {
     const m = C.sign(ids[w], "profile.manifest", { name: w.toUpperCase(), handle: w, boxKey: ids[w].boxPublic, ...MANIFEST[w] });
-    await post(`/v1/profiles/${ids[w].id}/bundle`, { manifest: m, files: { "index.html": Buffer.from("<html><head></head><body><p>hi</p></body></html>").toString("base64") } });
+    await post(`/v1/profiles/${ids[w].id}/bundle`, { manifest: m, files: { "index.html": Buffer.from(`<html><head></head><body><h1 class="title">${w.toUpperCase()}</h1><p class="lede">${MANIFEST[w].headline}</p></body></html>`).toString("base64") } });
   }
 });
 after(() => { hub.server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -68,4 +68,42 @@ test("simple composer: one choice + free text; link lifted out; recommendations 
   for (const [, js] of feedHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(js), "the page's script compiles");
   const anon = await (await fetch(base + "/feed")).text();
   for (const [, js] of anon.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(js), "the signed-out page's script compiles");
+});
+
+test("own posts: ... menu with Close and Delete (inline confirm); delete takes the post's notices; authors only", async () => {
+  const r = await as("ana", "/v1/posts", { type: "feedback", text: "honest feedback on my onboarding flow please" });
+  assert.equal(r.status, 200); const id = r.body.post.id;
+  assert.match(r.body.html, /data-own[\s\S]*data-close[\s\S]*data-delete[\s\S]*Delete this post\?[\s\S]*data-yes/, "menu with inline confirm");
+  assert.equal((await as("bo", "/v1/posts/" + id + "/kudos", { kind: "fire" })).status, 200);
+  const n = () => hub.db.prepare("SELECT COUNT(*) n FROM alerts WHERE cta_url LIKE ?").get(`%/feed/p/${id}%`).n;
+  assert.ok(n() >= 1, "the author got a kudos notice");
+  assert.equal((await as("bo", "/v1/posts/" + id + "/delete", {})).status, 404, "not the author");
+  assert.equal((await as("ana", "/v1/posts/" + id + "/delete", {})).status, 200);
+  assert.equal(hub.db.prepare("SELECT COUNT(*) n FROM posts WHERE id=?").get(id).n, 0);
+  assert.equal(hub.db.prepare("SELECT COUNT(*) n FROM post_kudos WHERE post=?").get(id).n, 0);
+  assert.equal(n(), 0, "its notices are gone");
+});
+
+test("profile activity card: posts then activity, one at a time; owner gets Close/Delete via the owner token; visitors can't delete", async () => {
+  const anon = await (await fetch(base + "/@cy/")).text();
+  assert.match(anon, /class="pc"[\s\S]*Posts &amp; activity[\s\S]*1 \/ \d+/, "card with a counter");
+  assert.match(anon, /recommends: Claude Code/, "their post is in it");
+  assert.match(anon, /\/feed\?author=cy/, "See all in Feed");
+  assert.doesNotMatch(anon, /pc-dots" data-own/, "visitors get no owner menu");
+  for (const [, js] of anon.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(js), "scripts compile");
+  const ownHtml = await (await fetch(base + "/@cy/", { headers: { cookie: await ownerCookie("cy") } })).text();
+  assert.match(ownHtml, /pc-dots" data-own[\s\S]*Delete this post\?/, "owner menu");
+  const tok = ownHtml.match(/class="pc"[^>]*data-act="([^"]+)"/)[1], pid = ownHtml.match(/class="pc-item" data-post="([0-9a-f]{12})"/)[1];
+  const visitorHtml = await (await fetch(base + "/@cy/", { headers: { cookie: await ownerCookie("bo") } })).text();
+  const vtok = visitorHtml.match(/class="pc"[^>]*data-act="([^"]+)"/)[1];
+  const act = (t, o) => fetch(base + "/v1/act", { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ t, ...o }) }).then(r => r.status);
+  assert.equal(await act(vtok, { action: "post-delete", post: pid }), 403, "a visitor's token can't delete");
+  assert.equal(await act(vtok, { action: "post-kudos", post: pid, kind: "heart" }), 200, "a visitor can send kudos from the card");
+  assert.equal(await act(tok, { action: "post-close", post: pid }), 200, "owner closes");
+  assert.equal(hub.db.prepare("SELECT status FROM posts WHERE id=?").get(pid).status, "closed");
+  assert.equal(await act(tok, { action: "post-delete", post: pid }), 200, "owner deletes");
+  assert.equal(hub.db.prepare("SELECT COUNT(*) n FROM posts WHERE id=?").get(pid).n, 0);
+  const feed = await (await fetch(base + "/feed?author=bo")).text();
+  assert.match(feed, /Showing posts and activity from <a href="\/@bo\/">@bo<\/a>/);
+  assert.doesNotMatch(feed, /@cy is looking|>CY<\/a> recommends/, "only bo's items");
 });

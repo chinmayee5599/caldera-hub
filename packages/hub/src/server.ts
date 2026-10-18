@@ -1407,6 +1407,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags,
     tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, stackVocab: ext.tagVocab().stack, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "feed" }); },
+    dropNotices: (postId) => { const like = [`%${postId}%`, `%/feed/p/${postId}%`];
+      q("DELETE FROM alert_reads WHERE alert_id IN (SELECT id FROM alerts WHERE target IS NOT NULL AND (dkey LIKE ? OR cta_url LIKE ?))").run(...like);
+      q("DELETE FROM alerts WHERE target IS NOT NULL AND (dkey LIKE ? OR cta_url LIKE ?)").run(...like); },
     postCard: async (o) => toPng(postCardSvg({ ...o, host: hubUrl().replace(/^https?:\/\//, "") })),
     fetch: opts.githubFetch || fetch, ghToken: () => GH.anyToken(), hasRepos: (pr: any) => !!cityOf(pr.handle)?.buildings });
   // the feed's matching and posting policy is an open-core hook (public: exact tag overlap)
@@ -1560,7 +1563,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;
             const build = prS ? B.CHIP_CSS + B.chips(PUB(), prS, !!own, viewer && meV ? { me: meV, token: viewer.token } : null) : "";
-            html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build); }
+            // the profile's posts + activity card: visitors act with their member token, the owner with an owner token
+            const card = rel === "index.html" && prS ? FEED!.profileCard(prS, { token: own ? actToken(prS.id, hd) : viewer?.token || null, owner: !!own }) : "";
+            html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card); }
           const sum = own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "";
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar + sum) : bar + sum + html;
           res.writeHead(200, headers); return res.end(out);
@@ -1610,6 +1615,15 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (b.action === "kudos") { const r = sendKudos(me.id, to, String(b.kind || ""), "inline"); return json(res, r.status, r.body); }
         if (b.action === "friend" || b.action === "accept") { const r = friendAct(me.id, to); return json(res, r.status, r.body); }
         if (b.action === "intro") { const r = B.requestIntro(me.id, to); return json(res, r.status, r.body); }
+        // the profile's posts card: only posts by this page's owner; Close / Delete only with the owner's own token
+        if (/^post-(kudos|help|close|delete)$/.test(String(b.action))) {
+          const pid = String((b as any).post || ""), row = /^[0-9a-f]{12}$/.test(pid) ? FEED!.postRow(pid) : null;
+          if (!row || row.author !== to.id) return json(res, 404, { error: "not found" });
+          if (b.action === "post-kudos" || b.action === "post-help") { if (me.id === to.id) return json(res, 400, { error: "That's your own post." });
+            const r = b.action === "post-kudos" ? FEED!.kudosPost(me.id, pid, String(b.kind || "")) : FEED!.helpPost(me.id, pid); FEED!.invalidate(); return json(res, r.status, r.body); }
+          if (me.id !== to.id) return json(res, 403, { error: "Only the author can do that." });
+          const r = FEED!.closePost(me.id, pid, b.action === "post-delete"); FEED!.invalidate(); return json(res, r.status, r.body);
+        }
         return json(res, 400, { error: "unknown action" });
       }
       // the plugin picks up Add friend / Accept taps queued on the web, signs them with the vault's key and sends them
