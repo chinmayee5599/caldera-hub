@@ -92,7 +92,7 @@
     <div class="feature"><div class="k">02</div><h3>People, friends and groups</h3><p>Find people by what they build and write in <a href="/people">People</a>. Add friends, see who is new this week, and start a group at caldera.social/g/name to see everyone's cities side by side.</p></div>
     <div class="feature"><div class="k">03</div><h3>A living profile</h3><p>A page that updates itself: a daily journal you can flip through, an activity score, streaks, topics, and the notes you choose to share. Bring data from your calendar, email, git and AI tools.</p></div>
     <div class="feature"><div class="k">04</div><h3>Your AI work, visible</h3><p>Tokens by model and provider, read from your Claude Code and Codex logs, and your coding agents flying over the repos they are working in. The clearest sign of how you build with AI.</p></div>
-    <div class="feature"><div class="k">05</div><h3>Asks, offers and gravity</h3><p>Post what you could use help with and what you can help with. Put a bounty of help credits on an ask. No likes, no downvotes: give gravity to people who helped you. It fades over a month, so recent help counts most.</p></div>
+    <div class="feature"><div class="k">05</div><h3>Light up a city</h3><p>Everyone gets one gift a day to celebrate someone's city or repo. It shines on the world map for 24 hours, and every extra gift adds a searchlight. Builders with a similar stack are linked on the map too.</p></div>
     <div class="feature"><div class="k">06</div><h3>Open protocol</h3><p>Everything is signed. With Obsidian, your identity is a key that lives in your vault, not a password. The code is open: self-host your page or run your own hub.</p></div>
   </section>
 
@@ -130,19 +130,21 @@
   <section id="install" class="install">
     <div class="install-head">
       <p class="eyebrow">Get started</p>
-      <h2>Pick your door.</h2>
+      <h2>Sign up with GitHub. That's it.</h2>
     </div>
 
     <div class="gh-start">
       <div>
         <h3><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" class="gh-ic"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>With GitHub: one click</h3>
-        <ol class="gh-steps"><li>Sign in with GitHub.</li><li>Caldera builds your page and your city from your public repos.</li><li>Edit your name, headline, links and photo on your account page, and add private repos if you want them.</li></ol>
+        <ol class="gh-steps"><li>Sign in with GitHub.</li><li>Your page and your city are built and filled in for you: your name, an About paragraph, what you're working on, projects, topics and a timeline. Nothing to fill out.</li><li>Use Obsidian too? Connect it any time after.</li></ol>
         <p class="fine">Brand-new, empty GitHub accounts wait a few days before they can sign up. That keeps bots out.</p>
       </div>
       <a class="btn gh" href="/auth/github"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" class="gh-ic"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Sign up with GitHub</a>
         <p class="fine consent" style="margin-top:8px">By signing up you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
     </div>
 
+    <details class="obs-later" id="obsidian-setup">
+      <summary>Use Obsidian? Add your vault (optional, works before or after you sign up)</summary>
     <div class="install-head" id="obsidian">
       <h3 class="ob-h"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="gh-ic"><path fill="currentColor" opacity=".55" d="M12 1.5 4.5 7.2 6.4 18 12 22.5 17.6 18 19.5 7.2z"/><path fill="currentColor" d="M12 1.5 8.6 9.6 12 22.5 15.4 9.6z"/></svg>With Obsidian: one paste, your AI does the rest</h3>
       <p class="lead-in">Caldera is in Obsidian's community plugins: <a href="obsidian://show-plugin?id=caldera">open it in Obsidian</a> or <a href="https://community.obsidian.md/plugins/caldera" rel="noopener noreferrer" target="_blank">see the listing</a>. Or paste one prompt into Claude Code, Codex, Cursor or any AI agent that can edit files on your computer. <b>New to Obsidian?</b> That's fine: the prompt installs Obsidian (free) and sets up your first vault, too.</p>
@@ -318,12 +320,13 @@ When you finish, show me a short checklist of every source and feature - calenda
         <tr><td><code>caldera_headline</code>, <code>caldera_focus</code>, <code>caldera_wins</code> in a daily note named <code>YYYY-MM-DD</code></td><td>That day's journal entry</td></tr>
         <tr><td><code>Caldera/activity.json</code></td><td>Daily counts from outside tools (meetings, emails sent, commits, AI sessions) for your score</td></tr>
         <tr><td>Command: <b>Share this note with a friend</b></td><td>An encrypted copy in their vault, under <code>Caldera/Inbox/</code></td></tr>
-        <tr><td>Commands: <b>Post an ask</b> / <b>Post an offer</b></td><td>The help exchange on your profile and the hub</td></tr>
       </tbody>
     </table></div>
         <p class="fine">Publishing from a server or a scheduled job: the Caldera CLI in the repository (<code>packages/cli</code>, <code>caldera publish --vault /path/to/vault</code>) uses the same settings and identity.</p>
       </details>
     </div>
+    </details>
+    <script>(function(){var d=document.getElementById('obsidian-setup');function o(){if(/^#(obsidian|agent|richer|obsidian-setup)$/.test(location.hash)&&d)d.open=true}o();window.addEventListener('hashchange',o)})();</script>
   </section>
 
   <section id="faq" class="faq">

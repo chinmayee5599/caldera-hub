@@ -369,6 +369,9 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.equal(cb.status, 302); assert.equal(cb.headers.get("location"), "/me?welcome=1"); assert.ok(cookie);
   const pageHtml = await (await fetch(base + "/@octo-cat/", { headers: { "user-agent": "Mozilla/5.0" } })).text();
   assert.ok(pageHtml.includes("Octo Cat") && pageHtml.includes("synced from GitHub"), "profile rendered by the plugin's renderer");
+  // auto-filled from public GitHub: an About paragraph, facts and topics, with nothing typed in
+  assert.match(pageHtml, /has been on GitHub since/); assert.match(pageHtml, /At a glance/); assert.match(pageHtml, /Public repos/);
+  assert.doesNotMatch(pageHtml, /octo-cat\/forked/, "forked repos never named");
   const city = await (await fetch(base + "/@octo-cat/city.html")).text();
   assert.ok(city.includes('"name":"web"') && city.includes("TypeScript") && !city.includes("forked"), "city from public, non-fork repos");
   // just claimed: straight to the city (the "aha"), with one short welcome line; settings stay one tap away

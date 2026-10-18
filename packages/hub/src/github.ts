@@ -183,6 +183,38 @@ export function github(ctx: GhCtx) {
     return null;
   };
 
+  /** A complete page from public GitHub alone, so a new member lands on a filled-in profile, not an empty form: a headline,
+   *  an About paragraph, facts, what they're working on now (repos pushed in the last two weeks), topics (repo topics and
+   *  languages) and a timeline (joined GitHub, then their most-starred repos by year). Public repos only: private ones
+   *  are never named. Anything the member writes on their account page wins. */
+  function autofill(me: any, pub: any[], stats: Record<string, { commits: number; week: number }>, langs: string[], name: string) {
+    const link = (r: any) => `[[${r.name}|${r.html_url}]]`, plural = (n: number, w: string) => `${n.toLocaleString("en-US")} ${w}${n === 1 ? "" : "s"}`;
+    const since = String(me.created_at || "").slice(0, 4), stars = pub.reduce((a, r) => a + (Number(r.stargazers_count) || 0), 0);
+    const recent = pub.filter(r => Date.parse(r.pushed_at) > Date.now() - 14 * DAY).sort((a, b) => (stats[b.full_name]?.week || 0) - (stats[a.full_name]?.week || 0) || Date.parse(b.pushed_at) - Date.parse(a.pushed_at));
+    const starred = pub.filter(r => r.stargazers_count > 0).sort((a, b) => b.stargazers_count - a.stargazers_count);
+    const busiest = pub.slice().sort((a, b) => (stats[b.full_name]?.commits || 0) - (stats[a.full_name]?.commits || 0)).filter(r => stats[r.full_name]?.commits);
+    const lj = (xs: string[]) => xs.length > 1 ? xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1] : xs[0] || "";
+    const headline = `${langs.length ? lj(langs.slice(0, 2)) + " developer" : "Developer"}${me.location ? ` in ${String(me.location).slice(0, 40)}` : ""}`;
+    const first = String(name).split(/\s+/)[0] || me.login;
+    const parts = [`${first} has been on GitHub since ${since || "a while"}, with ${plural(pub.length, "public repo")}${stars ? ` and ${plural(stars, "star")} across them` : ""}.`];
+    const show = (recent.length ? recent : busiest).slice(0, 2);
+    if (show.length) parts.push(`${recent.length ? "Lately busiest on" : "Busiest on"} ${show.map(r => link(r) + (r.description ? ` (${String(r.description).replace(/[|\[\]]/g, " ").trim().slice(0, 70)})` : "")).join(" and ")}.`);
+    if (starred[0] && !show.includes(starred[0])) parts.push(`Best known for ${link(starred[0])}, with ${plural(starred[0].stargazers_count, "star")}.`);
+    if (langs.length) parts.push(`Writes mostly ${lj(langs.slice(0, 3))}.`);
+    const properties = ([["Location", me.location || ""], ["Company", me.company || ""], ["On GitHub since", since], ["Public repos", pub.length ? String(pub.length) : ""],
+      ["Stars earned", stars ? stars.toLocaleString("en-US") : ""], ["Followers", me.followers ? Number(me.followers).toLocaleString("en-US") : ""], ["Top languages", langs.slice(0, 3).join(", ")]] as [string, string][]).filter(x => x[1]);
+    const now = recent.slice(0, 3).map(r => `Working on ${link(r)}${r.description ? `: ${String(r.description).replace(/[|\[\]]/g, " ").trim().slice(0, 110)}` : ""}`);
+    const tc = new Map<string, number>();
+    for (const r of pub) for (const t of (Array.isArray(r.topics) ? r.topics : [])) tc.set(String(t), (tc.get(String(t)) || 0) + 1);
+    for (const r of pub) if (r.language) tc.set(String(r.language), (tc.get(String(r.language)) || 0) + 1);
+    const topics = [...tc.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18) as [string, number][];
+    const timeline: [string, string][] = since ? [[since, "Joined GitHub"]] : [];
+    const firstRepo = pub.slice().sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+    const picks = [...new Set([firstRepo, ...starred.slice(0, 5), ...busiest.slice(0, 2)].filter(Boolean))].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    for (const r of picks) timeline.push([String(r.created_at).slice(0, 4), `${r === firstRepo ? "First public repo: " : "Started "}${link(r)}${r.description || r.stargazers_count ? ` | ${String(r.description || "").replace(/[|\[\]]/g, " ").trim().slice(0, 120)}${r.stargazers_count ? `${r.description ? " " : ""}(${plural(r.stargazers_count, "star")})` : ""}` : ""}`]);
+    return { headline, summary: parts.join(" "), properties, now, topics, timeline };
+  }
+
   async function build(acct: any): Promise<string> {
     const token = await tokenFor(acct), me = await gh(token, "/user") as any, edits = JSON.parse(acct.edits || "{}"), cache = JSON.parse(acct.cache || "{}");
     const own: any[] = [];
@@ -214,6 +246,7 @@ export function github(ctx: GhCtx) {
     const total = counted.reduce((a, r) => a + r.commits, 0), langs = [...new Set(counted.map(r => r.language).filter(l => l !== "Other"))].slice(0, 6);
     const weekly = Array.from({ length: 12 }, (_, i) => counted.reduce((a, r) => a + (r.weeks[i] || 0), 0));
     const handle = acct.handle as string, name = String(edits.name || me.name || me.login).slice(0, 80);
+    const auto = autofill(me, own.filter(r => !r.fork && !r.private && !r.archived), stats, langs, name);
     const links: [string, string][] = [["GitHub", me.html_url]];
     if (me.blog) links.push(["Website", /^https?:\/\//.test(me.blog) ? me.blog : "https://" + me.blog]);
     if (me.twitter_username) links.push(["X", "https://x.com/" + me.twitter_username]);
@@ -226,11 +259,12 @@ export function github(ctx: GhCtx) {
     let banner: string | undefined;
     if (upBanner) { files[`img/banner.${upBanner.ext}`] = fs.readFileSync(upBanner.file); banner = `img/banner.${upBanner.ext}`; }
     const p: ProfileData = {
-      name, handle, headline: String(edits.headline || me.bio || `${me.login} on GitHub`).slice(0, 160), theme: "dark", avatar, banner, icon: avatar, links,
-      properties: [["Location", me.location || ""], ["Company", me.company || ""], ["On GitHub since", String(me.created_at || "").slice(0, 4)]].filter(x => x[1]) as [string, string][],
-      sections: { journal: false, scoreboard: true, properties: true, numbers: false, topics: false, notes: false, asks: false, social: true, links: true, sidebar: true, rail: false, city: true },
-      stats: { notes: 0, words: 0, links: 0, activeDays: daily.filter(d => (d.counts as any).commits).length }, topics: [], daily, publicNotes: [], asks: [], offers: [],
-      updated: new Date().toISOString(), hub: pub, summary: edits.summary ? String(edits.summary).slice(0, 1200) : undefined,
+      name, handle, headline: String(edits.headline || me.bio || auto.headline).slice(0, 160), theme: "dark", avatar, banner, icon: avatar, links,
+      properties: auto.properties,
+      sections: { journal: false, scoreboard: true, properties: true, numbers: false, topics: auto.topics.length > 0, notes: false, asks: false, social: true, links: true, sidebar: true, rail: false, city: true, timeline: auto.timeline.length > 1 },
+      stats: { notes: 0, words: 0, links: 0, activeDays: daily.filter(d => (d.counts as any).commits).length }, topics: auto.topics, daily, publicNotes: [], asks: [], offers: [],
+      updated: new Date().toISOString(), hub: pub, summary: edits.summary ? String(edits.summary).slice(0, 1200) : auto.summary,
+      now: auto.now.length ? auto.now : undefined, timeline: auto.timeline.length > 1 ? auto.timeline : undefined,
       code: { commits: total, repos: counted.length, languages: langs, weekly, url: me.html_url },
       projects: cityRepos.filter(r => r.public).sort((a, b) => b.commits - a.commits).slice(0, 6).map(r => ({ name: r.name, status: r.description || r.language, url: r.url || me.html_url, commits: r.commits })),
       city: pubCity, source: "GitHub",
@@ -333,10 +367,10 @@ ${sectionHead("connections", "Connections", "Green means it's working. Tap anyth
 ${sectionHead("alerts", "Alerts")}${alertsList(a.profile_id, "set")}
 ${sectionHead("page", "Your page")}<div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span></div>
 ${finishCard(a)}
-<form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Edit your page</b>
+<form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Change anything</b> <span class="mut">(optional: everything below is already filled in from GitHub)</span>
 <label for="n">Name</label><input type="text" id="n" name="name" maxlength="80" value="${esc(edits.name || pr?.name || "")}">
-<label for="h">Headline</label><input type="text" id="h" name="headline" maxlength="160" value="${esc(edits.headline || pr?.headline || "")}">
-<label for="s">About you</label><textarea id="s" name="summary" maxlength="1200">${esc(edits.summary || "")}</textarea>
+<label for="h">Headline</label><input type="text" id="h" name="headline" maxlength="160" value="${esc(edits.headline || "")}" placeholder="${esc(pr?.headline || "")} (from GitHub: type to replace)">
+<label for="s">About you</label><textarea id="s" name="summary" maxlength="1200" placeholder="Written from your GitHub automatically. Type your own to replace it.">${esc(edits.summary || "")}</textarea>
 <label for="l">Extra links <span class="mut">(one per line: Label | https://...)</span></label><textarea id="l" name="links">${esc(edits.links || "")}</textarea>
 <label for="g">Groups <span class="mut">(comma separated, like <code>producthunt</code>; each one is a town at caldera.social/g/name)</span></label><input type="text" id="g" name="groups" maxlength="200" value="${esc((edits.groups || []).join(", "))}">
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
@@ -395,7 +429,9 @@ ${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn 
   /** "Finish your page" on /me: the shared checklist, with uploads for the photo and masthead. */
   function finishCard(a: any): string {
     const st = ctx.social?.pageState?.(a.profile_id); if (!st) return "";
-    const items = C.pageChecklist(st), left = items.filter(i => !i.done);
+    // the headline, About, links and facts are written from GitHub automatically: only the truly optional extras are listed
+    const items = C.pageChecklist(st).filter(i => !["headline", "summary", "links", "group"].includes(i.id)), left = items.filter(i => !i.done);
+    if (!left.length) return "";
     const up = (kind: "photo" | "banner", label: string, ghost = false) => `<label class="btn small${ghost ? " ghost" : ""}" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${label}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${kind}" style="display:none"></label>`;
     const action: Record<string, string> = {
       photo: up("photo", "Upload a photo"), banner: `${up("banner", "Upload a masthead")} <span class="mut">Wide, about 3:1 (1800x600), up to 3 MB.</span>`,
@@ -403,8 +439,7 @@ ${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn 
       friend: `<a href="#friends">Add a friend</a>`, group: `<a href="#edit">Join a group</a> <span class="mut">(try <code>producthunt</code>)</span>`, email: `<a href="#email">Turn it on</a>`,
     };
     const removable = uploaded(a.gh_id, "banner") ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="remove-banner"><button class="btn small ghost" type="submit">Remove masthead</button></form>` : "";
-    return `<div class="card" id="finish"><b>Finish your page</b> <span class="mut">${items.length - left.length} of ${items.length} done</span>
-<div style="height:6px;border-radius:99px;background:var(--line,#2A2A2E);margin:8px 0 12px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round((items.length - left.length) / items.length * 100)}%;background:#8B6CF6"></i></div>
+    return `<div class="card" id="finish"><b>Your page is filled in from GitHub.</b> <span class="mut">Nothing else is needed. A few optional extras:</span>
 ${left.length ? left.map(i => `<div style="margin:10px 0"><b>${esc(i.label)}</b> <span class="mut">${esc(i.why)}</span><div class="row" style="margin-top:6px">${action[i.id] || ""}</div></div>`).join("") : `<p class="mut">Your page is complete. Nice.</p>`}
 <p class="mut" style="margin-top:10px">Done: ${items.filter(i => i.done).map(i => esc(i.label)).join(" &middot; ") || "nothing yet"}. Replace your photo or masthead any time.</p><div class="row">${up("photo", "New photo", true)} ${up("banner", "New masthead", true)} ${removable}</div>
 <p class="mut" id="up-status" role="status"></p></div>

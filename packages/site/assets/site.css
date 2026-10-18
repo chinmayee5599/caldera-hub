@@ -290,3 +290,11 @@ section h2 { line-height: 1.12; }
 .footer-big .fbase a { color: var(--text-muted); }
 @media (max-width: 900px) { .footer-big .fgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .footer-big .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 18px; } }
+
+/* Obsidian setup: optional, tucked under the one GitHub button */
+.obs-later { margin-top: 28px; border: 1px solid var(--line); border-radius: var(--radius-lg, 14px); padding: 0 18px; }
+.obs-later > summary { cursor: pointer; padding: 16px 0; font-weight: 600; color: var(--text-strong); list-style: none; }
+.obs-later > summary::-webkit-details-marker { display: none; }
+.obs-later > summary::before { content: "+"; display: inline-block; width: 1.2em; color: var(--accent-text); }
+.obs-later[open] > summary::before { content: "\2212"; }
+.obs-later[open] { padding-bottom: 18px; }
