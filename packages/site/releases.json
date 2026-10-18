@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.1",
+      "date": "2026-10-18",
+      "title": "Now updates itself",
+      "items": [
+        "Write now: auto in Caldera/profile.md, or leave the Now list empty, and Now shows your last week of wins from the daily journal. It refreshes every time your page publishes.",
+        "A Now list you wrote yourself stays exactly as written."
+      ]
+    },
+    {
       "version": "0.25.0",
       "date": "2026-10-18",
       "title": "Every section says where it comes from",
