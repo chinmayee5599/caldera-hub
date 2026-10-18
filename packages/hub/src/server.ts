@@ -21,6 +21,7 @@ import { building } from "./building";
 import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards";
 import { feed } from "./feed";
 import { messages } from "./messages";
+import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
@@ -1561,6 +1562,19 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge, left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
+  // caldera.social/gh/<login>: anyone's public GitHub as a city (and README badges for previews and members)
+  let ghMembers: { at: number; map: Map<string, string> } | null = null;
+  const memberOfLogin = (login: string): string | null => {
+    if (!ghMembers || Date.now() - ghMembers.at > 60_000) {
+      const map = new Map<string, string>();
+      for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]) { if (modOf(pr.handle, pr.id)) continue; for (const l of loginsOf(pr)) if (!map.has(l)) map.set(l, pr.handle); }
+      ghMembers = { at: Date.now(), map };
+    }
+    return ghMembers.map.get(login.toLowerCase()) || null;
+  };
+  const GHP = ghPreview({ dataDir: opts.dataDir, hub: () => hubUrl(), fetch: opts.githubFetch || fetch, token: () => GH.anyToken(), header: HEADER_MARK, tooMany, ipOf,
+    memberOf: memberOfLogin, memberCity: (h: string) => { const pr = byHandle(h); return pr && !modOf(pr.handle, pr.id) ? publicCityOf(h) : null; }, pause: opts.githubFetch ? 0 : 150 });
+
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     guardLinks(req, res, [], () => headerFor(req, (() => { try { return new URL(req.url || "/", "http://hub").pathname; } catch { return "/"; } })()));
@@ -1600,6 +1614,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
         return res.end(worldPage(worldNow(), { hub: opts.publicUrl || "https://caldera.social", nav: worldNav() }));
       }
+      if ((p === "/gh" || p.startsWith("/gh/")) && await GHP.route(req, res, url, p)) return;
+      { const mb = p.match(/^\/@([a-z0-9-]+)\/badge\.svg$/); if (req.method === "GET" && mb) { await GHP.memberBadge(res, mb[1], url.searchParams.get("style") === "card" ? "card" : "flat"); return; } }
       if (req.method === "GET" && p === "/world/preview.png") { const png = await worldPreview(); res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=600" }); return res.end(png); }
       const m0 = p.match(/^\/watch\/@([a-z0-9-]+)\/?$/);
       if (req.method === "GET" && m0) {
