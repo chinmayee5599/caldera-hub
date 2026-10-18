@@ -60,7 +60,9 @@ test("owner sees a Private view button on their own page only, and their visits 
   const { cookie } = await ownerCookie(ids.mike);
   const before = await views(ids.mike);
   const html = await (await page("mike", cookie)).text();
-  assert.match(html, /You're viewing your public page/); assert.match(html, /href="https:\/\/priv\.tailnet\.test\/@mike\/"[^>]*>&#128274; Private view</);
+  assert.match(html, /You're viewing your public page/); assert.match(html, /href="https:\/\/priv\.tailnet\.test\/@mike\/"[^>]*>&#128274;<span class="cb-v"> Private view</);
+  assert.match(html, /aria-current="page"[^>]*>&#127760;<span class="cb-v"> Public view/, "the switch shows Public view as current");
+  assert.match(html, /href="https:\/\/hub\.test\/signout\?h=mike">Sign out</);
   assert.doesNotMatch(html, /Get your own page/);
   assert.equal(await views(ids.mike), before, "owner views not counted");
   const other = await (await page("ana", cookie)).text();
@@ -82,8 +84,16 @@ test("stale page: only the owner sees 'Last updated N days ago'", async () => {
 
 test("plugin owner without a private address gets an Obsidian link; sign out clears it", async () => {
   const { cookie } = await ownerCookie(ids.ana);
-  assert.match(await (await page("ana", cookie)).text(), /href="obsidian:\/\/caldera\?open=private" target="_blank"[^>]*>&#128274; Private view in Obsidian/);
-  const out = await fetch(`${base}/v1/own/out?h=ana`, { headers: { cookie }, redirect: "manual" });
-  assert.equal(out.status, 302); assert.match(out.headers.get("set-cookie"), /^cal_own=; .*Max-Age=0/);
+  assert.match(await (await page("ana", cookie)).text(), /href="obsidian:\/\/caldera\?open=private" target="_blank"[^>]*>&#128274;<span class="cb-v"> Private view/);
+  const legacy = await fetch(`${base}/v1/own/out?h=ana`, { headers: { cookie }, redirect: "manual" });
+  assert.equal(legacy.status, 302); assert.equal(legacy.headers.get("location"), "/signout?h=ana", "old sign-out links go through /signout");
+  const ask = await (await fetch(`${base}/signout?h=ana`, { headers: { cookie } })).text();
+  assert.match(ask, /signed in as <b>@ana<\/b>/); assert.match(ask, /method="post"/);
+  assert.equal((await fetch(`${base}/signout?h=ana`, { method: "POST", headers: { cookie, origin: "https://evil.example" }, redirect: "manual" })).status, 403, "cross-site sign-out refused");
+  assert.match(await (await page("ana", cookie)).text(), /Private view/, "still signed in after the refused attempt");
+  const out = await fetch(`${base}/signout?h=ana`, { method: "POST", headers: { cookie, origin: "https://hub.test" }, redirect: "manual" });
+  assert.equal(out.status, 303); assert.equal(out.headers.get("location"), "/@ana/");
+  assert.match(out.headers.get("set-cookie"), /cal_own=; .*Max-Age=0/); assert.match(out.headers.get("set-cookie"), /cal_s=; .*Max-Age=0/);
   assert.doesNotMatch(await (await page("ana", cookie)).text(), /Private view/, "session deleted server-side");
+  assert.match(await (await fetch(`${base}/signout`, { headers: { cookie } })).text(), /You're signed out/);
 });

@@ -18,6 +18,8 @@ export interface DigestData {
   suggestions: { handle: string; name: string; why: string }[]; newMembers: { handle: string; name: string }[];
   /** days since a vault-published page last updated (3+), takes the place of the finish-your-page step */
   stale?: number;
+  /** kudos received since the last email, and the page's all-time views (one per visitor per day) */
+  kudos?: { handle: string; name: string; emoji: string }[]; viewsAll?: number;
   /** the one "finish your page" step to suggest, if any */
   nudge?: { label: string; why: string; how: string; url: string };
 }
@@ -107,6 +109,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const page = `${hub}/@${d.handle}/`, accept = d.hosted ? `${hub}/me` : "obsidian://caldera";
     const pl = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
     const subject = ascii(d.requests.length ? `Caldera: ${d.requests.length === 1 ? `@${d.requests[0]!.handle} wants to be friends` : `${d.requests.length} friend requests`}`
+      : d.kudos?.length ? `Caldera: ${d.kudos.length === 1 ? `@${d.kudos[0]!.handle} sent you kudos` : `${d.kudos.length} people sent you kudos`}`
       : d.visitors24 ? `Caldera: ${pl(d.visitors24, "person", "people")} viewed your page`
       : d.friends.length ? `Caldera: you and @${d.friends[0]!.handle} are now friends`
       : d.invited.length ? `Caldera: @${d.invited[0]!.handle} joined from your invite`
@@ -116,8 +119,10 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const H: string[] = [], T: string[] = [];
     const sec = (title: string, html: string, text: string) => { H.push(`<h2 style="margin:20px 0 6px;font:600 15px/1.3 -apple-system,Helvetica,Arial,sans-serif;color:#111113;text-transform:uppercase;letter-spacing:.04em">${title}</h2>${html}`); T.push(`${title.toUpperCase()}\n${text}`); };
     const who = (h: string, n: string) => `<a href="${esc(hub)}/@${esc(h)}/" style="color:#6E4FE0;text-decoration:none;font-weight:600">${esc(n || "@" + h)}</a> <span style="color:#8A8794">@${esc(h)}</span>`;
-    if (d.views7 || d.visitors24) sec("Your page", `<p style="margin:0"><b style="font-size:26px;color:#111113">${d.visitors24}</b> ${d.visitors24 === 1 ? "person" : "people"} in the last day (${d.views24} views) &middot; <b>${d.visitors7}</b> this week. <a href="${esc(page)}" style="color:#6E4FE0">See your page</a></p>`,
-      `${d.visitors24} people in the last day (${d.views24} views), ${d.visitors7} this week. ${page}`);
+    if (d.views7 || d.visitors24) sec("Your page", `<p style="margin:0"><b style="font-size:26px;color:#111113">${d.visitors24}</b> ${d.visitors24 === 1 ? "person" : "people"} in the last day (${d.views24} views) &middot; <b>${d.visitors7}</b> this week${d.viewsAll ? ` &middot; ${d.viewsAll.toLocaleString("en-US")} all time` : ""}. <a href="${esc(page)}" style="color:#6E4FE0">See your page</a></p>`,
+      `${d.visitors24} people in the last day (${d.views24} views), ${d.visitors7} this week${d.viewsAll ? `, ${d.viewsAll} all time` : ""}. ${page}`);
+    if (d.kudos?.length) sec("Kudos", `<p style="margin:0">${d.kudos.map(k => `<span style="font-size:18px">${esc(k.emoji)}</span> ${who(k.handle, k.name)}`).join("<br>")}</p>`,
+      d.kudos.map(k => `@${k.handle} sent kudos`).join("\n"));
     if (d.requests.length) sec("Friend requests", d.requests.map(r => `<p style="margin:6px 0">${who(r.handle, r.name)}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}</p>`).join("") + `<p style="margin:12px 0 0"><a href="${esc(accept)}" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Accept</a>${d.hosted ? "" : ` <span style="color:#8A8794;font-size:13px">(opens Obsidian; or open the Caldera panel)</span>`}</p>`,
       d.requests.map(r => `@${r.handle}${r.note ? `: "${r.note}"` : ""}`).join("\n") + `\nAccept: ${d.hosted ? accept : "open the Caldera panel in Obsidian"}`);
     if (d.friends.length) sec("New friends", `<p style="margin:0">${d.friends.map(f => who(f.handle, f.name)).join(" &middot; ")}</p>`, d.friends.map(f => "@" + f.handle).join(", "));

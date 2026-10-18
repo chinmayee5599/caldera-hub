@@ -28,7 +28,7 @@ export interface GhCtx {
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
     recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
-  owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean };
+  owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -84,7 +84,7 @@ export function github(ctx: GhCtx) {
     setCookie(res, "cal_s", t, 30 * 86400);
   };
   const redirect = (res: http.ServerResponse, to: string) => { res.writeHead(302, { location: to, "cache-control": "no-store" }); res.end(); };
-  const page = (res: http.ServerResponse, status: number, title: string, body: string) => {
+  const page = (res: http.ServerResponse, status: number, title: string, body: string, bar = "") => {
     res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex",
       "content-security-policy": "default-src 'self'; img-src 'self' https://avatars.githubusercontent.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self'; form-action 'self' https://github.com; frame-ancestors 'none'" });
     res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} · Caldera</title>
@@ -94,7 +94,7 @@ export function github(ctx: GhCtx) {
 .me label{display:block;font-weight:500;margin:10px 0 4px}.me input[type=text],.me textarea{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:8px 10px;font:inherit}
 .me textarea{min-height:84px}.me .mut{color:var(--text-muted,#9A9AA6);font-size:.92em}.me code,.me pre{font-family:'IBM Plex Mono',monospace;font-size:12px}.me pre{white-space:pre-wrap;word-break:break-all;background:var(--bg,#0E0B16);border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px;max-height:220px;overflow:auto}
 .me .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.me .who{display:flex;gap:14px;align-items:center}.me .who img{width:64px;height:64px;border-radius:50%}.me .danger{color:#F0716A}
-.me button.btn{cursor:pointer}</style></head><body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/gardens">Gardens</a><a href="/guide">Guide</a></nav></header><main class="me">${body}</main>
+.me button.btn{cursor:pointer}</style></head><body>${bar || `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header>`}<main class="me">${body}</main><script src="/assets/site.js" defer></script>
 <script>document.querySelectorAll('[data-copy-text]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-copy-text')).textContent;navigator.clipboard.writeText(t).then(function(){b.textContent='Copied'},function(){})})})</script></body></html>`);
   };
 
@@ -258,7 +258,7 @@ ${ak ? `<div class="card"><b>Your AI agents in the city</b><p class="mut">Paste 
 <div class="card"><b>Use Obsidian? Move this profile into your vault</b><p class="mut">Your vault adds the rest: a journal, your notes as a garden, the Underground under your city, and end-to-end encrypted sharing with friends. Install Caldera in Obsidian, then in its settings choose <i>Import a GitHub sign-up</i> and paste the code below. Your vault takes over the profile's key and the hub deletes its copy.</p>
 ${claim ? `<pre id="claim">${esc(claim)}</pre><span class="mut">Valid for 30 minutes.</span>` : `<form method="post"><input type="hidden" name="do" value="claim"><button class="btn small" type="submit">Get a code</button></form>`}</div>
 <div class="row"><form method="post"><input type="hidden" name="do" value="logout"><button class="btn small ghost" type="submit">Sign out</button></form>
-<form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>`);
+<form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>`, ctx.owner?.bar?.(a.profile_id) || "");
   }
 
   const photoPath = (pr: any) => { try { return String(JSON.parse(pr.manifest).body.photos?.avatar || "img/avatar.png").replace(/^\.?\//, ""); } catch { return "img/avatar.png"; } };
@@ -414,7 +414,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
         const f = new URLSearchParams(Buffer.concat(chunks).toString("utf8").slice(0, 20_000));
         const act = f.get("do");
-        if (act === "logout") { const t = cookies(req).cal_s; if (t) q("DELETE FROM gh_sessions WHERE token=?").run(hashTok(t)); setCookie(res, "cal_s", "", 0); redirect(res, "/"); return true; }
+        if (act === "logout") { redirect(res, "/signout"); return true; }
         if (act === "delete" && f.get("sure")) {
           const a = app(); try { if (a) { const t = JSON.parse(ctx.unseal(acct.token_sealed)).access; await F(`https://api.github.com/applications/${a.client_id}/grant`, { method: "DELETE", headers: { authorization: "Basic " + Buffer.from(a.client_id + ":" + a.client_secret).toString("base64"), accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "caldera-hub" }, body: JSON.stringify({ access_token: t }) }); } } catch { /* revoke is best effort */ }
           ctx.erase(acct.profile_id); fs.rmSync(upDir(acct.gh_id), { recursive: true, force: true }); q("DELETE FROM gh_sessions WHERE gh_id=?").run(acct.gh_id); q("DELETE FROM gh_accounts WHERE gh_id=?").run(acct.gh_id);
@@ -481,5 +481,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     return false;
   }
-  return { route, privateRoute, build, account, ghLoginsOf, configured: () => !!app() };
+  /** Sign this browser out of its GitHub session (used by /signout). */
+  const signOut = (req: http.IncomingMessage, res: http.ServerResponse) => { const t = cookies(req).cal_s; if (t) q("DELETE FROM gh_sessions WHERE token=?").run(hashTok(t)); setCookie(res, "cal_s", "", 0); };
+  return { route, privateRoute, build, account, ghLoginsOf, signOut, configured: () => !!app() };
 }

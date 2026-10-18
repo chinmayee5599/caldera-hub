@@ -85,3 +85,17 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     box.hidden = false;
   }).catch(function () {});
 })();
+
+/* account menu: when this browser is signed in to Caldera, "Sign in" in the nav becomes @handle with Your page / Private view / Sign out */
+(function () {
+  var link = document.querySelector('.nav nav a[href="/signin"]'); if (!link || !window.fetch) return;
+  fetch("/v1/session", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+    if (!s || !s.signedIn) return;
+    var d = document.createElement("details"); d.className = "nav-acct";
+    var sum = document.createElement("summary"); sum.textContent = "@" + s.handle + " \u25BE"; d.appendChild(sum);
+    var m = document.createElement("span"); m.className = "nav-menu";
+    [["Your public page", s.page], ["Private view", s["private"], s.privateExternal], ["Sign out", s.signout]].forEach(function (x) {
+      var a = document.createElement("a"); a.textContent = x[0]; a.href = x[1]; if (x[2]) { a.target = "_blank"; a.rel = "noopener"; } m.appendChild(a); });
+    d.appendChild(m); link.replaceWith(d);
+  }).catch(function () {});
+})();

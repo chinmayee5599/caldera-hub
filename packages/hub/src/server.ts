@@ -13,6 +13,7 @@ import * as C from "@caldera/core";
 import { github } from "./github";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
 import { emailer, type Mail } from "./email";
+import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
@@ -43,23 +44,55 @@ const DAY = 86_400_000;
 
 /** Platform bar injected at the top of every hosted profile: logo back to the hub + a sign-up call to action.
  *  Inline styles/SVG only (the profile CSP allows inline styles and blocks external resources). */
-function calderaBar(hub: string, handle: string, own?: { href: string; label: string; external?: boolean; stale?: number }): string {
+/** Kudos a member can send: stored by key, shown as emoji. */
+export const KUDOS: Record<string, string> = { heart: "\u2764\uFE0F", up: "\u{1F44D}", fire: "\u{1F525}", sparkle: "\u2728" };
+export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean }
+const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
+export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number }
+const LOGO = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
+const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:8px 12px;min-height:46px;box-sizing:border-box;padding:7px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:#D6D6DC}
+#caldera-bar a{text-decoration:none}#caldera-bar .cb-l,#caldera-bar .cb-r{display:inline-flex;align-items:center;gap:10px;min-width:0}
+#caldera-bar .cb-brand{display:inline-flex;align-items:center;gap:8px;color:#F2F2F5;font:600 15px 'Source Serif 4',Georgia,serif;white-space:nowrap}#caldera-bar .cb-l>.cb-brand:first-child:not(:last-child){width:84px;flex:none;overflow:hidden}
+#caldera-bar .cb-sw{display:inline-flex;background:#1F1C2B;border:1px solid #2E2A40;border-radius:999px;padding:2px}#caldera-bar .cb-sw a{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;color:#B8B8C2;white-space:nowrap}
+#caldera-bar .cb-sw a[aria-current="page"]{background:#8B6CF6;color:#fff;font-weight:600}
+#caldera-bar .cb-btn{display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;font-weight:600;white-space:nowrap}
+#caldera-bar details{position:relative}#caldera-bar summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px;border-radius:999px;border:1px solid #2E2A40;color:#F2F2F5;white-space:nowrap}#caldera-bar summary::-webkit-details-marker{display:none}
+#caldera-bar .cb-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:#18171D;border:1px solid #2E2A40;border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;flex-direction:column}
+#caldera-bar .cb-menu a{padding:8px 10px;border-radius:8px;color:#E6E6EA}#caldera-bar .cb-menu a:hover{background:#26232F}#caldera-bar .cb-menu small{padding:4px 10px 6px;color:#8A8A93;font-size:11.5px;line-height:1.35}
+#caldera-bar .cb-stale{color:#F2C46D;font-size:12.5px;white-space:nowrap}#caldera-bar .cb-short{display:none}
+@media (max-width:620px){#caldera-bar .cb-tag,#caldera-bar .cb-v,#caldera-bar .cb-word{display:none}#caldera-bar .cb-l>.cb-brand:first-child:not(:last-child){width:22px}#caldera-bar{flex-wrap:wrap}#caldera-bar .cb-sw a{padding:5px 10px}#caldera-bar .cb-short{display:inline}#caldera-bar.cb-anon .cb-l .cb-brand span:first-of-type{display:none}#caldera-bar .cb-r{gap:8px}}</style>`;
+
+/** Views and kudos on every hosted page: a public tally plus "+ Kudos", which opens a small first-party window on the hub
+ *  (profile pages are sandboxed, so the member's sign-in can only ride along there). */
+function socialChips(base: string, handle: string, so: BarSocial): string {
+  const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+  const chip = "display:inline-flex;align-items:center;gap:4px;min-height:26px;padding:0 9px;border-radius:999px;background:#1C1C21;border:1px solid #2A2A2E;color:#D6D6DC;font-size:12.5px;white-space:nowrap";
+  const views = so.showViews || so.owner ? `<span class="cb-views" title="${so.views.toLocaleString("en-US")} views${so.showViews ? "" : " (hidden: only you see this)"}" style="${chip}">&#128065;&#65039; ${compact(so.views)}${so.showViews ? "" : `<span style="color:#8A8A93">&nbsp;&middot; hidden</span>`}</span>` : "";
+  const tally = so.tally.filter(([, n]) => n > 0).map(([k, n]) => `${KUDOS[k] || ""} ${compact(n)}`).join(" &nbsp;");
+  const url = `${base}/kudos/${encodeURIComponent(handle)}`;
+  const send = so.owner ? (tally ? `<span title="Kudos people sent you" style="${chip}">${tally}</span>` : "")
+    : `<a href="${e(url)}" target="_blank" rel="noopener" onclick="try{var w=window.open(this.href,'caldera-kudos','popup,width=420,height=560');if(w){return false}}catch(x){}" title="Send @${e(handle)} kudos" style="${chip};border-color:#5B47B8;color:#F2F2F5">${tally ? `${tally} &middot; ` : ""}<b style="font-weight:600">+ Kudos</b></a>`;
+  return `<span class="cb-social" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">${views}${send}</span>`;
+}
+
+/** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
+ *  (public page with the owner cookie, or the private address): logo, the [Public view | Private view] switch in the same
+ *  place on both addresses, then the account menu (@handle, Your public page, Private view, Sign out). Same height either way. */
+export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
   const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-  const logo = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
-  // the owner, signed in on this browser: a way back to their private view instead of the sign-up pitch
-  const right = own
-    ? `<span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">`
-      // a page that stopped updating (Obsidian closed for days): only the owner is told, and how to fix it
-      + (own.stale ? `<span title="Your page updates while Obsidian is open. Open it to refresh the page." style="color:#F2C46D;font-size:12.5px">Last updated ${own.stale} days ago</span>`
-        : `<span class="cb-tag" style="color:#B8B8C2;font-size:12.5px">You're viewing your public page</span>`)
-      + `<a href="${e(own.href)}"${own.external ? ' target="_blank" rel="noopener"' : ""} style="display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">&#128274; ${e(own.label)}</a>`
-      + `<a href="${base}/v1/own/out?h=${encodeURIComponent(handle)}" title="Sign this browser out" style="color:#8A8A93;font-size:12px;text-decoration:none">Sign out</a></span>`
-    : `<span style="display:inline-flex;align-items:center;gap:12px;white-space:nowrap"><a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;text-decoration:none"><span class="cb-tag">Owner? </span>Sign in</a>`
-      + `<a href="${join}#install" style="display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600;white-space:nowrap">Get your own page</a></span>`;
-  return `<div id="caldera-bar" style="position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif">`
-    + `<a href="${join}" style="display:inline-flex;align-items:center;gap:8px;color:#F2F2F5;text-decoration:none;font:600 15px 'Source Serif 4',Georgia,serif">${logo}Caldera<span style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px" class="cb-tag">the social layer for Obsidian</span></a>`
-    + right + `</div><style>@media (max-width:520px){#caldera-bar .cb-tag{display:none}}</style>`;
+  const chips = social ? socialChips(base, handle, social) : "";
+  if (!own) return BAR_CSS + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social layer for Obsidian</span></a></span>`
+    + chips + `<span class="cb-r"><a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;white-space:nowrap"><span class="cb-tag">Owner? </span>Sign in</a><a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a></span></div>`;
+  const ext = own.privateExternal ? ' target="_blank" rel="noopener"' : "";
+  const sw = `<span class="cb-sw" role="group" aria-label="Which view"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${own.current === "public" ? "You're viewing your public page" : "Private address: you're in your private view"}</span>`
+    + `<a href="${e(own.publicHref)}"${own.current === "public" ? ' aria-current="page"' : ""} title="Your page as everyone sees it">&#127760;<span class="cb-v"> Public view</span></a>`
+    + `<a href="${e(own.privateHref)}"${ext}${own.current === "private" ? ' aria-current="page"' : ""} title="Your page with the private sections only you see">&#128274;<span class="cb-v"> Private view</span></a></span>`;
+  const menu = `<details><summary aria-label="Account">@${e(own.handle)} <span aria-hidden="true">&#9662;</span></summary><span class="cb-menu">`
+    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>`
+    + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
+  return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
+    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -157,6 +190,8 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS agents (owner TEXT, id TEXT, label TEXT, machine TEXT, repo TEXT, state TEXT, task TEXT, did TEXT, tokens INTEGER, ts TEXT, PRIMARY KEY (owner, id));
     CREATE TABLE IF NOT EXISTS referrals (invitee TEXT PRIMARY KEY, inviter TEXT, ts TEXT, via TEXT);
     CREATE INDEX IF NOT EXISTS referrals_by_inviter ON referrals(inviter);
+    CREATE TABLE IF NOT EXISTS kudos (sender TEXT, recipient TEXT, kind TEXT, ts TEXT, day TEXT, page TEXT, PRIMARY KEY (sender, recipient, day));
+    CREATE INDEX IF NOT EXISTS kudos_to ON kudos(recipient, ts);
   `);
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
@@ -473,7 +508,7 @@ export function createHub(opts: HubOptions) {
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id); q("DELETE FROM signin_links WHERE owner=?").run(id); q("DELETE FROM pair_codes WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
-      "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?"]) {
+      "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?", "DELETE FROM kudos WHERE sender=? OR recipient=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
     }
   }
@@ -546,6 +581,11 @@ export function createHub(opts: HubOptions) {
       return { id: r.id, d: project, repo: x.repo || "", label: x.label || "", machine: x.machine || "", state, task: x.task || "", did: x.did || "", tokens: r.tokens, ago };
     });
   }
+  // city extras: the viewer's weather, who came today and who just left (cityextra.ts)
+  const WX = weatherService({ fetch: (opts as any).weatherFetch });
+  const depSalt = (owner: string) => crypto.createHmac("sha256", PRIV_KEY).update("dep:" + owner).digest("hex");
+  const cityExtras = (html: string, owner: string | null) => { const cfg: any = { weather: `${(opts.publicUrl || "").replace(/\/$/, "")}/v1/weather` }; if (owner) cfg.owner = ownerSetup(q, owner, opts.publicUrl || "https://caldera.social");
+    const tag = extrasScript(cfg); return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, tag + "</head>") : tag + html; };
   function liveStats(owner: string, full: boolean, since?: string | null) {
     const sites = sitesOf(owner), pubSet = new Set(sites.filter(s => s.public).map(s => s.project));
     const agents = agentsOf(owner, full, pubSet);
@@ -575,10 +615,11 @@ export function createHub(opts: HubOptions) {
           if (r.kind === "signup") x.s++; else if (r.kind === "buy") x.b++; else x.v++;
         }
       }
-      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents, ...(arrivals ? { arrivals } : {}) };
+      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents, ...(arrivals ? { arrivals } : {}), ...dayStats(q, keys, name, false, depSalt(owner), since) };
     }
     const events = (q(`SELECT t.key, t.ts, t.kind, (t.kind='view' AND ${FRESH}) AS fresh FROM traffic t WHERE t.key IN (${qs}) AND t.ts > ? ORDER BY t.ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts, ...(r.fresh ? { n: 1 } : {}) }));
-    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events, agents };
+    for (const k of kudosFor(owner, t3)) events.push({ d: "", k: "kudos", ts: k.ts, e: k.kind, from: k.from } as any);   // kudos burst over the private city
+    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events, agents, ...dayStats(q, keys, name, true, depSalt(owner)) };
   }
   const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
     return !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, wk) || !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk); };
@@ -676,14 +717,15 @@ export function createHub(opts: HubOptions) {
       invited: q("SELECT p.handle FROM referrals r JOIN profiles p ON p.id=r.invitee WHERE r.inviter=? AND r.ts > ?").all(owner, since) as any[],
       credits: (q("SELECT COALESCE(SUM(delta),0) s FROM ledger WHERE who=? AND reason LIKE 'invited%' AND ts > ?").get(owner, since) as any).s,
       suggestions: suggestFor(owner, 3).map(x => ({ handle: x.handle, name: x.name, why: x.why })),
-      newMembers: (q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created > ? AND id<>? ORDER BY created DESC").all(d7, owner) as any[]).filter(listed).map(p => ({ handle: p.handle, name: p.name })) };
+      newMembers: (q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created > ? AND id<>? ORDER BY created DESC").all(d7, owner) as any[]).filter(listed).map(p => ({ handle: p.handle, name: p.name })),
+      kudos: kudosFor(owner, since).map(k => ({ handle: k.from || "someone", name: k.name, emoji: k.emoji })), viewsAll: viewsOf(h) };
   }
   const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor });
   if (opts.email?.schedule) mail.schedule();
 
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
-    owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id) },
+    owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
 
   // ---------------------------------------------------------------- the owner, signed in on their own browser
@@ -699,17 +741,22 @@ export function createHub(opts: HubOptions) {
     return `${(opts.publicUrl || "").replace(/\/$/, "")}/v1/own?c=${encodeURIComponent(code)}`;
   }
   /** Is this request from the owner of `handle`? Returns the bar's "back to private" target, or null. */
-  function ownerBar(req: http.IncomingMessage, handle: string): { href: string; label: string; external?: boolean; stale?: number } | null {
+  const PUB = () => (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+  /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
+  function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
+    const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
+    const privateHref = priv ? priv + sub : hosted ? `${PUB()}/me` : "obsidian://caldera?open=private";
+    return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref, privateExternal: !priv && !hosted, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale,
+      note: priv ? "Private view opens your private address (your Tailscale devices only)." : hosted ? "Private view is your account page." : "Private view opens Caldera in Obsidian on this computer." };
+  }
+  /** Is this request from the owner of `handle`? Returns their nav for the public page, or null. */
+  function ownerBar(req: http.IncomingMessage, handle: string, rel = "index.html"): OwnerNav | null {
     const pr = byHandle(handle); if (!pr) return null;
     const t = reqCookies(req)[OWN_COOKIE];
     let mine = !!t && !!q("SELECT 1 FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now());
-    let hosted = false;
-    if (!mine) { const a = GH.account(req); if (a && !a.claimed && a.profile_id === pr.id) mine = hosted = true; }
+    if (!mine) { const a = GH.account(req); if (a && !a.claimed && a.profile_id === pr.id) mine = true; }
     if (!mine) return null;
-    const priv = privateFor(handle), stale = staleDays(pr.id) || undefined;
-    if (priv) return { href: priv, label: "Private view", stale };
-    if (hosted || q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id)) return { href: "/me", label: "Your account" };
-    return { href: "obsidian://caldera?open=private", label: "Private view in Obsidian", external: true, stale };
+    return navFor(pr, "public", rel, staleDays(pr.id) || undefined);
   }
 
   // ---------------------------------------------------------------- owner sign-in from any device (/signin)
@@ -733,13 +780,81 @@ export function createHub(opts: HubOptions) {
 .si .card{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0}.si .card h2{font-size:1.05rem;margin:0 0 4px}.si .mut{color:var(--text-muted,#9A9AA6);font-size:.93em}
 .si input[type=email]{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px 12px;font:inherit;margin:8px 0 10px}
 .si .code{font:500 2rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.18em;padding:10px 0}.si .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.si button.btn{cursor:pointer}</style></head>
-<body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/gardens">Gardens</a><a href="/guide">Guide</a></nav></header><main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
+<body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header><main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}<script src="/assets/site.js" defer></script></body></html>`);
   };
   const hostedOf = (owner: string) => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
   /** The profile this browser is signed in as (owner cookie), if any. */
   function ownerOf(req: http.IncomingMessage): string | null {
     const t = reqCookies(req)[OWN_COOKIE]; if (!t) return null;
     return (q("SELECT owner FROM owner_sessions WHERE token_hash=? AND expires > ?").get(hashToken(t), Date.now()) as any)?.owner || null;
+  }
+  // ---------------------------------------------------------------- views and kudos
+  /** The Caldera member signed in on this browser: an owner cookie (any page) or a GitHub sign-up's session. */
+  function memberOf(req: http.IncomingMessage): string | null {
+    const o = ownerOf(req); if (o && profile(o)) return o;
+    const a = GH.account(req); return a && !a.claimed && a.profile_id && profile(a.profile_id) ? a.profile_id : null;
+  }
+  /** Views as people count them: one per visitor per day, bots and the owner's own visits never recorded. */
+  const viewsOf = (handle: string, since = "") => (q("SELECT COUNT(DISTINCT visitor || substr(ts,1,10)) n FROM page_views WHERE handle=? AND ts > ?").get(handle, since) as any).n as number;
+  const tallyOf = (id: string): [string, number][] => { const rows = q("SELECT kind, COUNT(*) n FROM kudos WHERE recipient=? GROUP BY kind").all(id) as any[];
+    return Object.keys(KUDOS).map(k => [k, rows.find(r => r.kind === k)?.n || 0] as [string, number]); };
+  const barSocial = (pr: any, owner: boolean): BarSocial => ({ views: viewsOf(pr.handle), showViews: body(pr).showViews !== false, tally: tallyOf(pr.id), owner });
+  /** One kudos per sender per recipient per (UTC) day; members only; never to yourself. */
+  function sendKudos(sender: string, to: any, kind: string, page = ""): { status: number; body: any } {
+    if (!KUDOS[kind]) return { status: 400, body: { error: "pick one of: " + Object.keys(KUDOS).join(", ") } };
+    if (!to?.handle || modOf(to.handle, to.id)) return { status: 404, body: { error: "unknown profile" } };
+    if (to.id === sender) return { status: 400, body: { error: "That's your own page." } };
+    if (tooMany("kudos:" + sender, 60)) return { status: 429, body: { error: "That's a lot of kudos for one hour. Try again later." } };
+    const day = new Date().toISOString().slice(0, 10);
+    const r = q("INSERT OR IGNORE INTO kudos VALUES (?,?,?,?,?,?)").run(sender, to.id, kind, now(), day, String(page).slice(0, 120));
+    if (!r.changes) return { status: 409, body: { error: `You already sent @${to.handle} kudos today.`, tally: tallyOf(to.id) } };
+    return { status: 200, body: { ok: true, sent: kind, tally: tallyOf(to.id) } };
+  }
+  const kudosFor = (id: string, since: string) => (q("SELECT k.kind, k.ts, k.page, p.handle, p.name FROM kudos k LEFT JOIN profiles p ON p.id=k.sender WHERE k.recipient=? AND k.ts > ? ORDER BY k.ts DESC LIMIT 50").all(id, since) as any[])
+    .map(r => ({ kind: r.kind, emoji: KUDOS[r.kind] || "", from: r.handle || null, name: r.name || "", ts: r.ts, page: r.page || "" }));
+
+  const sameOrigin = (req: http.IncomingMessage) => { const o = String(req.headers.origin || ""); if (!o) return false;
+    return o === (originOf(opts.publicUrl) || `http://${req.headers.host}`); };
+  /** The kudos window: tap an emoji to send (members), or sign in / get a page (everyone else). Also "Add friend". */
+  function kudosPage(res: http.ServerResponse, pr: any, me: string | null) {
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    const h = pr.handle as string, b = body(pr), av = b.photos?.avatar ? `/@${h}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : "";
+    const tally = tallyOf(pr.id).filter(([, n]) => n > 0).map(([k, n]) => `<span>${KUDOS[k]} ${n}</span>`).join("");
+    const head = `<div class="kd-who">${av ? `<img src="${e(av)}" alt="">` : `<span class="kd-ini">${e((pr.name || h).slice(0, 1).toUpperCase())}</span>`}<div><b>${e(pr.name || "@" + h)}</b><span class="mut">@${e(h)}</span></div></div>${tally ? `<div class="kd-tally" aria-label="Kudos so far">${tally}</div>` : ""}`;
+    let inner: string, script = "";
+    if (!me) inner = `${head}<h1>Send kudos</h1><p class="mut">Kudos come from Caldera members, so they mean something. Sign in, then tap <b>+ Kudos</b> on the page again.</p>
+<div class="row"><a class="btn" href="/signin" target="_blank" rel="noopener">Sign in</a><a class="btn ghost" href="/?invite=${encodeURIComponent(h)}#install" target="_blank" rel="noopener">Get your own page</a></div>`;
+    else if (me === pr.id) inner = `${head}<h1>This is your page</h1><p class="mut">Kudos people send you show here and on your page. You'll see who sent them in your private view and your daily email.</p>`;
+    else {
+      const day = new Date().toISOString().slice(0, 10), done = q("SELECT kind FROM kudos WHERE sender=? AND recipient=? AND day=?").get(me, pr.id, day) as any;
+      const friends = areFriends(me, pr.id), hostedMe = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(me);
+      const friendRow = friends ? `<p class="mut">You and @${e(h)} are friends.</p>`
+        : hostedMe ? `<button class="btn ghost" type="button" id="kd-friend">+ Add @${e(h)} as a friend</button>`
+        : `<a class="btn ghost" href="obsidian://caldera?friend=${encodeURIComponent(h)}">+ Add @${e(h)} as a friend</a><span class="mut small">Opens Obsidian to send the request.</span>`;
+      inner = `${head}<h1>${done ? "Kudos sent today" : `Send @${e(h)} kudos`}</h1>
+<p class="mut" id="kd-msg">${done ? `You sent ${KUDOS[done.kind] || ""} today. You can send @${e(h)} more kudos tomorrow.` : "One tap. They'll see it on their page and in their daily email."}</p>
+<div class="kd-pick" role="group" aria-label="Pick kudos">${Object.entries(KUDOS).map(([k, em]) => `<button type="button" data-k="${k}"${done ? " disabled" : ""} aria-label="${k}">${em}</button>`).join("")}</div>
+<div class="kd-friend">${friendRow}</div>`;
+      script = `var H=${JSON.stringify(h)},msg=document.getElementById('kd-msg'),pick=document.querySelectorAll('.kd-pick button');
+function burst(em){for(var i=0;i<18;i++){var s=document.createElement('span');s.className='kd-fly';s.textContent=em;s.style.left=(40+Math.random()*20)+'%';s.style.setProperty('--dx',(Math.random()*240-120)+'px');s.style.animationDelay=(Math.random()*.25)+'s';document.body.appendChild(s);setTimeout(function(x){return function(){x.remove()}}(s),1900)}}
+pick.forEach(function(b){b.addEventListener('click',function(){pick.forEach(function(x){x.disabled=true});var em=b.textContent;
+fetch('/v1/kudos/'+H,{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({kind:b.getAttribute('data-k'),page:'web'})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j}})}).then(function(x){
+if(x.ok){b.classList.add('on');burst(em);msg.textContent='Sent! @'+H+' will see it on their page.';document.querySelector('h1').textContent='Kudos sent';setTimeout(function(){try{if(window.opener)window.close()}catch(e){}},1900)}
+else{msg.textContent=x.j.error||'Could not send.';if(x.status!==409)pick.forEach(function(y){y.disabled=false})}}).catch(function(){msg.textContent='Could not send. Check your connection.';pick.forEach(function(y){y.disabled=false})})})});
+var fb=document.getElementById('kd-friend');if(fb)fb.addEventListener('click',function(){fb.disabled=true;fetch('/v1/friend/'+H,{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})}).then(function(x){fb.outerHTML='<p class="mut">'+(x.ok?(x.j.already?'You are already friends.':'Friend request sent to @'+H+'.'):(x.j.error||'Could not send the request.'))+'</p>'})});`;
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer" });
+    res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kudos for @${e(h)} - Caldera</title><meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>
+body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}.kd h1{font-family:'Source Serif 4',Georgia,serif;font-size:1.6rem;margin:14px 0 4px}.kd .mut{color:var(--text-muted,#9A9AA6);margin:0 0 14px}.kd .small{font-size:.85em;display:block;margin-top:6px}
+.kd-who{display:flex;gap:12px;align-items:center}.kd-who img,.kd-ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none}.kd-ini{display:grid;place-items:center;background:var(--accent,#8B6CF6);color:#fff;font-weight:600;font-size:1.2rem}.kd-who b{display:block}.kd-who .mut{margin:0}
+.kd-tally{display:flex;gap:12px;margin-top:10px;font-size:15px;font-variant-numeric:tabular-nums}
+.kd-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0 18px}.kd-pick button{font-size:34px;line-height:1;padding:16px 0;border-radius:14px;border:1px solid var(--line,#2A2440);background:var(--bg-raised,#16131F);cursor:pointer;transition:transform .15s,border-color .15s}
+.kd-pick button:hover:not(:disabled){transform:translateY(-2px) scale(1.06);border-color:var(--accent,#8B6CF6)}.kd-pick button:disabled{opacity:.45;cursor:default}.kd-pick button.on{opacity:1;border-color:var(--accent,#8B6CF6);transform:scale(1.12)}
+.kd .row{display:flex;flex-wrap:wrap;gap:8px}.kd-friend{border-top:1px solid var(--line,#2A2440);padding-top:14px}.kd button.btn{cursor:pointer}
+.kd-fly{position:fixed;bottom:30%;font-size:28px;pointer-events:none;animation:kdfly 1.7s ease-out forwards}@keyframes kdfly{0%{transform:translate(0,0) scale(.6);opacity:0}15%{opacity:1}100%{transform:translate(var(--dx),-360px) scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
   function signinGeneral(res: http.ServerResponse) {
@@ -782,6 +897,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "OPTIONS") return json(res, 204, {});
       if (/^\/(auth\/github|me$|me\/upload$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
 
+      if (req.method === "GET" && p === "/v1/weather") { const w = await WX.forIp(ipOf(req)); res.setHeader("cache-control", "no-store"); return json(res, 200, w || { c: null }); }   // the requester's own weather, never stored
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
       if (req.method === "GET" && p === "/v1/gardens/recent") return json(res, 200, { notes: recentGardenNotes(Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 60))) });
       if (req.method === "GET" && (p === "/gardens" || p === "/gardens/")) {
@@ -866,22 +982,64 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         res.removeHeader("x-frame-options");
         const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "x-robots-tag": "noindex", "content-security-policy": PROFILE_CSP, "cache-control": "no-cache" };
         if (path.extname(file).toLowerCase() === ".html") {   // every hosted page gets the Caldera bar, whatever plugin version built it
-          const ua = String(req.headers["user-agent"] || ""), own = ownerBar(req, m[1]);
+          const ua = String(req.headers["user-agent"] || ""), own = ownerBar(req, m[1], rel);
           (headers as any).vary = "Cookie";
           if (!own && ua && !BOT_UA.test(ua) && url.searchParams.get("caldera") !== "owner" && req.method === "GET") {   // the owner's own Public view passes caldera=owner
             const day = new Date().toISOString().slice(0, 10);
             const visitor = crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16);
             try { q("INSERT INTO page_views VALUES (?,?,?,?)").run(m[1], rel, now(), visitor); } catch { /* counting never breaks a page */ }
           }
-          let html = fs.readFileSync(file, "utf8"); const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own || undefined);
+          let html = fs.readFileSync(file, "utf8"); const prS = byHandle(m[1]), bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, prS && (rel === "index.html" || rel === "city.html") ? barSocial(prS, !!own) : undefined);
           html = liveBlocks(m[1], rel, html);
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
-          if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) { html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); } }
+          if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
+            html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
           res.writeHead(200, headers); return res.end(out);
         }
         res.writeHead(200, headers);
         return fs.createReadStream(file).pipe(res);
+      }
+
+      // ---- kudos + views. /kudos/<handle>: a small first-party window (profile pages are sandboxed, so this is where the
+      // member's sign-in rides along). Members send with one tap; everyone else is offered sign-in or a page of their own.
+      m = p.match(/^\/kudos\/([a-z0-9-]+)\/?$/);
+      if (req.method === "GET" && m) {
+        const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("not found"); }
+        return kudosPage(res, pr, memberOf(req));
+      }
+      m = p.match(/^\/v1\/kudos\/([a-z0-9-]+)$/);
+      if (m && req.method === "GET") { const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
+        return json(res, 200, { handle: pr.handle, tally: Object.fromEntries(tallyOf(pr.id)), views: body(pr).showViews !== false ? viewsOf(pr.handle) : null }); }
+      if (m && req.method === "POST") {   // from the kudos window: same-origin only, the member's cookie
+        if (!sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
+        const me = memberOf(req); if (!me) return json(res, 401, { error: "Sign in to send kudos." });
+        const { kind, page } = await readBody(req) as { kind?: string; page?: string };
+        const r = sendKudos(me, byHandle(m[1]), String(kind || ""), String(page || "")); return json(res, r.status, r.body);
+      }
+      // a GitHub sign-up, signed in on the web, adds a friend in one tap (the hub holds their key and signs for them)
+      m = p.match(/^\/v1\/friend\/([a-z0-9-]+)$/);
+      if (req.method === "POST" && m) {
+        if (!sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
+        const a = GH.account(req); if (!a || a.claimed || !a.key_sealed) return json(res, 401, { error: "Sign in with GitHub first." });
+        const to = byHandle(m[1]); if (!to || modOf(to.handle, to.id)) return json(res, 404, { error: "unknown profile" });
+        if (to.id === a.profile_id) return json(res, 400, { error: "That's your own page." });
+        if (areFriends(a.profile_id, to.id)) return json(res, 200, { ok: true, already: true });
+        if (tooMany("friend:" + a.profile_id, 40)) return json(res, 429, { error: "slow down" });
+        const id = JSON.parse(unseal(a.key_sealed)) as C.Identity;
+        const r = accept(C.sign(id, "friend.request", { to: to.id, note: "" })); return json(res, r.status, r.body);
+      }
+      // the plugin: send kudos and read the ones you got, signed in with the vault's key
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/kudos$/);
+      if (m && req.method === "POST") {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const { to, kind, page } = await readBody(req) as { to?: string; kind?: string; page?: string };
+        const t = String(to || ""), pr = t.startsWith("cal:") ? profile(t) : byHandle(t.replace(/^@/, "").toLowerCase());
+        const r = sendKudos(m[1], pr, String(kind || ""), String(page || "obsidian")); return json(res, r.status, r.body);
+      }
+      if (m && req.method === "GET") {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        return json(res, 200, { kudos: kudosFor(m[1], url.searchParams.get("since") || "1970"), tally: Object.fromEntries(tallyOf(m[1])) });
       }
 
       // one-time owner link: the plugin asks for it (signed in), the browser trades it for a long-lived owner cookie
@@ -902,10 +1060,35 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const to = url.searchParams.get("to") || "", sub = /^[a-z0-9][a-z0-9._/-]{0,120}$/i.test(to) && !to.includes("..") ? to : "";   // a page inside their profile
         res.writeHead(302, { location: `/@${pr.handle}/${sub}`, "set-cookie": ownCookie(t, OWN_AGE), "cache-control": "no-store" }); return res.end();
       }
-      if (req.method === "GET" && p === "/v1/own/out") {
-        const t = reqCookies(req)[OWN_COOKIE]; if (t) q("DELETE FROM owner_sessions WHERE token_hash=?").run(hashToken(t));
+      if (req.method === "GET" && p === "/v1/own/out") {   // older bars: every sign-out goes through /signout
         const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
-        res.writeHead(302, { location: h ? `/@${h}/` : "/", "set-cookie": ownCookie("", 0), "cache-control": "no-store" }); return res.end();
+        res.writeHead(302, { location: `/signout${h ? `?h=${h}` : ""}`, "cache-control": "no-store" }); return res.end();
+      }
+      // who is signed in on this browser (the site nav swaps "Sign in" for the account menu)
+      if (req.method === "GET" && p === "/v1/session") {
+        const me = memberOf(req), pr = me ? profile(me) : null;
+        res.setHeader("cache-control", "no-store");
+        if (!pr?.handle) return json(res, 200, { signedIn: false });
+        const n = navFor(pr, "public");
+        return json(res, 200, { signedIn: true, handle: pr.handle, name: pr.name || "", page: n.publicHref, private: n.privateHref, privateExternal: !!n.privateExternal, signout: n.signout });
+      }
+      // sign out: GET asks, POST clears the owner cookie (and its session row) and the GitHub session, then back to the page
+      if (p === "/signout") {
+        const h = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+        if (req.method === "POST") {
+          const o = String(req.headers.origin || ""); if (o && !sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
+          const t = reqCookies(req)[OWN_COOKIE]; if (t) q("DELETE FROM owner_sessions WHERE token_hash=?").run(hashToken(t));
+          GH.signOut(req, res);
+          const prev = res.getHeader("set-cookie"), list = Array.isArray(prev) ? prev : prev ? [String(prev)] : [];
+          res.setHeader("set-cookie", [...list, ownCookie("", 0)]);
+          res.writeHead(303, { location: h && byHandle(h) ? `/@${h}/` : "/", "cache-control": "no-store" }); return res.end();
+        }
+        if (req.method === "GET") {
+          const me = memberOf(req), pr = me ? profile(me) : null;
+          return signinPage(res, 200, "Sign out", pr ? `<h1>Sign out?</h1><p class="lede">This browser is signed in as <b>@${String(pr.handle).replace(/[<>&"]/g, "")}</b>. Signing out removes the Private view button and the account menu here. Your page stays exactly as it is.</p>
+<form method="post" action="/signout${h ? `?h=${h}` : ""}"><button class="btn" type="submit">Sign out</button> <a class="btn ghost" href="${h ? `/@${h}/` : "/"}">Cancel</a></form>`
+            : `<h1>You're signed out</h1><p class="lede">This browser isn't signed in to Caldera.</p><p><a class="btn" href="/signin">Sign in</a> <a class="btn ghost" href="${h ? `/@${h}/` : "/"}">Back</a></p>`);
+        }
       }
 
       if (p === "/signin" || p.startsWith("/signin/")) {
@@ -1028,7 +1211,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
-        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
+        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
       }
       // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
@@ -1250,12 +1433,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (!own && path.extname(file).toLowerCase() !== ".html") { res.writeHead(200, headers); return fs.createReadStream(file).pipe(res); }
       let html = own || liveBlocks(mine, rel, fs.readFileSync(file, "utf8"));
       const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
-      const tab = (on: boolean, label: string, href: string) => `<a href="${href}" style="padding:5px 12px;border-radius:7px;text-decoration:none;${on ? "background:#8B6CF6;color:#fff" : "color:#B8B8C2"}">${label}</a>`;
-      const bar = `<div style="position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 16px;background:#16131F;border-bottom:1px solid #3A2F5C;font:500 13px/1.3 'IBM Plex Sans',Arial,sans-serif;color:#B8B8C2">`
-        + `<span style="color:#8B6CF6;font-weight:600">&#128274; Private address</span><span style="display:inline-flex;background:#221D33;border-radius:9px;padding:2px">${tab(!pub, "My view", "?view=mine")}${tab(pub, "Public view", "?view=public")}</span>`
-        + `<span>${row ? `Private sections pushed from Obsidian ${ago(row.built)}.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian."} Only your Tailscale account can open this.</span></div>`;
+      // the same bar as the public page signed in as owner: [Public view | Private view] in the same place, account menu on the right
+      const nav = pr ? navFor(pr, "private", rel) : null;
+      if (nav) nav.note = row ? `Private sections pushed from Obsidian ${ago(row.built)}. Only your Tailscale account can open this address.` : "No private sections yet: turn on the private address in Caldera settings in Obsidian.";
+      const bar = nav ? calderaBar(opts.publicUrl || "https://caldera.social", mine, nav) : "";
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
-      if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) { html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" }); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl)); }
+      if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" });
+      if (rel === "city.html" && pr) { html = cityExtras(html, pub ? null : pr.id); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl), originOf(opts.publicUrl)); }
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
