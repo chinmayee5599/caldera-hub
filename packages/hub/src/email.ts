@@ -84,6 +84,8 @@ export function emailer(ctx: EmailCtx) {
     const e = email.trim().toLowerCase(), cur = q("SELECT verified, hash FROM email_suggest WHERE owner=?").get(owner) as any;
     if (cur && cur.verified && !verified) return;   // a verified address is never replaced by an unverified guess
     q("INSERT OR REPLACE INTO email_suggest VALUES (?,?,?,?,?,?)").run(owner, ctx.seal(e), hashOf(e), verified ? 1 : 0, source.slice(0, 40), new Date().toISOString());
+    // got it: the "Confirm your email" nudge has done its job, so it disappears from their bell
+    if (verified) try { q("DELETE FROM alert_reads WHERE alert_id IN (SELECT id FROM alerts WHERE target=? AND dkey='email-confirm')").run(owner); q("DELETE FROM alerts WHERE target=? AND dkey='email-confirm'").run(owner); } catch { /* no alerts table yet */ }
   }
   function suggestion(owner: string): { email: string; verified: boolean } | null {
     const r = q("SELECT * FROM email_suggest WHERE owner=?").get(owner) as any; if (!r) return null;

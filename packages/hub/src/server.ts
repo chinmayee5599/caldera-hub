@@ -825,7 +825,18 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     remove(handle: string, reason = "") { const pr = byHandle(handle); if (pr) erase(pr.id); q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, pr?.id || null, "removed", reason, now()); return { removed: handle, id: pr?.id || null }; },
     block(handle: string, reason = "") { q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, null, "blocked", reason, now()); return { blocked: handle }; },
     // feed moderation: reported posts first
-    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "funnel-report": (days?: number) => FUNNEL.report(Number(days) || 7), "comment-list": () => FEED!.admin.commentsList(), "comment-hide": (id: string) => FEED!.admin.commentHide(id),
+    "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "funnel-report": (days?: number) => FUNNEL.report(Number(days) || 7), "email-nudge": (dry?: boolean) => {
+      // GitHub members we have no email for (signed up before sign-in asked GitHub for it): one personal alert each, with a
+      // one-click "Reconnect GitHub" that hands us their verified address. Idempotent (same key = one alert).
+      const rows = q(`SELECT g.profile_id, g.handle FROM gh_accounts g WHERE g.claimed IS NULL
+        AND NOT EXISTS (SELECT 1 FROM email_suggest e WHERE e.owner=g.profile_id AND e.verified=1)
+        AND NOT EXISTS (SELECT 1 FROM email_subs s WHERE s.owner=g.profile_id AND s.confirmed IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.target=g.profile_id AND a.dkey='email-confirm')`).all() as any[];
+      if (!dry) for (const r of rows) alerts.post({ target: r.profile_id, key: "email-confirm", by: "system", title: "Confirm your email in one click",
+        body: "Reconnect GitHub once and we'll use your verified GitHub email for message alerts and, if you want it, a daily summary (only on days something happens). Nothing else changes.",
+        ctaLabel: "Reconnect GitHub", ctaUrl: "/auth/github" });
+      return { nudged: dry ? 0 : rows.length, handles: rows.map(r => r.handle) };
+    }, "comment-list": () => FEED!.admin.commentsList(), "comment-hide": (id: string) => FEED!.admin.commentHide(id),
     "post-ban": (handle: string, reason = "") => FEED!.admin.postBan(handle, reason), "post-unban": (handle: string) => FEED!.admin.postUnban(handle),
     "msg-reports": () => MSG!.admin.reports(), "msg-view": (id: string) => MSG!.admin.view(id), "msg-close": (id: string) => MSG!.admin.close(id),
     "msg-ban": (handle: string, reason = "") => MSG!.admin.ban(handle, reason), "msg-unban": (handle: string) => MSG!.admin.unban(handle),
