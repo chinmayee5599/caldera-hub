@@ -53,7 +53,7 @@ function stars(seed: string, w: number, h: number, n: number) {
 }
 
 /** The 1200x630 link-preview card, as SVG (rendered to PNG by the hub). */
-export function cardSvg(o: { handle: string; name: string; headline: string; host: string; city: CityArt | null }): string {
+export function cardSvg(o: { handle: string; name: string; headline: string; host: string; city: CityArt | null; path?: string }): string {
   const W = 1200, H = 630, name = clip(o.name || "@" + o.handle, 30), head = clip(o.headline || "", 72);
   const serif = `'DejaVu Serif','Liberation Serif',Georgia,serif`, sans = `'DejaVu Sans','Liberation Sans',Arial,sans-serif`;
   const initials = (o.name || o.handle).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join("") || "C";
@@ -70,7 +70,7 @@ export function cardSvg(o: { handle: string; name: string; headline: string; hos
 <rect y="400" width="${W}" height="230" fill="url(#fade)"/>
 <text x="64" y="520" font-family="${serif}" font-size="62" font-weight="700" fill="#F7F7FA">${esc(name)}</text>
 ${head ? `<text x="66" y="566" font-family="${sans}" font-size="24" fill="#C9D3E6">${esc(head)}</text>` : ""}
-<text x="66" y="606" font-family="${sans}" font-size="22" fill="#9CC4FF">${esc(o.host)}/@${esc(o.handle)}${o.city?.buildings ? `  &#183;  ${o.city.buildings} building${o.city.buildings === 1 ? "" : "s"} in their city` : ""}</text>
+<text x="66" y="606" font-family="${sans}" font-size="22" fill="#9CC4FF">${esc(o.host)}${esc(o.path ?? "/@" + o.handle)}${o.city?.buildings ? `  &#183;  ${o.city.buildings} building${o.city.buildings === 1 ? "" : "s"} in their city` : ""}</text>
 ${LOGO(1062, 538, 44)}<text x="1110" y="606" text-anchor="end" font-family="${serif}" font-size="22" font-weight="700" fill="#F2F2F5">Caldera</text>
 </svg>`;
 }

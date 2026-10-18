@@ -210,7 +210,7 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
     if (m[2] === "/card.png") {
       if (!g.ok) { res.writeHead(302, { location: "/world/preview.png" }); res.end(); return true; }
       const f = file(login, ".png");
-      try { if (!fs.existsSync(f)) { const png = await toPng(cardSvg({ handle: g.p.login, name: g.p.name, headline: `GitHub city: ${fmt(g.p.repos)} public repos, ${fmt(g.p.commits)} commits this year`, host: c.hub().replace(/^https?:\/\//, ""), city: cityArt(citySnapshot(g.p.city, { name: g.p.name })) })); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(f, png); }
+      try { if (!fs.existsSync(f)) { const png = await toPng(cardSvg({ handle: g.p.login, name: g.p.name, headline: `GitHub city: ${fmt(g.p.repos)} public repos, ${fmt(g.p.commits)} commits this year`, host: c.hub().replace(/^https?:\/\//, ""), path: `/gh/${g.p.login}`, city: cityArt(citySnapshot(g.p.city, { name: g.p.name })) })); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(f, png); }
         send(res, 200, "image/png", fs.readFileSync(f), "public, max-age=86400"); }
       catch (e: any) { console.error("gh card", e?.message); res.writeHead(302, { location: "/world/preview.png" }); res.end(); }
       return true;
