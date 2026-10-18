@@ -13,7 +13,9 @@ export interface WorldMemberIn {
   city: CityData | null; notes: number; busy: number;
 }
 export interface WorldMember { handle: string; name: string; headline: string; isNew: boolean; groups: string[]; friends: number; city: string; page: string }
-export interface World { at: string; members: WorldMember[]; city: CityData; links: [string, string, number][]; start: string | null }
+/** A friendship ray: [@a, @b, kind (0 request/invite, 1 founder welcome, 2 shared repo), why (repo full name for kind 2)]. */
+export type WorldLink = [string, string, number, string?];
+export interface World { at: string; members: WorldMember[]; city: CityData; links: WorldLink[]; start: string | null }
 
 const MAX_PER_MEMBER = 30, MAX_BUILDINGS = 900, MAX_LINKS = 300, NEW_MS = 48 * 3600_000;
 const str = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
@@ -30,7 +32,7 @@ export function cleanRepo(r: CityRepo, project: string): CityRepo {
 }
 
 /** Lay out the world: members ordered so groups cluster together and the newest sit at the edge. */
-export function buildWorld(members: WorldMemberIn[], friendships: [string, string][], founder: string | null, hub: string, now = Date.now()): World {
+export function buildWorld(members: WorldMemberIn[], friendships: ([string, string] | [string, string, string?, string?])[], founder: string | null, hub: string, now = Date.now()): World {
   const base = hub.replace(/\/$/, "");
   const isNew = (m: WorldMemberIn) => now - Date.parse(m.created) < NEW_MS;
   const order = [...members].sort((a, b) => Number(isNew(a)) - Number(isNew(b))
@@ -59,13 +61,15 @@ export function buildWorld(members: WorldMemberIn[], friendships: [string, strin
     });
     if (!src.length || !keep.length) districts.push({ name: key + "/Notes", label: "Notes", nb: key, notes: Math.min(16, Math.max(0, m.notes)) || 4, repos: [] });
   }
-  const listed = new Set(members.map(m => m.handle)), seen = new Set<string>(), links: [string, string, number][] = [];
-  for (const [a, b] of friendships) {
+  const listed = new Set(members.map(m => m.handle)), seen = new Set<string>(), links: WorldLink[] = [];
+  for (const [a, b, kind, why] of friendships as [string, string, string?, string?][]) {
     if (!listed.has(a) || !listed.has(b) || a === b) continue;
     const k = a < b ? a + "|" + b : b + "|" + a; if (seen.has(k)) continue; seen.add(k);
-    links.push(["@" + a, "@" + b, founder && (a === founder || b === founder) ? 1 : 0]);
+    // kind from the friends table; without it (older callers) a link touching the founder counts as a welcome link
+    const n = kind === "repo" ? 2 : kind === "founder" ? 1 : kind ? 0 : founder && (a === founder || b === founder) ? 1 : 0;
+    links.push(n === 2 && why ? ["@" + a, "@" + b, n, String(why).slice(0, 140)] : ["@" + a, "@" + b, n]);
   }
-  links.sort((x, y) => x[2] - y[2]);   // real friendships first, the founder's welcome links after (and fainter)
+  links.sort((x, y) => (x[2] === 1 ? 1 : 0) - (y[2] === 1 ? 1 : 0));   // real and shared-repo friendships first, the founder's welcome links after (and fainter)
   const all = districts.flatMap(d => d.repos);
   const busiest = [...members].sort((a, b) => b.busy - a.busy)[0];
   return {

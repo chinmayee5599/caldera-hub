@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.19.4",
+      "date": "2026-10-18",
+      "title": "Friends who work on the same repos",
+      "items": [
+        "Members who both work on the same public GitHub repo now become friends automatically, with the reason shown: \"both work on owner/repo\" on the friend button, in your friends list, in the daily email, and on the World map. A fork counts for the repo it came from. Private repos are never read.",
+        "Don't want it? Turn off \"Connect me with people on the same repos\" in Caldera settings, set autoConnectRepos: false in Caldera/profile.md, or untick it on your account page. Remove one of these friendships and it never comes back.",
+        "World map: friendship rays now show what kind of friendship they are. Friends who share a repo glow teal, regular friends violet, and the founder's welcome links stay faint. Hover over a neighborhood to light up its friendships and see who it's connected to.",
+        "The side menu links companies named in your timeline to their sites, and a hand-picked group shows how many items it lists, not how many notes are in the folder.",
+        "The side menu scrolls without a visible scrollbar."
+      ]
+    },
+    {
       "version": "0.19.3",
       "date": "2026-10-17",
       "title": "Kudos and Add friend, right on the page",

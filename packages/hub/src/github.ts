@@ -199,7 +199,7 @@ export function github(ctx: GhCtx) {
     for (const [k, v] of Object.entries(renderProfile(p))) files[k] = v;
     const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity;
     const manifest = C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: p.headline, photos: { avatar, banner }, links, sections: Object.keys(p.sections).filter(k => p.sections[k]),
-      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs });
+      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs, ...(edits.autoConnectRepos === false ? { autoConnectRepos: false } : {}) });
     const r = ctx.accept(manifest); if (r.status !== 200) throw new Error(r.body?.error || "couldn't publish");
     const dir = path.join(ctx.dataDir, "profiles", handle);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(path.join(dir, "img"), { recursive: true }); fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
@@ -249,6 +249,7 @@ ${growth}
 <label for="l">Extra links <span class="mut">(one per line: Label | https://...)</span></label><textarea id="l" name="links">${esc(edits.links || "")}</textarea>
 <label for="g">Groups <span class="mut">(comma separated, like <code>producthunt</code>; each one is a town at caldera.social/g/name)</span></label><input type="text" id="g" name="groups" maxlength="200" value="${esc((edits.groups || []).join(", "))}">
 <label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory</label>
+<label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me with members who work on the same public GitHub repos</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
 <div class="card"><b>Private repos</b><p class="mut">Your city shows public repos. To add private ones as padlocked buildings (size and activity only, never names or code), install the Caldera GitHub app on the repos you choose. It can only read repository metadata.</p>
 ${ap ? `<a class="btn small" href="https://github.com/apps/${esc(ap.slug)}/installations/new">${a.installation ? "Change which repos" : "Add private repos"}</a>` : ""}</div>
@@ -291,7 +292,7 @@ if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'
     const wk = new Date(Date.now() - 7 * DAY).toISOString();
     const v = q("SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?").get(a.handle, wk) as any;
     const brought = soc?.invitedCount(me) || 0, rq = soc ? soc.openRequests(me) : { incoming: [], outgoing: [] };
-    const friends = q("SELECT p.id, p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? ORDER BY f.ts DESC").all(me) as any[];
+    const friends = q("SELECT p.id, p.handle, p.name, COALESCE(f.kind,'request') AS kind, f.why FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? ORDER BY f.ts DESC").all(me) as any[];
     const sug = soc ? soc.suggest(me, 3) : [];
     const who = (h: string, n: string) => `<a href="${esc(pub)}/@${esc(h)}/">${esc(n || "@" + h)}</a> <span class="mut">@${esc(h)}</span>`;
     const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
@@ -303,7 +304,7 @@ if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'
 <p style="margin:12px 0 4px"><b>Invite a friend</b> <span class="mut">(you get ${25} help credits when they join)</span></p><pre id="inv">${esc(invite)}</pre><button class="btn small" type="button" data-copy-text="inv">Copy invite link</button></div>
 <div class="card" id="friends"><b>Friends</b>
 ${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
-${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name)).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
+${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.kind === "repo" && f.why ? ` <span class="mut">(both work on ${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
 ${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
 ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
 ${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
@@ -439,7 +440,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         }
         if (act === "save") {
           const prev = JSON.parse(acct.edits || "{}");
-          const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on", groups: groupsFrom(f.get("groups")) };
+          const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), listed: f.get("listed") === "on", groups: groupsFrom(f.get("groups")), autoConnectRepos: f.get("autoConnectRepos") === "on" };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
         if (act === "remove-banner") { for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(upDir(acct.gh_id), `banner.${ext}`), { force: true }); }
@@ -500,5 +501,13 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
   }
   /** Sign this browser out of its GitHub session (used by /signout). */
   const signOut = (req: http.IncomingMessage, res: http.ServerResponse) => { const t = cookies(req).cal_s; if (t) q("DELETE FROM gh_sessions WHERE token=?").run(hashTok(t)); setCookie(res, "cal_s", "", 0); };
-  return { route, privateRoute, build, account, ghLoginsOf, signOut, configured: () => !!app() };
+  /** Any hosted member's GitHub token, for reading PUBLIC repo data (contributors) in background jobs; null if none works. */
+  async function anyToken(): Promise<string | null> {
+    if (!app()) return null;
+    for (const acct of q("SELECT * FROM gh_accounts WHERE claimed IS NULL AND token_sealed<>'' ORDER BY refreshed DESC LIMIT 5").all() as any[]) {
+      try { return await tokenFor(acct); } catch { /* expired: try the next one */ }
+    }
+    return null;
+  }
+  return { route, privateRoute, build, account, ghLoginsOf, signOut, anyToken, configured: () => !!app() };
 }

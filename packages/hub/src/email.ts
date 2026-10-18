@@ -13,7 +13,7 @@ export interface Mail { to: string; subject: string; html: string; text: string;
 export interface DigestData {
   handle: string; name: string; hosted: boolean;
   views24: number; visitors24: number; views7: number; visitors7: number;
-  requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string }[];
+  requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string; kind?: string; why?: string }[];
   gravity: { handle: string; reason: string }[]; links: number; invited: { handle: string }[]; credits: number;
   suggestions: { handle: string; name: string; why: string }[]; newMembers: { handle: string; name: string }[];
   /** days since a vault-published page last updated (3+), takes the place of the finish-your-page step */
@@ -125,7 +125,8 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       d.kudos.map(k => `@${k.handle} sent kudos`).join("\n"));
     if (d.requests.length) sec("Friend requests", d.requests.map(r => `<p style="margin:6px 0">${who(r.handle, r.name)}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}</p>`).join("") + `<p style="margin:12px 0 0"><a href="${esc(accept)}" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Accept</a>${d.hosted ? "" : ` <span style="color:#8A8794;font-size:13px">(opens Obsidian; or open the Caldera panel)</span>`}</p>`,
       d.requests.map(r => `@${r.handle}${r.note ? `: "${r.note}"` : ""}`).join("\n") + `\nAccept: ${d.hosted ? accept : "open the Caldera panel in Obsidian"}`);
-    if (d.friends.length) sec("New friends", `<p style="margin:0">${d.friends.map(f => who(f.handle, f.name)).join(" &middot; ")}</p>`, d.friends.map(f => "@" + f.handle).join(", "));
+    if (d.friends.length) sec("New friends", `<p style="margin:0">${d.friends.map(f => f.kind === "repo" && f.why ? `You and ${who(f.handle, f.name)} both work on <b>${esc(f.why)}</b> - you're now connected` : who(f.handle, f.name)).join("<br>")}</p>`,
+      d.friends.map(f => f.kind === "repo" && f.why ? `You and @${f.handle} both work on ${f.why} - you're now connected` : "@" + f.handle).join("\n"));
     if (d.gravity.length) sec("Gravity", d.gravity.map(g => `<p style="margin:4px 0">@${esc(g.handle)}${g.reason ? `: ${esc(g.reason)}` : ""}</p>`).join(""), d.gravity.map(g => `@${g.handle}${g.reason ? ": " + g.reason : ""}`).join("\n"));
     if (d.links) sec("Your garden", `<p style="margin:0">${pl(d.links, "new link")} from other gardens. <a href="${esc(page)}garden.html" style="color:#6E4FE0">See them</a></p>`, `${pl(d.links, "new link")} from other gardens. ${page}garden.html`);
     if (d.invited.length) sec("Your invites", `<p style="margin:0">${d.invited.map(i => "@" + esc(i.handle)).join(", ")} joined from your invite${d.credits ? `: +${d.credits} help credits` : ""}.</p>`, `${d.invited.map(i => "@" + i.handle).join(", ")} joined from your invite${d.credits ? ` (+${d.credits} credits)` : ""}.`);

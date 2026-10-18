@@ -11,6 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import * as C from "@caldera/core";
 import { github } from "./github";
+import { repoConnector } from "./repoconnect";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
 import { emailer, type Mail } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
@@ -23,7 +24,7 @@ export interface HubOptions { dataDir: string; port?: number; publicUrl?: string
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
   privatePort?: number; privateUrl?: string;
-  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
+  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; /** run the shared-repo friendship job every 6 hours (the server binary turns it on; tests call it directly) */ repoJob?: boolean; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
   /** daily summary emails: Resend key (production) or a send hook (tests); schedule starts the daily job */
   email?: { resendKey?: string; send?: (m: Mail) => Promise<void>; schedule?: boolean }; }
 
@@ -49,7 +50,7 @@ const DAY = 86_400_000;
 /** Kudos a member can send: stored by key, shown as emoji. */
 export const KUDOS: Record<string, string> = { heart: "\u2764\uFE0F", up: "\u{1F44D}", fire: "\u{1F525}", sparkle: "\u2728" };
 /** Who's looking, for the inline kudos + friend controls: a signed-in member gets a short-lived action token. */
-export interface BarViewer { handle: string; token: string; sent: string | null; friend: FriendState }
+export interface BarViewer { handle: string; token: string; sent: string | null; friend: FriendState; why?: string }
 export type FriendState = "self" | "friends" | "incoming" | "requested" | "queued" | "none";
 export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
@@ -83,7 +84,7 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const v = so.viewer || null, sent = v?.sent || null;
   const kd = Object.entries(KUDOS).map(([k, em]) => `<button type="button" class="cb-k${sent === k ? " on" : ""}" data-k="${k}"${sent ? ` disabled title="You sent kudos today. More tomorrow."` : ` title="Send @${e(handle)} ${em}"`}>${em}<i>${count(k) ? compact(count(k)) : ""}</i></button>`).join("");
   const fs = v ? v.friend : "none";
-  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}>${e(FRIEND_LABEL[fs])}</button>`;
+  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}${fs === "friends" && v?.why ? ` title="You both work on ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; both work on ${e(v.why)}` : ""}</button>`;
   return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}</span>`;
 }
 
@@ -246,7 +247,23 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS kudos (sender TEXT, recipient TEXT, kind TEXT, ts TEXT, day TEXT, page TEXT, PRIMARY KEY (sender, recipient, day));
     CREATE TABLE IF NOT EXISTS friend_intents (owner TEXT, target TEXT, kind TEXT, request TEXT, ts TEXT, PRIMARY KEY (owner, target));
     CREATE INDEX IF NOT EXISTS kudos_to ON kudos(recipient, ts);
+    CREATE TABLE IF NOT EXISTS repo_tombstones (a TEXT, b TEXT, ts TEXT, PRIMARY KEY (a, b));
+    CREATE TABLE IF NOT EXISTS friend_meta (k TEXT PRIMARY KEY, v TEXT);
   `);
+  // how two people became friends: request (accepted), invite (accepted request from an invitee), founder (the welcome
+  // friendship every new profile gets), repo (both work on the same public GitHub repo; why = owner/repo)
+  for (const col of ["kind TEXT DEFAULT 'request'", "why TEXT"]) { try { db.exec(`ALTER TABLE friends ADD COLUMN ${col}`); } catch { /* already there */ } }
+  if (!db.prepare("SELECT 1 FROM friend_meta WHERE k='kinds_v1'").get()) {   // one-time backfill of kinds for rows made before they existed
+    const fh = opts.founder ? (db.prepare("SELECT id FROM profiles WHERE handle=?").get(opts.founder.toLowerCase()) as any)?.id : null;
+    const accepted = (a: string, b: string) => !!db.prepare("SELECT 1 FROM envelopes WHERE type='friend.accept' AND ((sender=? AND recipient=?) OR (sender=? AND recipient=?)) LIMIT 1").get(a, b, b, a);
+    const invited = (a: string, b: string) => !!db.prepare("SELECT 1 FROM referrals WHERE (invitee=? AND inviter=?) OR (invitee=? AND inviter=?)").get(a, b, b, a);
+    const set = db.prepare("UPDATE friends SET kind=? WHERE a=? AND b=?");
+    for (const r of db.prepare("SELECT a, b FROM friends").all() as any[]) {
+      const kind = accepted(r.a, r.b) ? (invited(r.a, r.b) ? "invite" : "request") : fh && (r.a === fh || r.b === fh) ? "founder" : "request";
+      set.run(kind, r.a, r.b);
+    }
+    db.prepare("INSERT OR REPLACE INTO friend_meta VALUES ('kinds_v1', ?)").run(new Date().toISOString());
+  }
   // Page views for the owner's private "Since you last looked": no IPs or user agents are stored, only a salted hash
   // that rotates daily (counts unique visitors per day, cannot be reversed or joined across days).
   const VIEW_SALT = crypto.randomBytes(16).toString("hex");
@@ -272,6 +289,15 @@ export function createHub(opts: HubOptions) {
   const body = (pr: any) => { try { return JSON.parse(pr.manifest).body || {}; } catch { return {}; } };
   const listed = (pr: any) => body(pr).listed !== false && !modOf(pr.handle, pr.id);
   const areFriends = (a: string, b: string) => !!q("SELECT 1 FROM friends WHERE a=? AND b=?").get(a, b);
+  /** Make two people friends (both directions). A real request or invite upgrades an existing welcome/repo link; a welcome
+   *  or repo link never downgrades a real one. */
+  function befriend(a: string, b: string, kind: "request" | "invite" | "founder" | "repo", ts: string, why: string | null = null) {
+    // what an incoming kind may replace: a real request or invite replaces welcome/repo links, a shared repo replaces a welcome
+    const over = kind === "request" || kind === "invite" ? "('founder','repo')" : kind === "repo" ? "('founder')" : "('')";
+    for (const [x, y] of [[a, b], [b, a]]) q(`INSERT INTO friends (a, b, ts, kind, why) VALUES (?,?,?,?,?) ON CONFLICT(a, b) DO UPDATE SET
+      why=CASE WHEN COALESCE(friends.kind,'request') IN ${over} THEN excluded.why ELSE friends.why END,
+      kind=CASE WHEN COALESCE(friends.kind,'request') IN ${over} THEN excluded.kind ELSE friends.kind END`).run(x, y, ts, kind, why);
+  }
   const balance = (id: string) => (q("SELECT COALESCE(SUM(delta),0) AS s FROM ledger WHERE who=?").get(id) as any).s as number;
 
   // ---------------------------------------------------------------- growth: referrals, open requests, suggestions
@@ -367,7 +393,7 @@ export function createHub(opts: HubOptions) {
         if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
         if (!existing && opts.founder) {   // the founder is everyone's first friend; it can be removed like any other
           const f = byHandle(opts.founder.toLowerCase());
-          if (f && f.id !== e.from) { const t = now(); q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(f.id, e.from, t); q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(e.from, f.id, t); }
+          if (f && f.id !== e.from) befriend(f.id, e.from, "founder", now());
         }
         if (!existing) emit({ type: "signup", handle, name: b.name || "", total: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
         return { status: 200, body: { ok: true, id: e.from, handle } };
@@ -390,13 +416,15 @@ export function createHub(opts: HubOptions) {
         if (!req) return { status: 404, body: { error: "unknown request" } };
         const r = JSON.parse(req.json) as C.Envelope;
         if (r.body.to !== e.from || r.from !== b.to) return { status: 403, body: { error: "request was not to you" } };
-        q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(e.from, r.from, e.ts);
-        q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(r.from, e.from, e.ts);
+        const inv = !!q("SELECT 1 FROM referrals WHERE (invitee=? AND inviter=?) OR (invitee=? AND inviter=?)").get(e.from, r.from, r.from, e.from);
+        befriend(e.from, r.from, inv ? "invite" : "request", e.ts);
         q("DELETE FROM friend_intents WHERE (owner=? AND target=?) OR (owner=? AND target=?)").run(e.from, r.from, r.from, e.from);
         storeEnvelope(e, r.from);
         return { status: 200, body: { ok: true } };
       }
       case "friend.remove": {
+        // removing a shared-repo friendship leaves a tombstone, so the repo job never connects these two again
+        if ((q("SELECT kind FROM friends WHERE a=? AND b=?").get(e.from, b.to) as any)?.kind === "repo") q("INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)").run(...[e.from, String(b.to)].sort(), now());
         q("DELETE FROM friends WHERE (a=? AND b=?) OR (a=? AND b=?)").run(e.from, b.to, b.to, e.from);
         return { status: 200, body: { ok: true } };
       }
@@ -568,7 +596,7 @@ export function createHub(opts: HubOptions) {
     if (worldCache && Date.now() - worldCache.at < 60_000) return worldCache.w;
     const prs = (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY created").all() as any[]).filter(listed);
     const ids = new Map(prs.map(p => [p.id as string, p.handle as string]));
-    const pairs = (q("SELECT a, b FROM friends").all() as any[]).filter(r => ids.has(r.a) && ids.has(r.b)).map(r => [ids.get(r.a)!, ids.get(r.b)!] as [string, string]);
+    const pairs = (q("SELECT a, b, kind, why FROM friends").all() as any[]).filter(r => ids.has(r.a) && ids.has(r.b)).map(r => [ids.get(r.a)!, ids.get(r.b)!, r.kind || "request", r.why || undefined] as [string, string, string, string?]);
     const fc = new Map<string, number>(); for (const [a] of pairs) fc.set(a, (fc.get(a) || 0) + 1);
     const members: WorldMemberIn[] = prs.map(pr => {
       const b = body(pr), city = publicCityOf(pr.handle);
@@ -609,7 +637,7 @@ export function createHub(opts: HubOptions) {
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id); q("DELETE FROM signin_links WHERE owner=?").run(id); q("DELETE FROM pair_codes WHERE owner=?").run(id);
-    for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
+    for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM repo_tombstones WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?", "DELETE FROM kudos WHERE sender=? OR recipient=?", "DELETE FROM friend_intents WHERE owner=? OR target=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
     }
@@ -651,6 +679,7 @@ export function createHub(opts: HubOptions) {
       html = html.includes("<!--caldera:gardenhome-->") ? html.replace("<!--caldera:gardenhome-->", gh) : html.replace('<div class="g-filter"', gh + '<div class="g-filter"');
     }
     if (!html.includes("Heatmap sizing (2026-10-12)") && html.includes('class="heat-box"')) html = html.replace(/<\/head>/i, HEAT_FIX + "</head>");   // pages built before 0.5.1
+    if (html.includes('class="side-inner"')) html = html.replace(/<\/head>/i, "<style>.side-inner{scrollbar-width:none}.side-inner::-webkit-scrollbar{display:none}</style></head>");   // side menus scroll without a visible bar, whatever version built the page
     return html;
   }
 
@@ -813,7 +842,7 @@ export function createHub(opts: HubOptions) {
     const stale = hosted ? 0 : staleDays(owner);
     return { stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
-      friends: q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ?").all(owner, since) as any[],
+      friends: q("SELECT p.handle, p.name, f.kind, f.why FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ? AND COALESCE(f.kind,'request')<>'founder'").all(owner, since) as any[],
       gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
       links: (q("SELECT COUNT(*) n FROM garden_links WHERE dst_handle=? AND src_handle<>?").get(h, h) as any).n,
       invited: q("SELECT p.handle FROM referrals r JOIN profiles p ON p.id=r.invitee WHERE r.inviter=? AND r.ts > ?").all(owner, since) as any[],
@@ -829,6 +858,23 @@ export function createHub(opts: HubOptions) {
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
+
+  // shared-repo friendships: members who both contributed to the same public GitHub repo become friends (kind "repo")
+  const repoJob = repoConnector({
+    fetch: opts.githubFetch || fetch, pause: opts.githubFetch ? 0 : 250, log: (...a) => console.error(...a),
+    token: () => GH.anyToken(),
+    members: () => (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(pr => !modOf(pr.handle, pr.id)).map(pr => {
+      const logins = new Set<string>(GH.ghLoginsOf(pr));
+      for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
+      for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
+      return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: body(pr).autoConnectRepos === false };
+    }),
+    kindOf: (a, b) => (q("SELECT COALESCE(kind,'request') k FROM friends WHERE a=? AND b=?").get(a, b) as any)?.k ?? null,
+    tombstoned: (a, b) => !!q("SELECT 1 FROM repo_tombstones WHERE a=? AND b=?").get(...[a, b].sort()),
+    connect: (a, b, repo) => { befriend(a, b, "repo", now(), repo); worldCache = null; },
+  });
+  (admin as any).repoConnect = (o: { dry?: boolean } = {}) => repoJob.run(o);
+  if (opts.repoJob) { const t0 = setTimeout(function tick() { void repoJob.run().catch(e => console.error("repo-connect", e.message)); const t = setTimeout(tick, 6 * 3600_000); t.unref?.(); }, 5 * 60_000); t0.unref?.(); }
 
   // ---------------------------------------------------------------- the owner, signed in on their own browser
   // A one-time link from the plugin (or the GitHub sign-in cookie for hosted profiles) marks this browser as the owner's,
@@ -959,7 +1005,8 @@ export function createHub(opts: HubOptions) {
   function viewerFor(me: string | null, pr: any): BarViewer | null {
     const vp = me ? profile(me) : null; if (!vp?.handle || !pr || me === pr.id || modOf(vp.handle, vp.id)) return null;
     const day = new Date().toISOString().slice(0, 10), done = q("SELECT kind FROM kudos WHERE sender=? AND recipient=? AND day=?").get(me, pr.id, day) as any;
-    return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state };
+    const fr = q("SELECT kind, why FROM friends WHERE a=? AND b=?").get(me, pr.id) as any;
+    return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state, why: fr?.kind === "repo" && fr.why ? String(fr.why) : undefined };
   }
   /** Add-friend links in pages built by any plugin version (obsidian:// links, the 0.19.3+ data-caldera-friend link and the
    *  garden home button) become the inline control, labelled for this viewer. The page owner sees no Add-friend link. */
@@ -1432,7 +1479,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const total = (q("SELECT COUNT(*) n FROM page_views WHERE handle=?").get(h) as any).n;
         const hn = (id: string) => (profile(id)?.handle as string) || null;
         const gravity = (q("SELECT sender, reason, ts FROM gravity WHERE recipient=? AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], since) as any[]).map(r => ({ from: hn(r.sender), reason: r.reason || "", ts: r.ts }));
-        const friends = (q("SELECT a, b, ts FROM friends WHERE (a=? OR b=?) AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], m[1], since) as any[]).map(r => ({ handle: hn(r.a === m![1] ? r.b : r.a), ts: r.ts }));
+        const friends = (q("SELECT b, ts, kind, why FROM friends WHERE a=? AND ts > ? ORDER BY ts DESC LIMIT 20").all(m[1], since) as any[]).map(r => ({ handle: hn(r.b), ts: r.ts, kind: r.kind || "request", why: r.why || undefined }));
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
@@ -1608,7 +1655,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       }
       m = p.match(/^\/v1\/friends\/(cal:[1-9A-HJ-NP-Za-km-z]+)$/);
       if (req.method === "GET" && m) {
-        const rows = q("SELECT f.b AS id, p.handle, p.name, p.box_key FROM friends f LEFT JOIN profiles p ON p.id=f.b WHERE f.a=?").all(m[1]);
+        const rows = q("SELECT f.b AS id, p.handle, p.name, p.box_key, COALESCE(f.kind,'request') AS kind, f.why FROM friends f LEFT JOIN profiles p ON p.id=f.b WHERE f.a=?").all(m[1]);
         return json(res, 200, { friends: rows });
       }
       json(res, 404, { error: "not found" });
@@ -1693,7 +1740,7 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
       .then(warn("email")).catch(err => console.error("email notify error", String(err)));
   } : undefined;
   const hub = createHub({ dataDir: process.env.CALDERA_DATA || "./data", port: Number(process.env.PORT || 8787), publicUrl: process.env.CALDERA_PUBLIC_URL || "",
-    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent, founder: process.env.CALDERA_FOUNDER || undefined,
+    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent, founder: process.env.CALDERA_FOUNDER || undefined, repoJob: process.env.CALDERA_REPO_JOB !== "0",
     email: resend ? { resendKey: resend, schedule: true } : undefined,
     // CALDERA_TAILNET_OWNERS="you@example.com:handle,..."  (Tailscale login -> Caldera handle)
     privatePort: Number(process.env.CALDERA_PRIVATE_PORT) || undefined, privateUrl: process.env.CALDERA_PRIVATE_URL || undefined,
