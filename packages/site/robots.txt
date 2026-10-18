@@ -3,77 +3,134 @@
 User-agent: GPTBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: OAI-SearchBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: ChatGPT-User
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: ClaudeBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Claude-SearchBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Claude-User
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: anthropic-ai
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: PerplexityBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Perplexity-User
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Google-Extended
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Googlebot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Bingbot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Applebot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Applebot-Extended
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: DuckAssistBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: Meta-ExternalAgent
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: MistralAI-User
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: CCBot
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 User-agent: *
 Allow: /
 Disallow: /v1/
+Disallow: /auth/
+Disallow: /signin
+Disallow: /messages
 
 Sitemap: https://caldera.social/sitemap.xml
