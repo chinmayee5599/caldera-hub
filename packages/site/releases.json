@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.21.0",
+      "date": "2026-10-18",
+      "title": "Messages, private repos your way, and the Terms",
+      "items": [
+        "Messages: when you have unread messages on Caldera, Obsidian shows a notice. Click it to open your Messages, already signed in.",
+        "Private repos on my city: choose how private repos show to visitors. Show as padlocked (as before), Anonymous (one separate Private district of identical padlocks, no activity, a rough size instead of a count) or Hidden (no trace). Set it in Caldera's settings, in Caldera/profile.md (privateRepos: show, anonymous or hidden), or on caldera.social/settings. Your private view always shows everything.",
+        "The Welcome form now notes the Terms of Service and Privacy Policy (mjonesone, LLC).",
+        "The setup prompt is version 5: it asks which private-repo level you want."
+      ],
+      "howto": "To pick your private-repo level, ask your AI: \"Set privateRepos in my Caldera/profile.md to anonymous\", or open Settings > Caldera."
+    },
+    {
       "version": "0.20.3",
       "date": "2026-10-18",
       "title": "Your daily summary",
