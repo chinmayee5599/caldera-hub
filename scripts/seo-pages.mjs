@@ -20,7 +20,7 @@ export const pages = [
 <li><b>People.</b> Follow builders (follow each other and you are friends), message them, post on the <a href="/feed">Feed</a>, start a group at caldera.social/g/name, and get a daily summary by email.</li>
 </ul>` },
       { h2: "How to do it", html: `<ol>
-<li>Go to <a href="/auth/github">caldera.social/auth/github</a> and sign in with GitHub. Brand-new, empty GitHub accounts wait a few days before they can sign up.</li>
+<li>Go to <a href="/auth/github">caldera.social/auth/github</a> and sign in with GitHub. Your page is built and filled in for you: nothing to fill out.</li>
 <li>Your page and city are built from your public repos and open on your account page.</li>
 <li>Edit your name, headline, links and photo there, add private repos if you want them, and copy the live-visitor snippet for your sites.</li>
 </ol>` },

@@ -1394,8 +1394,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
    *  sandboxed, so it acts through /v1/act with an owner token, like inline kudos. */
   function welcomeBanner(handle: string): string {
     return `<div id="cb-wel" style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 40px 9px 16px;background:#1A1530;border-bottom:1px solid #3A2F5C;font:500 13.5px/1.35 'IBM Plex Sans',Arial,sans-serif;color:#E6E1F5">`
-      + `<span><b style="color:#fff">This is your city.</b> Each building is a repo, taller with more commits. Drag to look around, tap a building for its details.</span>`
-      + `<span style="display:inline-flex;gap:12px"><a href="/@${handle}/" style="color:#C9B8FF">Your page</a><a href="/world" style="color:#C9B8FF">Fly over other cities</a></span>`
+      + `<span><b style="color:#fff">You're in. This is your city.</b> Each building is a repo, taller with more commits. Your page is already filled in from GitHub; change anything later in Settings.</span>`
+      + `<span style="display:inline-flex;gap:12px"><a href="/@${handle}/" style="color:#C9B8FF">Your page</a><a href="/world" style="color:#C9B8FF">Fly over other cities</a><a href="/settings" style="color:#C9B8FF">Settings</a></span>`
       + `<button type="button" aria-label="Close" onclick="this.parentNode.remove()" style="all:unset;cursor:pointer;position:absolute;top:8px;right:10px;padding:2px 6px;color:#9A93B5;font-size:18px;line-height:1">&times;</button></div>`;
   }
   function summaryBanner(owner: string, handle: string): string {

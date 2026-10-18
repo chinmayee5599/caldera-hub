@@ -364,7 +364,9 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
     const cb = await fetch(base + `/auth/github/callback?code=${code}&state=${state}`, { headers: { cookie: oauth }, redirect: "manual" });
     return { cb, cookie: (cb.headers.getSetCookie?.() || [cb.headers.get("set-cookie")]).map(c => c.split(";")[0]).filter(c => c.startsWith("cal_s=")).join("; ") };
   };
-  assert.equal((await fetch(base + "/auth/github/callback?code=42&state=forged", { redirect: "manual" })).status, 400, "state must match the cookie");
+  { const f = await fetch(base + "/auth/github/callback?code=42&state=forged", { redirect: "manual" });
+    assert.equal(f.headers.get("location"), "/auth/github", "state must match the cookie: a mismatch starts a fresh sign-in, never uses the code");
+    assert.equal((await fetch(base + "/auth/github/callback?code=42&state=forged", { headers: { cookie: "cal_retry=1" }, redirect: "manual" })).status, 400, "only once"); }
   const { cb, cookie } = await signIn("42");
   assert.equal(cb.status, 302); assert.equal(cb.headers.get("location"), "/me?welcome=1"); assert.ok(cookie);
   const pageHtml = await (await fetch(base + "/@octo-cat/", { headers: { "user-agent": "Mozilla/5.0" } })).text();
@@ -387,8 +389,9 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship", summary: "", links: "", listed: "on" }, cookie, "https://evil.example")).includes("Wrong origin"));
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship small tools", summary: "Hello", links: "Blog | https://octo.dev", listed: "on" })).includes("Republished"));
   assert.ok((await (await fetch(base + "/@octo-cat/", { headers: { "user-agent": "Mozilla/5.0" } })).text()).includes("I ship small tools"));
-  // bots: brand-new accounts with nothing on them are refused; a taken handle gets a suffix
-  assert.equal((await signIn("43")).cb.status, 403);
+  // brand-new accounts with nothing on them still get a page (no dead end), but stay out of People and the world
+  assert.equal((await signIn("43")).cb.status, 302);
+  assert.ok(!(await (await fetch(base + "/v1/directory")).json()).profiles.some(p => p.handle === "newbie"), "unlisted until it has something public");
   await signIn("44"); assert.equal((await fetch(base + "/@mike-2/")).status, 200, "taken handle -> mike-2");
   // claim into a vault: one-time code returns the key once, then the hub forgets it
   const code = (await post({ do: "claim" })).match(/CAL-[\w-]+/)[0];

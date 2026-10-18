@@ -84,6 +84,13 @@ export function github(ctx: GhCtx) {
   q("CREATE TABLE IF NOT EXISTS gh_links (gh_id INTEGER PRIMARY KEY, login TEXT, profile_id TEXT, ts TEXT)").run();
   const appFile = path.join(ctx.dataDir, "github-app.json");
   const app = (): App | null => { try { return JSON.parse(fs.readFileSync(appFile, "utf8")); } catch { return null; } };
+  /** Sign-in can use a plain OAuth app (github-oauth.json: {client_id, client_secret}) instead of the GitHub App: GitHub's
+   *  approval screen then asks only for public profile and email, not "Act on your behalf". The GitHub App stays for the
+   *  optional private-repos install. */
+  const oauthFile = path.join(ctx.dataDir, "github-oauth.json");
+  const signin = (): { client_id: string; client_secret: string; scope: string } | null => {
+    try { const o = JSON.parse(fs.readFileSync(oauthFile, "utf8")); if (o.client_id && o.client_secret) return { client_id: o.client_id, client_secret: o.client_secret, scope: "user:email" }; } catch { /* none */ }
+    const a = app(); return a ? { client_id: a.client_id, client_secret: a.client_secret, scope: "" } : null; };
   const pub = ctx.publicUrl.replace(/\/$/, "") || "https://caldera.social";
   const secure = pub.startsWith("https:");
   const hashTok = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
@@ -141,8 +148,8 @@ export function github(ctx: GhCtx) {
     if (!r.ok) throw new Error(`GitHub ${r.status} on ${p}`);
     return r.status === 204 ? null : r.json();
   };
-  async function exchange(params: Record<string, string>) {
-    const a = app()!; const r = await F("https://github.com/login/oauth/access_token", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "user-agent": "caldera-hub" },
+  async function exchange(params: Record<string, string>, who: { client_id: string; client_secret: string } = app()!) {
+    const a = who; const r = await F("https://github.com/login/oauth/access_token", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "user-agent": "caldera-hub" },
       body: JSON.stringify({ client_id: a.client_id, client_secret: a.client_secret, ...params }) });
     const j = await r.json() as any; if (!j.access_token) throw new Error(j.error_description || j.error || "GitHub sign-in failed");
     return { access: j.access_token as string, refresh: j.refresh_token as string | undefined, expires: j.expires_in ? Date.now() + j.expires_in * 1000 : 0 };
@@ -217,18 +224,23 @@ export function github(ctx: GhCtx) {
 
   async function build(acct: any): Promise<string> {
     const token = await tokenFor(acct), me = await gh(token, "/user") as any, edits = JSON.parse(acct.edits || "{}"), cache = JSON.parse(acct.cache || "{}");
+    if (edits.heldNew && (ctx.accountOk ? ctx.accountOk(me) : true)) {   // a brand-new account that now has something public: list it
+      delete edits.heldNew; delete edits.listed; q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id); }
     const own: any[] = [];
     for (let pg = 1; pg <= 3; pg++) { const r = await gh(token, `/users/${encodeURIComponent(me.login)}/repos?type=owner&sort=pushed&per_page=100&page=${pg}`) as any[]; own.push(...r); if (r.length < 100) break; }
     let priv: any[] = [];
     if (acct.installation) try { priv = (await installationRepos(acct.installation)).filter(r => r.private); } catch { /* uninstalled: public repos only */ }
     const repos = [...own.filter(r => !r.fork && !r.private), ...priv].slice(0, 120);
     const stats: Record<string, { weeks: number[]; commits: number; week: number }> = cache.stats || {};
-    for (const r of repos.slice(0, 40)) {   // commit activity for the 40 most recently pushed (GitHub computes it lazily: keep the last good numbers)
+    // commit activity for the 40 most recently pushed, 8 at a time so a first sign-up waits seconds, not a minute (GitHub
+    // computes it lazily: keep the last good numbers)
+    const top = repos.slice(0, 40);
+    for (let i = 0; i < top.length; i += 8) await Promise.all(top.slice(i, i + 8).map(async r => {
       try {
         const w = await gh(r._token || token, `/repos/${r.full_name}/stats/commit_activity`) as any;
         if (Array.isArray(w) && w.length) { const t52 = w.slice(-52).map((x: any) => x.total); stats[r.full_name] = { weeks: t52.slice(-12), commits: t52.reduce((a: number, b: number) => a + b, 0), week: w[w.length - 1].total }; }
       } catch { /* keep cached */ }
-    }
+    }));
     const cityRepos: CityRepo[] = repos.map(r => { const s = stats[r.full_name] || { weeks: [], commits: 0, week: 0 };
       return { name: r.name, project: r.language || "Other", public: !r.private, language: r.language || "Other", commits: s.commits || (r.size ? 1 : 0), weeks: s.weeks, week: s.week, today: 0,
         pushed: r.pushed_at, created: r.created_at, size: r.size, url: r.private ? undefined : r.html_url, description: r.private ? undefined : (r.description || "").slice(0, 200) }; });
@@ -351,7 +363,7 @@ ${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your ve
       + (x.invited ? `<span class="mut">invited</span>` : x.canEmail ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="gh-invite"><input type="hidden" name="login" value="${esc(x.login)}"><button class="btn small ghost" type="submit">Email invite</button></form>` : `<span class="mut">no public email: send the message</span>`) + `</div>`).join("")}</div></div>` : "";
     const growth = growthCards(a, edits) + ghp;
     if (!pr) {   // first build still running (or queued behind other sign-ups): show progress, refresh until it lands
-      page(res, 200, "Building your city", `<meta http-equiv="refresh" content="5"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. This page refreshes by itself.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
+      page(res, 200, "Building your city", `<meta http-equiv="refresh" content="2"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. It opens by itself when it is ready.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
       return;
     }
     const em = ctx.social?.email?.status(a.profile_id);
@@ -525,7 +537,8 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
-      redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(a.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}`); return true;
+      const si = signin() || a;
+      redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
       const a = app(); if (!a) { redirect(res, "/"); return true; }
@@ -541,10 +554,14 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       if (code) { const pr = new Promise<{ cookies: string[]; loc: string } | null>(r => { settle = r; }); cbResults.set(code, { state: st, at: Date.now(), p: pr }); for (const [k, v] of cbResults) if (Date.now() - v.at > 120_000) cbResults.delete(k); }
       const done = (loc: string) => { const c = res.getHeader("set-cookie"); settle({ cookies: Array.isArray(c) ? c.map(String) : c ? [String(c)] : [], loc }); redirect(res, loc); };
       try {
+      // a stale or reused sign-in (slow, second tab, reload): start again by itself. GitHub remembers the approval, so
+      // this is invisible; only a second failure in a row shows a page
+      const retry = () => { if (cookies(req).cal_retry) return false; setCookie(res, "cal_retry", "1", 120); settle(null); redirect(res, "/auth/github"); return true; };
+      if ((!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) && retry()) return true;
       if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "One more click", `<h1>That sign-in took a little too long</h1><p>For your safety, a GitHub sign-in has to finish within 10 minutes in the same browser. Start again and it takes a few seconds.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
       setCookie(res, "cal_oauth", "", 0);
       try {
-        const tok = await exchange({ code: url.searchParams.get("code") || "", redirect_uri: pub + "/auth/github/callback" });
+        const tok = await exchange({ code: url.searchParams.get("code") || "", redirect_uri: pub + "/auth/github/callback" }, signin() || a);
         const me = await gh(tok.access, "/user") as any;
         let acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id) as any;
         const wantH = String(cookies(req).cal_h || "").toLowerCase(); setCookie(res, "cal_h", "", 0);
@@ -564,12 +581,13 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); await captureEmail(acct.profile_id, tok.access, me); done(backTo || "/me"); return true;
         }
         // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
-        if (!(ctx.accountOk ? ctx.accountOk(me) : true)) {
-          page(res, 403, "Almost", `<h1>Your GitHub account is brand new</h1><p>To keep bots out, Caldera waits until a GitHub account is a few days old, or has a public repo or a follower. Push a repo (even an empty one) and <a class="btn" href="/auth/github">try again</a>, or come back in a couple of days.</p><p class="mut">Use Obsidian? You can <a href="/#install">set up Caldera from your vault</a> right now.</p>`); return true;
-        }
+        // a brand-new, completely empty GitHub account (how bots look) still gets its page, just not listed in People or
+        // the world until it has a public repo, a follower or a few days behind it (the refresh lists it then)
+        const held = !(ctx.accountOk ? ctx.accountOk(me) : true);
         if (!ctx.allowNewProfile(req)) { page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
         const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);
         const edits0: any = grp0.length ? { groups: grp0 } : {};
+        if (held) { edits0.listed = false; edits0.heldNew = true; }
         if (typeof me.email === "string" && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(me.email)) edits0.ghEmail = me.email.slice(0, 200);   // public GitHub email: only a suggestion for the summary-email field
         q(`INSERT INTO gh_accounts (gh_id, login, profile_id, handle, key_sealed, token_sealed, edits, cache, created) VALUES (?,?,?,?,?,?,?,?,?)`)
           .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), JSON.stringify(edits0), "{}", new Date().toISOString());
@@ -589,6 +607,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         settle(null);
         // a used or expired one-time code (a reload, a retried request, a restart mid-sign-in): one more click fixes it,
         // and if the account was already created the retry simply signs them in
+        if (/incorrect or expired|bad_verification_code/i.test(String(e.message)) && retry()) return true;
         if (/incorrect or expired|bad_verification_code/i.test(String(e.message))) { page(res, 400, "One more click", `<h1>That GitHub sign-in link was already used</h1><p>No problem: this happens when a page reloads mid-sign-in. Continue and you'll land on your page.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
         console.error("github callback", String(e?.message || e));
         page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true;

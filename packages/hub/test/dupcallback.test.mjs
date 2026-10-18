@@ -52,6 +52,9 @@ test("a duplicated GitHub callback (same code twice, concurrently and right afte
   }
   assert.equal(h.db.prepare("SELECT COUNT(*) n FROM gh_accounts").get().n, 1, "one account, not two");
   const other = await fetch(base + `/auth/github/callback?code=newbie&state=wrong`, { headers: { cookie: jar.join("; ") }, redirect: "manual" });
-  assert.notEqual(other.status, 302, "a replay with a different state is refused");
+  assert.notEqual(other.headers.get("location") || "", "/me?welcome=1", "a replay with a different state never signs in");
+  assert.equal(other.headers.get("location"), "/auth/github", "it starts a fresh sign-in instead (GitHub remembers the approval)");
+  const again = await fetch(base + `/auth/github/callback?code=newbie&state=wrong`, { headers: { cookie: [...jar, "cal_retry=1"].join("; ") }, redirect: "manual" });
+  assert.equal(again.status, 400, "a second failure in a row shows the page");
   h.server.close();
 });
