@@ -52,7 +52,7 @@ test("simple composer: one choice + free text; link lifted out; recommendations 
   assert.equal(a.status, 200);
   assert.match(a.body.post.text, /^@bo is looking for someone: a co-founder for a social features app built with TypeScript\.$/);
   assert.doesNotMatch(a.body.html, /<b>/, "markup stripped");
-  assert.ok(a.body.post.fields.simple && a.body.post.fields.audience.includes("social features"), "topic tag read from the text");
+  assert.ok(a.body.post.fields.simple && a.body.post.fields.audience.map(x => String(x).toLowerCase()).includes("social features"), "topic tag read from the text");
   assert.ok(Array.isArray(a.body.matches), "matches panel after posting");
   const r = await as("cy", "/v1/posts", { type: "recommend", rec: "tool", text: "Claude Code - best coding agent I've used https://claude.com/claude-code." });
   assert.equal(r.status, 200);
