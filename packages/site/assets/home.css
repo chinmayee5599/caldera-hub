@@ -46,3 +46,14 @@
   .hh-cap b { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .hh-live { animation: none; } .hh-city { transition: none; } }
+
+/* World tile (homepage entry to /world) */
+.world-tile{max-width:1120px;margin:8px auto 36px;padding:0 16px}
+.wt-card{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg-raised);color:var(--text);text-decoration:none;transition:border-color .2s,transform .2s}
+.wt-card:hover{border-color:var(--accent);transform:translateY(-1px);text-decoration:none}
+.wt-card img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1200/630;background:#0c1222}
+.wt-text{display:flex;flex-direction:column;justify-content:center;gap:8px;padding:22px 24px}
+.wt-k{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text)}
+.wt-h{font-family:var(--font-display,'Source Serif 4',Georgia,serif);font-size:clamp(1.3rem,2.4vw,1.75rem);line-height:1.2;color:var(--text-strong)}
+.wt-p{color:var(--text-muted);font-size:15px;line-height:1.5}.wt-go{color:var(--accent-text);font-weight:600}
+@media (max-width:720px){.wt-card{grid-template-columns:1fr}.wt-text{padding:16px 18px}}

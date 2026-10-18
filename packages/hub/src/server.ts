@@ -14,6 +14,8 @@ import { github } from "./github";
 import { cityArt, cardSvg, toPng, groupPage, ogTags } from "./cards";
 import { emailer, type Mail } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
+import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
+import { citySnapshot } from "../../../../caldera/packages/plugin/src/city";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
@@ -545,6 +547,52 @@ export function createHub(opts: HubOptions) {
       .map(p => ({ handle: p.handle as string, name: p.name as string, headline: p.headline as string, city: cityOf(p.handle) }));
   }
 
+  // ---------------------------------------------------------------- the world: every listed member's city on one map
+  // Built from each member's PUBLIC city (their hosted city.html data), re-cleaned in world.ts; unlisted and moderated
+  // profiles never appear. Cached for a minute; live activity is the public projection folded per member.
+  let worldCache: { at: number; w: World } | null = null, worldPng: { at: number; png: Buffer } | null = null;
+  function publicCityOf(handle: string): any {
+    try { const html = fs.readFileSync(path.join(opts.dataDir, "profiles", handle, "city.html"), "utf8");
+      const m = html.match(/<script type="application\/json" id="city-data">([\s\S]{1,3000000}?)<\/script>/); const d = m ? JSON.parse(m[1]) : null;
+      return d && Array.isArray(d.districts) && d.private === false ? d : null; } catch { return null; }
+  }
+  function worldNow(): World {
+    if (worldCache && Date.now() - worldCache.at < 60_000) return worldCache.w;
+    const prs = (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY created").all() as any[]).filter(listed);
+    const ids = new Map(prs.map(p => [p.id as string, p.handle as string]));
+    const pairs = (q("SELECT a, b FROM friends").all() as any[]).filter(r => ids.has(r.a) && ids.has(r.b)).map(r => [ids.get(r.a)!, ids.get(r.b)!] as [string, string]);
+    const fc = new Map<string, number>(); for (const [a] of pairs) fc.set(a, (fc.get(a) || 0) + 1);
+    const members: WorldMemberIn[] = prs.map(pr => {
+      const b = body(pr), city = publicCityOf(pr.handle);
+      const busy = (city?.districts || []).flatMap((d: any) => d.repos || []).reduce((s: number, r: any) => s + (Number(r.week) || 0), 0);
+      return { handle: pr.handle, name: pr.name || "@" + pr.handle, headline: pr.headline || "", created: pr.created || pr.updated || now(),
+        groups: Array.isArray(b.groups) ? b.groups.filter((g: unknown) => typeof g === "string" && /^[a-z0-9][a-z0-9-]{1,29}$/.test(g)) : [],
+        friends: fc.get(pr.handle) || 0, city, notes: (q("SELECT COUNT(*) n FROM garden_notes WHERE owner=?").get(pr.id) as any).n, busy };
+    });
+    const w = buildWorld(members, pairs, opts.founder ? opts.founder.toLowerCase() : null, opts.publicUrl || "https://caldera.social");
+    worldCache = { at: Date.now(), w }; return w;
+  }
+  function worldLive(since: string | null) {
+    const per = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed)
+      .filter(pr => sitesOf(pr.id).length || q("SELECT 1 FROM agents WHERE owner=? LIMIT 1").get(pr.id))
+      .map(pr => ({ handle: pr.handle as string, live: liveStats(pr.id, false, since) }));
+    return foldLive(per, now());
+  }
+  function worldNav(): string {
+    let h = ""; try { const g = fs.readFileSync(path.join(opts.siteDir || "", "guide.html"), "utf8"); h = g.slice(g.indexOf('<header class="nav">'), g.indexOf("</header>") + 9); } catch { /* no site */ }
+    if (!h.startsWith("<header")) h = `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a></nav></header>`;
+    return h.replace(/ aria-current="page"/g, "").replace('href="/world"', 'href="/world" aria-current="page"').replace(/href="\.\/"/g, 'href="/"').replace(/href="#/g, 'href="/#') + `<script src="/assets/site.js" defer></script>`;
+  }
+  async function worldPreview(): Promise<Buffer> {
+    if (worldPng && Date.now() - worldPng.at < 10 * 60_000) return worldPng.png;
+    const w = worldNow(), snap = citySnapshot({ ...w.city, districts: w.city.districts.filter(d => d.repos.length) }, { name: "World" }), art = cityArt(snap);
+    const n = w.members.length, b = w.city.districts.reduce((s, d) => s + d.repos.length, 0);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><defs><radialGradient id="g" cx="50%" cy="110%" r="90%"><stop offset="0" stop-color="#1d2b4a"/><stop offset=".6" stop-color="#0c1222"/><stop offset="1" stop-color="#080b14"/></radialGradient></defs>`
+      + `<rect width="1200" height="630" fill="url(#g)"/>${art ? `<svg x="40" y="30" width="1120" height="500" viewBox="${art.viewBox}" preserveAspectRatio="xMidYMid meet">${art.shapes}</svg>` : ""}`
+      + `<text x="48" y="586" font-family="DejaVu Serif" font-weight="bold" font-size="40" fill="#F7F7FA">The Caldera world</text><text x="48" y="614" font-family="DejaVu Sans" font-size="20" fill="#9CC4FF">${n} neighborhood${n === 1 ? "" : "s"} · ${b.toLocaleString("en-US")} buildings · live</text></svg>`;
+    const png = await toPng(svg); worldPng = { at: Date.now(), png }; return png;
+  }
+
   const emit = (ev: Parameters<NonNullable<HubOptions["onEvent"]>>[0]) => { try { opts.onEvent?.(ev); } catch { /* never let a notifier break a request */ } };
 
   function erase(id: string) {
@@ -1037,6 +1085,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
           return res.end(groupPage({ slug: g[1], hub: opts.publicUrl || "https://caldera.social", members: groupMembers(g[1]) }));
         } }
+      if (req.method === "GET" && p === "/v1/world") { res.setHeader("cache-control", "public, max-age=60"); const w = worldNow(); return json(res, 200, { at: w.at, members: w.members, links: w.links, city: w.city }); }
+      if (req.method === "GET" && p === "/v1/world/live") { res.setHeader("cache-control", "no-store"); return json(res, 200, worldLive(url.searchParams.get("since"))); }
+      if (req.method === "GET" && (p === "/world" || p === "/world/")) {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache",
+          "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
+        return res.end(worldPage(worldNow(), { hub: opts.publicUrl || "https://caldera.social", nav: worldNav() }));
+      }
+      if (req.method === "GET" && p === "/world/preview.png") { const png = await worldPreview(); res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=600" }); return res.end(png); }
       const m0 = p.match(/^\/watch\/@([a-z0-9-]+)\/?$/);
       if (req.method === "GET" && m0) {
         const pr = byHandle(m0[1]);

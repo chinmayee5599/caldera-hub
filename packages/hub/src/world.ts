@@ -56,7 +56,7 @@ export function buildWorld(members: WorldMemberIn[], friendships: [string, strin
   return {
     at: new Date(now).toISOString(),
     members: order.map(m => ({ handle: m.handle, name: str(m.name, 80), headline: str(m.headline, 160), isNew: isNew(m), groups: m.groups.slice(0, 8), friends: m.friends,
-      city: `${base}/@${m.handle}/city.html`, page: `${base}/@${m.handle}/` })),
+      city: m.city ? `${base}/@${m.handle}/city.html` : `${base}/@${m.handle}/`, page: `${base}/@${m.handle}/` })),
     city: { generated: new Date(now).toISOString(), districts, private: false, totals: { commits: all.reduce((s, r) => s + r.commits, 0), active: all.filter(r => r.week > 0).length } },
     links: links.slice(0, MAX_LINKS),
     start: busiest && busiest.busy > 0 ? "@" + busiest.handle : order.length ? "@" + order[0].handle : null,
@@ -84,7 +84,7 @@ export function foldLive(per: { handle: string; live: any }[], at: string) {
 }
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").replace(/ /g, "\\u2028").replace(/ /g, "\\u2029");
+const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
 /** The world page: the city renderer in world mode, with the site's own look around it. */
 export function worldPage(w: World, o: { hub: string; nav: string }): string {
