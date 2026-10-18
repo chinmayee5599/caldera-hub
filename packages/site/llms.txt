@@ -23,8 +23,36 @@
 - [Track your AI token usage by day and by model](https://caldera.social/track-ai-token-usage): See how many AI tokens you use per day and which models (Claude Opus, Sonnet, GPT-5 and more), charted on your profile. Counts only, read from local Claude Code and Codex logs.
 - [Activity heatmap, streaks and a leaderboard for Obsidian](https://caldera.social/obsidian-activity-tracker): A 26-week activity heatmap, daily score, streaks, best days and a friends leaderboard for your Obsidian vault, on a public profile page. Free and open source.
 
+## Every feature, and how to turn it on (for AI agents setting up a member's page)
+The full setup prompt (safe to paste again; it covers everything below and asks the owner before anything goes public): https://caldera.social/#install . Per-feature prompts: https://caldera.social/guide . Never read or edit .obsidian/plugins/caldera/data.json (the owner's private key).
+- Daily journal: fed by caldera_headline / caldera_focus / caldera_wins / caldera_themes in daily notes (YYYY-MM-DD.md). The setup prompt's routine writes one entry per workday from your notes, calendar, sent email, commits and AI sessions.
+- Scoreboard (streak, rank, 30-day bars): fed by notes the plugin counts + the daily counts in Caldera/activity.json. On by default; richer once the routine writes meetings, emails, prompts, commits, docs and tokens per day.
+- Now: fed by "now" in Caldera/profile.md (3 lines). Write it yourself or let your AI propose it (you approve).
+- Activity heatmap: fed by notes created and changed per day, plus outside counts from Caldera/activity.json. Automatic; the routine adds calendar, email, AI and code counts.
+- Growth: fed by notes in the vault over time. Automatic.
+- What it knows: fed by "knows" in Caldera/profile.md (Label | vault folder) or a "knows" list in Caldera/activity.json. Pick the folders that describe your knowledge (counts only, never note names).
+- Inbox to knowledge: fed by an "inbox" block in Caldera/activity.json: {"total", "kinds": [["Reports", 61]], "series": {"label", "weeks": [["Aug 3", 5]]}}. If an agent files your email attachments into the vault, have it count them by kind (counts only).
+- Topics: fed by tags you allow-list in Settings -> Caldera -> Public topics. Only allow-listed tags are ever counted, so private names never appear.
+- Projects with live links: fed by "projects" in Caldera/profile.md (Name | status | https://link); commit counts per project from a "projects" map in Caldera/activity.json. List public projects with their live URL; the routine can add commit counts per project.
+- Code + GitHub city: fed by a GitHub (or Forgejo / Codeberg) link in your profile links, or Caldera/city.json written by the routine. Add "GitHub | https://github.com/you" to links, or sign up with GitHub.
+- AI usage (tokens by model and provider): fed by Claude Code and Codex logs on this computer (read by the plugin itself), or an "ai" block in Caldera/activity.json for more machines and your products' APIs. Automatic on the computer where you code; the routine adds other machines and sources (counts only).
+- Timeline with eras and links: fed by "timeline" in Caldera/profile.md: "Year | milestone | detail" lines, chapters as "era | Name | 2015-2020", links as [[Name|https://...]]. Only things already public; linked names also become links in the side menu.
+- Side menu groups: fed by "sidebar" in Caldera/profile.md (Group | item, item | optional vault folder). Hand-pick companies, projects or sources to list; items named in your timeline or projects link to their sites.
+- Local graph and backlinks: fed by "graph" (note names) and "backlinks" (Title | context) in Caldera/profile.md. Pick names you're comfortable showing; the page shows how many notes link to each.
+- Garden and garden home: fed by notes in your Garden folder or marked "caldera: garden" (stage + license). Plant a note; the whole note becomes a public page with backlinks from other gardens.
+- Help exchange (asks and offers): fed by asks and offers you post. Run "Caldera: Post an ask" / "Caldera: Post an offer" in Obsidian.
+- Elsewhere (links): fed by "links" in Caldera/profile.md (Label | https://url). Your site, GitHub, socials.
+- Masthead and photo: fed by "banner" and "photo" in Caldera/profile.md (images inside the vault). Choose images in Private view, or copy the masthead prompt for your AI.
+- Live visitors on your city: fed by the Caldera snippet (t.js with your site key) on each of your websites. Copy each district's snippet from Settings -> Caldera -> Live traffic (or caldera.social/me) into that site's shared layout.
+- Your AI agents on the map: fed by the Caldera agent hook (agent-hook.mjs + Claude Code hooks) on each computer you code on. Copy the agent setup prompt from Settings -> Caldera -> AI agents on your city (or caldera.social/me) and paste it into Claude Code.
+- Time of day and weather: fed by the viewer's own clock and local weather. Automatic; anyone can override it with the sky buttons.
+- Private view on the web (only the owner sees it): fed by your private sections, pushed encrypted from Obsidian. Turn on Settings -> Caldera -> Private web view, then use the Public view | Private view switch when signed in.
+- Daily summary email (only the owner sees it): fed by your address (stored encrypted, double opt-in). Settings -> Caldera -> Daily summary email (or caldera.social/me), then click the confirm link.
+- Groups: fed by the groups you join. Settings -> Caldera -> Groups (or caldera.social/me); each group is a town of everyone's cities at caldera.social/g/<name>.
+- Friends, kudos and views: fed by other members. Nothing to set up: add friends and send kudos from anyone's page; shared GitHub repos connect people automatically.
+
 ## Reference
-- [Guide: change your page, commands, keys](https://caldera.social/guide)
+- [Guide: every feature, change your page, commands, keys](https://caldera.social/guide)
 - [Release notes](https://caldera.social/changelog)
 - [Protocol spec](https://caldera.social/PROTOCOL.md)
 - [Privacy policy](https://caldera.social/privacy)

@@ -900,9 +900,23 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const d = Math.floor((Date.now() - Date.parse(pr.updated)) / DAY);
     return d >= 3 ? d : 0;
   }
+  /** "Unlock more" state from what the hub can see: live visitors and agent drones in the last 7 days, a private layer pushed
+   *  in the last 7 days (vault profiles). Hosted GitHub pages have no vault, so AI usage, timeline and private sections don't apply. */
+  function unlockStateFor(owner: string): C.UnlockState | null {
+    const pr = profile(owner); if (!pr?.handle) return null;
+    const wk = new Date(Date.now() - 7 * DAY).toISOString(), hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
+    const live = !!q("SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1").get(owner, wk);
+    const agents = !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk);
+    const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(owner) as any;
+    return hosted ? { live, agents } : { live, agents, private: !!pv && pv.ts > wk };
+  }
   function nudgeFor(owner: string, hosted: boolean) {
-    const st = pageStateFor(owner), n = st && C.nextStep(st); if (!n) return undefined;
     const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+    const st = pageStateFor(owner), n = st && C.nextStep(st);
+    if (!n) {   // basics done: one "unlock more" feature instead
+      const u = st ? C.unlockChecklist(unlockStateFor(owner) || {}).find(i => !i.done) : undefined; if (!u) return undefined;
+      return { label: u.label.toLowerCase(), why: u.why, how: hosted ? "Set it up from your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/me#unlock` : "obsidian://caldera?open=finish" };
+    }
     return { label: n.label.toLowerCase(), why: n.why, how: hosted ? "Do it on your account page" : "Open My profile in Obsidian", url: hosted ? `${hub}/me#finish` : "obsidian://caldera?open=finish" };
   }
 
@@ -934,7 +948,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
-    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
       circle: { people: (id: string) => githubPeople(id), invite: (id: string, login: string) => githubInvite(id, login), signedIn: (id: string) => circleHooks.signedIn?.(id) } } });
 
   // shared-repo friendships: members who both contributed to the same public GitHub repo become friends (kind "repo")
@@ -1654,7 +1668,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const links = (q("SELECT src_handle, src_slug, src_title, dst_slug FROM garden_links WHERE dst_handle=? AND src_handle<>? LIMIT 20").all(h, h) as any[]);
         const asks = (q("SELECT title, status, ts FROM asks WHERE author=? ORDER BY ts DESC LIMIT 10").all(m[1]) as any[]);
         const pv = q("SELECT ts FROM owner_private WHERE owner=?").get(m[1]) as any;
-        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts });
+        return json(res, 200, { emailConfirmed: mail.hasConfirmed(m[1]), since, handle: h, views: v.n, visitors: v.u, pages, days, totalViews: total, viewsAll: viewsOf(h), viewsWeek: viewsOf(h, new Date(Date.now() - 7 * DAY).toISOString()), showViews: body(pr).showViews !== false, kudos: kudosFor(m[1], since), kudosTally: Object.fromEntries(tallyOf(m[1])), gravity, friends, links, asks, privateUrl: privateFor(h), privatePushed: pv?.ts, unlock: unlockStateFor(m[1]) || {} });
       }
       // The owner's private layer, pushed from Obsidian for their private (Tailscale-only) address. Encrypted at rest.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);

@@ -16,11 +16,301 @@
 <header class="nav">
   <a class="brand" href="./"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="var(--accent)"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="var(--text-strong)" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="var(--accent-2)"/></svg>Caldera</a>
   <nav><a href="./#how">How it works</a><a href="/people">People</a><a href="/world">World</a><a href="/guide" aria-current="page">Guide</a><a href="/changelog">What's new</a><a href="./#faq">FAQ</a><a href="/signin">Sign in</a></nav>
-  <a class="btn small" href="./#install">Get the plugin</a>
+  <a class="btn small" href="./#install">Get started</a>
 </header>
 <main class="legal guide">
   <p class="eyebrow">Guide</p>
-  <h1>Change your page</h1>
+  <h1>Every feature, and how to turn it on</h1>
+  <p class="lead-in">A Caldera page can show a lot more than a profile: your daily journal, your repos as a living city, live visitors parachuting in, your AI agents flying over the code they're working on, your AI usage, your story with links, and a private view only you see. Here is every feature, what feeds it, and how to turn it on. Most take one prompt pasted into Claude Code, Codex or Cursor. New here? Start with the <a href="./#install">setup prompt</a>: it covers all of this, asks before anything goes public, and is safe to paste again.</p>
+  <style>.feat-toc{display:flex;flex-direction:column;gap:6px;margin:18px 0 8px;font-size:.95rem;line-height:1.6}.feat-toc b{margin-right:6px}
+  .feat{border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0;background:var(--bg-raised,transparent)}.feat h3{margin:0 0 8px}.feat p{margin:6px 0}
+  .feat-shot{display:block;width:100%;max-width:100%;height:auto;border-radius:8px;border:1px solid var(--line,#2A2440);margin:6px 0 10px}
+  .feat-tag{font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-soft,#2A2440);vertical-align:middle}
+  .feat-prompt{margin-top:10px}.feat-prompt summary{cursor:pointer;font-weight:600}.feat-prompt .prompt-card{margin-top:10px}.feat-prompt pre{max-height:320px;overflow:auto}
+  h2.feat-group{margin-top:2.2em}</style>
+  <!-- FEATURES_GUIDE_START -->
+  <nav class="feat-toc" aria-label="Features"><span><b>Your page</b> <a href="#f-masthead">Masthead and photo</a> &middot; <a href="#f-links">Elsewhere</a> &middot; <a href="#f-now">Now</a> &middot; <a href="#f-topics">Topics</a> &middot; <a href="#f-sidebar">Side menu groups</a> &middot; <a href="#f-graph">Local graph and backlinks</a></span><span><b>Your story and your work</b> <a href="#f-timeline">Timeline with eras and links</a> &middot; <a href="#f-projects">Projects with live links</a> &middot; <a href="#f-code">Code + GitHub city</a> &middot; <a href="#f-ai">AI usage</a> &middot; <a href="#f-knows">What it knows</a> &middot; <a href="#f-inbox">Inbox to knowledge</a></span><span><b>Every day</b> <a href="#f-journal">Daily journal</a> &middot; <a href="#f-scoreboard">Scoreboard</a> &middot; <a href="#f-activity">Activity heatmap</a> &middot; <a href="#f-growth">Growth</a></span><span><b>The live city</b> <a href="#f-live">Live visitors on your city</a> &middot; <a href="#f-agents">Your AI agents on the map</a> &middot; <a href="#f-weather">Time of day and weather</a></span><span><b>Your people</b> <a href="#f-friends">Friends, kudos and views</a> &middot; <a href="#f-groups">Groups</a> &middot; <a href="#f-asks">Help exchange</a> &middot; <a href="#f-garden">Garden and garden home</a> &middot; <a href="#f-email">Daily summary email</a></span><span><b>Only for you</b> <a href="#f-private">Private view on the web</a></span></nav>
+  <h2 class="feat-group">Your page</h2>
+  <section class="feat" id="f-masthead"><h3>Masthead and photo</h3>
+    <img class="feat-shot" src="/assets/guide/masthead.jpg" alt="Masthead and photo on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> "banner" and "photo" in Caldera/profile.md (images inside the vault)</p><p><b>Turn it on:</b> Choose images in Private view, or copy the masthead prompt for your AI.</p></section>
+  <section class="feat" id="f-links"><h3>Elsewhere (links)</h3>
+    
+    <p><b>What feeds it:</b> "links" in Caldera/profile.md (Label | https://url)</p><p><b>Turn it on:</b> Your site, GitHub, socials.</p></section>
+  <section class="feat" id="f-now"><h3>Now</h3>
+    
+    <p><b>What feeds it:</b> "now" in Caldera/profile.md (3 lines)</p><p><b>Turn it on:</b> Write it yourself or let your AI propose it (you approve).</p></section>
+  <section class="feat" id="f-topics"><h3>Topics</h3>
+    
+    <p><b>What feeds it:</b> tags you allow-list in Settings -&gt; Caldera -&gt; Public topics</p><p><b>Turn it on:</b> Only allow-listed tags are ever counted, so private names never appear.</p></section>
+  <section class="feat" id="f-sidebar"><h3>Side menu groups</h3>
+    
+    <p><b>What feeds it:</b> "sidebar" in Caldera/profile.md (Group | item, item | optional vault folder)</p><p><b>Turn it on:</b> Hand-pick companies, projects or sources to list; items named in your timeline or projects link to their sites.</p></section>
+  <section class="feat" id="f-graph"><h3>Local graph and backlinks</h3>
+    
+    <p><b>What feeds it:</b> "graph" (note names) and "backlinks" (Title | context) in Caldera/profile.md</p><p><b>Turn it on:</b> Pick names you're comfortable showing; the page shows how many notes link to each.</p></section>
+  <h2 class="feat-group">Your story and your work</h2>
+  <section class="feat" id="f-timeline"><h3>Timeline with eras and links</h3>
+    <img class="feat-shot" src="/assets/guide/timeline.jpg" alt="Timeline with eras and links on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> "timeline" in Caldera/profile.md: "Year | milestone | detail" lines, chapters as "era | Name | 2015-2020", links as [[Name|https://...]]</p><p><b>Turn it on:</b> Only things already public; linked names also become links in the side menu.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-story.md</div><button class="btn copy" type="button" data-copy="fp-story"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-story">Help me turn on a timeline and projects with links on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+Timeline and projects: my story and live work, each linking to the real thing.
+1. In "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/profile.md", propose "timeline" lines from things already public about me: "Year | milestone | one-line detail", chapters as "era | Name | 2015-2020", and links as [[Name|https://...]] (linked names also become links in my side menu).
+2. Propose "projects" lines for my public projects: "Name | status | https://live-url".
+3. Optionally propose "sidebar" groups ("Companies | A, B, C | optional/vault/folder") and "knows" lines ("Label | vault folder", counts only).
+Show me everything first; write only what I approve. The page republishes about a minute after profile.md changes.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-projects"><h3>Projects with live links</h3>
+    <img class="feat-shot" src="/assets/guide/projects.jpg" alt="Projects with live links on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> "projects" in Caldera/profile.md (Name | status | https://link); commit counts per project from a "projects" map in Caldera/activity.json</p><p><b>Turn it on:</b> List public projects with their live URL; the routine can add commit counts per project.</p></section>
+  <section class="feat" id="f-code"><h3>Code + GitHub city</h3>
+    <img class="feat-shot" src="/assets/guide/city.jpg" alt="Code + GitHub city on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> a GitHub (or Forgejo / Codeberg) link in your profile links, or Caldera/city.json written by the routine</p><p><b>Turn it on:</b> Add "GitHub | https://github.com/you" to links, or sign up with GitHub.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-code.md</div><button class="btn copy" type="button" data-copy="fp-code"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-code">Help me turn on my GitHub city on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+GitHub city: my repos as a living city (districts are projects, buildings are repos, taller = more commits).
+1. Make sure "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/profile.md" links include my code host: "GitHub | https://github.com/&lt;me&gt;" (or "Forgejo | https://&lt;server&gt;/&lt;me&gt;" for Forgejo, Gitea or Codeberg). Caldera then builds the city from my public repos itself.
+2. For private repos too (shown as padlocked buildings, never named), the setup prompt's routine can write Caldera/city.json with the gh CLI - paste the full Caldera setup prompt for that.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-ai"><h3>AI usage (tokens by model and provider)</h3>
+    <img class="feat-shot" src="/assets/guide/ai.jpg" alt="AI usage (tokens by model and provider) on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> Claude Code and Codex logs on this computer (read by the plugin itself), or an "ai" block in Caldera/activity.json for more machines and your products' APIs</p><p><b>Turn it on:</b> Automatic on the computer where you code; the routine adds other machines and sources (counts only).</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-ai.md</div><button class="btn copy" type="button" data-copy="fp-ai"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-ai">Help me turn on AI usage on my profile on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+AI usage: tokens processed for me, by model and provider (counts only - never prompts, file names or costs).
+1. On the computer where I run Obsidian, Caldera already reads Claude Code (~/.claude/projects) and Codex (~/.codex/sessions) logs by itself. If the AI usage section is empty, check those folders exist here.
+2. To include other computers or my own products' API usage, write an "ai" block into "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/activity.json" from a scheduled script (no AI call per run): {"total": &lt;tokens in the window&gt;, "window_days": 45, "models": [["Claude Opus 5.5", n]], "providers": [["Anthropic", n]], "sources": [["Coding agents (3 machines)", n], ["Product APIs", n]], "note": "one short public sentence"}, and "tokens" per day in each "days" entry. Keep "prompt_version" and every other key already in that file.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-knows"><h3>What it knows</h3>
+    <img class="feat-shot" src="/assets/guide/knows.jpg" alt="What it knows on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> "knows" in Caldera/profile.md (Label | vault folder) or a "knows" list in Caldera/activity.json</p><p><b>Turn it on:</b> Pick the folders that describe your knowledge (counts only, never note names).</p></section>
+  <section class="feat" id="f-inbox"><h3>Inbox to knowledge</h3>
+    <img class="feat-shot" src="/assets/guide/inbox.jpg" alt="Inbox to knowledge on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> an "inbox" block in Caldera/activity.json: {"total", "kinds": [["Reports", 61]], "series": {"label", "weeks": [["Aug 3", 5]]}}</p><p><b>Turn it on:</b> If an agent files your email attachments into the vault, have it count them by kind (counts only).</p></section>
+  <h2 class="feat-group">Every day</h2>
+  <section class="feat" id="f-journal"><h3>Daily journal</h3>
+    <img class="feat-shot" src="/assets/guide/journal.jpg" alt="Daily journal on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> caldera_headline / caldera_focus / caldera_wins / caldera_themes in daily notes (YYYY-MM-DD.md)</p><p><b>Turn it on:</b> The setup prompt's routine writes one entry per workday from your notes, calendar, sent email, commits and AI sessions.</p></section>
+  <section class="feat" id="f-scoreboard"><h3>Scoreboard (streak, rank, 30-day bars)</h3>
+    
+    <p><b>What feeds it:</b> notes the plugin counts + the daily counts in Caldera/activity.json</p><p><b>Turn it on:</b> On by default; richer once the routine writes meetings, emails, prompts, commits, docs and tokens per day.</p></section>
+  <section class="feat" id="f-activity"><h3>Activity heatmap</h3>
+    <img class="feat-shot" src="/assets/guide/activity.jpg" alt="Activity heatmap on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> notes created and changed per day, plus outside counts from Caldera/activity.json</p><p><b>Turn it on:</b> Automatic; the routine adds calendar, email, AI and code counts.</p></section>
+  <section class="feat" id="f-growth"><h3>Growth</h3>
+    
+    <p><b>What feeds it:</b> notes in the vault over time</p><p><b>Turn it on:</b> Automatic.</p></section>
+  <h2 class="feat-group">The live city</h2>
+  <section class="feat" id="f-live"><h3>Live visitors on your city</h3>
+    <img class="feat-shot" src="/assets/guide/city.jpg" alt="Live visitors on your city on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> the Caldera snippet (t.js with your site key) on each of your websites</p><p><b>Turn it on:</b> Copy each district's snippet from Settings -&gt; Caldera -&gt; Live traffic (or caldera.social/me) into that site's shared layout.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-live.md</div><button class="btn copy" type="button" data-copy="fp-live"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-live">Help me turn on live visitors on my city on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+Live visitors: every visit to my websites rides through my Caldera city in real time (new visitors parachute in, signups get a celebration). Counts only: no cookies, no IP addresses, no personal data.
+1. Get my snippets from Obsidian: Settings -&gt; Caldera -&gt; "Live traffic on your city": one line per district (project), like &lt;script async src="https://caldera.social/t.js" data-site="KEY"&gt;&lt;/script&gt;. Districts marked private stay "Private" to visitors.
+2. For each website I run, find its repo on this computer and the project/district it belongs to (ask me if unsure), and add that district's line to the site's shared layout so every page has it (for example the root layout, _app/_document, base template or index.html head). Don't add it twice.
+3. Mark conversions where they happen: call caldera('signup') after a signup and caldera('buy') after a purchase (guard with if (window.caldera)).
+4. Deploy each site the way it's normally deployed (ask me first if it goes to production), open the site, then open my city: the visit should appear within a minute.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-agents"><h3>Your AI agents on the map</h3>
+    
+    <p><b>What feeds it:</b> the Caldera agent hook (agent-hook.mjs + Claude Code hooks) on each computer you code on</p><p><b>Turn it on:</b> Copy the agent setup prompt from Settings -&gt; Caldera -&gt; AI agents on your city (or caldera.social/me) and paste it into Claude Code.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-agents.md</div><button class="btn copy" type="button" data-copy="fp-agents"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-agents">Help me turn on my AI agents on the map on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+AI agents on the map: each coding agent I run appears as a drone over the repo it's working in (state and a short task title only - never code, prompts or file contents; private repos stay "Private").
+1. Ask me to copy my personal agent setup prompt from Obsidian: Settings -&gt; Caldera -&gt; "AI agents on your city" -&gt; Copy setup prompt (it contains my agent key and secret - keep them out of every repo) and paste it here.
+2. Follow that prompt exactly: it installs ~/.caldera/agent-hook.mjs, writes ~/.caldera/agent.json (chmod 600) and adds hooks to ~/.claude/settings.json, keeping any hooks already there. Repeat on each computer I code on.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-weather"><h3>Time of day and weather</h3>
+    
+    <p><b>What feeds it:</b> the viewer's own clock and local weather</p><p><b>Turn it on:</b> Automatic; anyone can override it with the sky buttons.</p></section>
+  <h2 class="feat-group">Your people</h2>
+  <section class="feat" id="f-friends"><h3>Friends, kudos and views</h3>
+    <img class="feat-shot" src="/assets/guide/world.jpg" alt="Friends, kudos and views on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> other members</p><p><b>Turn it on:</b> Nothing to set up: add friends and send kudos from anyone's page; shared GitHub repos connect people automatically.</p></section>
+  <section class="feat" id="f-groups"><h3>Groups</h3>
+    
+    <p><b>What feeds it:</b> the groups you join</p><p><b>Turn it on:</b> Settings -&gt; Caldera -&gt; Groups (or caldera.social/me); each group is a town of everyone's cities at caldera.social/g/&lt;name&gt;.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-groups.md</div><button class="btn copy" type="button" data-copy="fp-groups"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-groups">Help me turn on groups on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+1. Ask me which communities I belong to (a class, a Discord, a company, a cohort) and suggest short group names (lowercase, dashes), for example producthunt.
+2. I join in Obsidian: Settings -&gt; Caldera -&gt; Groups (comma separated). Each group is a town of everyone's cities at https://caldera.social/g/&lt;name&gt;; share that link with the group.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <section class="feat" id="f-asks"><h3>Help exchange (asks and offers)</h3>
+    <img class="feat-shot" src="/assets/guide/asks.jpg" alt="Help exchange (asks and offers) on a real Caldera page" loading="lazy" width="960">
+    <p><b>What feeds it:</b> asks and offers you post</p><p><b>Turn it on:</b> Run "Caldera: Post an ask" / "Caldera: Post an offer" in Obsidian.</p></section>
+  <section class="feat" id="f-garden"><h3>Garden and garden home</h3>
+    
+    <p><b>What feeds it:</b> notes in your Garden folder or marked "caldera: garden" (stage + license)</p><p><b>Turn it on:</b> Plant a note; the whole note becomes a public page with backlinks from other gardens.</p></section>
+  <section class="feat" id="f-email"><h3>Daily summary email <span class="feat-tag">only you</span></h3>
+    
+    <p><b>What feeds it:</b> your address (stored encrypted, double opt-in)</p><p><b>Turn it on:</b> Settings -&gt; Caldera -&gt; Daily summary email (or caldera.social/me), then click the confirm link.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-email.md</div><button class="btn copy" type="button" data-copy="fp-email"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-email">Help me turn on the daily summary email on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+1. In Obsidian: Settings -&gt; Caldera -&gt; Daily summary email, I type my email address (you don't need to - it's my choice which address).
+2. Caldera emails a confirm link; I click it. Every email has a one-click unsubscribe.
+It arrives about 8am Pacific, only on days something happened: visits, friend requests, kudos, links into my notes.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <h2 class="feat-group">Only for you</h2>
+  <section class="feat" id="f-private"><h3>Private view on the web <span class="feat-tag">only you</span></h3>
+    
+    <p><b>What feeds it:</b> your private sections, pushed encrypted from Obsidian</p><p><b>Turn it on:</b> Turn on Settings -&gt; Caldera -&gt; Private web view, then use the Public view | Private view switch when signed in.</p>
+    <details class="feat-prompt"><summary>Prompt for your AI</summary><div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-private.md</div><button class="btn copy" type="button" data-copy="fp-private"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body"><pre id="fp-private">Help me turn on my private web view on my Caldera page (https://caldera.social/@&lt;my handle&gt;/). Caldera builds that page from my Obsidian vault: &lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;
+
+Private web view: my page plus the private sections only I see (today, patterns, goals, visits, sources), in any browser when I'm signed in, with notes linking back into Obsidian.
+1. In Obsidian: Settings -&gt; Caldera -&gt; turn on "Private web view". Caldera pushes my private sections to https://caldera.social encrypted, and shows them only to me when signed in. (I turn this on myself.)
+2. Sign in on each browser or phone: open my page, tap "Sign in" (GitHub, an email link, or a code from Obsidian), then use the Public view | Private view switch.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre></div></div></details></section>
+  <h2 id="upgrade">Already on Caldera? Turn on what you're missing</h2>
+  <p>Paste this into your AI agent: it walks through the features most pages leave off, asks before each one, and skips the ones you say no to. In Obsidian, the <b>Unlock more</b> card in your Private view copies a version with only the features you still need, already filled in with your own site snippets and agent hook.</p>
+  <div class="prompt-card"><div class="prompt-bar"><div class="prompt-file"><span class="pf-dot"></span>caldera-upgrade.md</div><button class="btn copy" type="button" data-copy="upgrade-prompt"><span class="copy-label">Copy prompt</span></button></div><div class="prompt-body is-collapsed"><pre id="upgrade-prompt">Help me upgrade my Caldera page (https://caldera.social/@&lt;my handle&gt;/) with the features it doesn't use yet. Do them in order, ask me before each one, and skip any I say no to.
+
+### 1. Live visitors on your city
+Live visitors: every visit to my websites rides through my Caldera city in real time (new visitors parachute in, signups get a celebration). Counts only: no cookies, no IP addresses, no personal data.
+1. Get my snippets from Obsidian: Settings -&gt; Caldera -&gt; "Live traffic on your city": one line per district (project), like &lt;script async src="https://caldera.social/t.js" data-site="KEY"&gt;&lt;/script&gt;. Districts marked private stay "Private" to visitors.
+2. For each website I run, find its repo on this computer and the project/district it belongs to (ask me if unsure), and add that district's line to the site's shared layout so every page has it (for example the root layout, _app/_document, base template or index.html head). Don't add it twice.
+3. Mark conversions where they happen: call caldera('signup') after a signup and caldera('buy') after a purchase (guard with if (window.caldera)).
+4. Deploy each site the way it's normally deployed (ask me first if it goes to production), open the site, then open my city: the visit should appear within a minute.
+
+### 2. Your AI agents on the map
+AI agents on the map: each coding agent I run appears as a drone over the repo it's working in (state and a short task title only - never code, prompts or file contents; private repos stay "Private").
+1. Ask me to copy my personal agent setup prompt from Obsidian: Settings -&gt; Caldera -&gt; "AI agents on your city" -&gt; Copy setup prompt (it contains my agent key and secret - keep them out of every repo) and paste it here.
+2. Follow that prompt exactly: it installs ~/.caldera/agent-hook.mjs, writes ~/.caldera/agent.json (chmod 600) and adds hooks to ~/.claude/settings.json, keeping any hooks already there. Repeat on each computer I code on.
+
+### 3. AI usage on your profile
+AI usage: tokens processed for me, by model and provider (counts only - never prompts, file names or costs).
+1. On the computer where I run Obsidian, Caldera already reads Claude Code (~/.claude/projects) and Codex (~/.codex/sessions) logs by itself. If the AI usage section is empty, check those folders exist here.
+2. To include other computers or my own products' API usage, write an "ai" block into "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/activity.json" from a scheduled script (no AI call per run): {"total": &lt;tokens in the window&gt;, "window_days": 45, "models": [["Claude Opus 5.5", n]], "providers": [["Anthropic", n]], "sources": [["Coding agents (3 machines)", n], ["Product APIs", n]], "note": "one short public sentence"}, and "tokens" per day in each "days" entry. Keep "prompt_version" and every other key already in that file.
+
+### 4. Private web view
+Private web view: my page plus the private sections only I see (today, patterns, goals, visits, sources), in any browser when I'm signed in, with notes linking back into Obsidian.
+1. In Obsidian: Settings -&gt; Caldera -&gt; turn on "Private web view". Caldera pushes my private sections to https://caldera.social encrypted, and shows them only to me when signed in. (I turn this on myself.)
+2. Sign in on each browser or phone: open my page, tap "Sign in" (GitHub, an email link, or a code from Obsidian), then use the Public view | Private view switch.
+
+### 5. Timeline and projects with links
+Timeline and projects: my story and live work, each linking to the real thing.
+1. In "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/profile.md", propose "timeline" lines from things already public about me: "Year | milestone | one-line detail", chapters as "era | Name | 2015-2020", and links as [[Name|https://...]] (linked names also become links in my side menu).
+2. Propose "projects" lines for my public projects: "Name | status | https://live-url".
+3. Optionally propose "sidebar" groups ("Companies | A, B, C | optional/vault/folder") and "knows" lines ("Label | vault folder", counts only).
+Show me everything first; write only what I approve. The page republishes about a minute after profile.md changes.
+
+### 6. Your GitHub city
+GitHub city: my repos as a living city (districts are projects, buildings are repos, taller = more commits).
+1. Make sure "&lt;ABSOLUTE PATH TO MY OBSIDIAN VAULT&gt;/Caldera/profile.md" links include my code host: "GitHub | https://github.com/&lt;me&gt;" (or "Forgejo | https://&lt;server&gt;/&lt;me&gt;" for Forgejo, Gitea or Codeberg). Caldera then builds the city from my public repos itself.
+2. For private repos too (shown as padlocked buildings, never named), the setup prompt's routine can write Caldera/city.json with the gh CLI - paste the full Caldera setup prompt for that.
+
+### 7. Daily summary email
+1. In Obsidian: Settings -&gt; Caldera -&gt; Daily summary email, I type my email address (you don't need to - it's my choice which address).
+2. Caldera emails a confirm link; I click it. Every email has a one-click unsubscribe.
+It arrives about 8am Pacific, only on days something happened: visits, friend requests, kudos, links into my notes.
+
+### 8. Groups
+1. Ask me which communities I belong to (a class, a Discord, a company, a cohort) and suggest short group names (lowercase, dashes), for example producthunt.
+2. I join in Obsidian: Settings -&gt; Caldera -&gt; Groups (comma separated). Each group is a town of everyone's cities at https://caldera.social/g/&lt;name&gt;; share that link with the group.
+
+Rules:
+Everything public is on the open internet, can be copied forever, and can affect other people. Be very cautious. Never write any of these into anything public:
+- Other people: no names, initials, handles, photos or descriptions that identify anyone I meet, work with, hire, date, advise or invest with. Say "a founder", "the team", "a friend" only when it adds nothing identifying - usually leave it out.
+- Meetings: no meetings, calls, lunches, dinners, interviews or events - not their titles, times, dates, attendees, or that they happened with someone specific.
+- Times and places: no times of day, schedules, travel, cities, venues, addresses, offices, home or "where I am".
+- Secret or sensitive work: no unannounced, stealth, confidential or NDA projects, codenames, deals, fundraising, investors, acquisitions, valuations, hiring, firing or anything said in confidence.
+- Things that can get someone in trouble: legal, medical, health, HR, money, salaries, debts, relationships, family, children, politics, religion.
+- Proprietary methods: no trading strategies, signals, indicators, thresholds, regime or risk rules, entry/exit logic, win rates, model weights, prompts, data sources or other trade secrets - in the journal, the garden or anywhere public. Name the theme only ("worked on the trading system").
+- Contact details and links: no emails, phone numbers or links to private documents. No money amounts at all.
+Describe work only by its public theme ("shipped a release", "wrote about design") and only name things I have already made public on my page (my own public projects, topics and links). If you are unsure, leave it out - an empty field is fine. Caldera also drops any journal line that looks sensitive before publishing.
+- Show me every change before you make it. Never read or edit .obsidian/plugins/caldera/data.json - it holds my private key.</pre><button class="prompt-expand" type="button" aria-expanded="false">Show the full prompt</button></div></div>
+  <!-- FEATURES_GUIDE_END -->
+
+  <h2 id="change" class="feat-group">Change your page</h2>
   <p class="lead-in">New to Obsidian? Get it free at <a href="https://obsidian.md/download" rel="noopener noreferrer" target="_blank">obsidian.md</a>, or let the <a href="./#install">install prompt</a> do it for you. Your page is built from your vault, so you change it the way you change notes. Pick whichever is easiest; they all end in the same place.</p>
 
   <div class="ways">

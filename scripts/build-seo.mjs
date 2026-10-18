@@ -3,6 +3,7 @@
 //   canonical/og tags on every page, and SoftwareApplication/Organization/FAQPage JSON-LD on the homepage.
 import fs from "node:fs";
 import { pages, UPDATED } from "./seo-pages.mjs";
+import { FEATURES } from "../../caldera/packages/core/dist/index.js";
 
 const SITE = "https://caldera.social";
 const dir = new URL("../packages/site/", import.meta.url);
@@ -110,8 +111,12 @@ write("llms.txt", `# Caldera
 ## Guides
 ${pages.map(p => `- [${p.h1}](${SITE}/${p.slug}): ${p.description}`).join("\n")}
 
+## Every feature, and how to turn it on (for AI agents setting up a member's page)
+The full setup prompt (safe to paste again; it covers everything below and asks the owner before anything goes public): ${SITE}/#install . Per-feature prompts: ${SITE}/guide . Never read or edit .obsidian/plugins/caldera/data.json (the owner's private key).
+${FEATURES.map(f => `- ${f.label}${f.ownerOnly ? " (only the owner sees it)" : ""}: fed by ${f.source}. ${f.how}`).join("\n")}
+
 ## Reference
-- [Guide: change your page, commands, keys](${SITE}/guide)
+- [Guide: every feature, change your page, commands, keys](${SITE}/guide)
 - [Release notes](${SITE}/changelog)
 - [Protocol spec](${SITE}/PROTOCOL.md)
 - [Privacy policy](${SITE}/privacy)

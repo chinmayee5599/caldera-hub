@@ -29,7 +29,7 @@ export interface GhCtx {
   allowNewProfile: (req: http.IncomingMessage) => boolean; byHandle: (h: string) => any; reserved: Set<string>;
   /** growth helpers from the hub: suggestions, open requests, referrals */
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
-    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null;
+    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null; unlockState?: (id: string) => C.UnlockState | null;
     circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
@@ -272,7 +272,7 @@ export function github(ctx: GhCtx) {
 <div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
 <div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
 <form method="post" class="row" style="margin-top:10px"><input type="hidden" name="do" value="refresh"><button class="btn small" type="submit">Refresh from GitHub now</button></form></div>
-${finishCard(a)}
+${finishCard(a)}${unlockCard(a, sites, agentPrompt)}
 ${growth}
 <form method="post" class="card" id="edit"><input type="hidden" name="do" value="save"><b>Edit your page</b>
 <label for="n">Name</label><input type="text" id="n" name="name" maxlength="80" value="${esc(edits.name || pr?.name || "")}">
@@ -316,6 +316,22 @@ ${left.length ? left.map(i => `<div style="margin:10px 0"><b>${esc(i.label)}</b>
 if(f.size>3*1024*1024){st.textContent='That image is over 3 MB. Try a smaller one.';return}st.textContent='Uploading and republishing...';var r=new FileReader();r.onload=function(){
 fetch('/me/upload',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:inp.getAttribute('data-upload'),data:String(r.result).split(',')[1]})}).then(function(x){return x.json()}).then(function(j){
 if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'}else st.textContent=j.error||'Upload failed.'}).catch(function(){st.textContent='Upload failed.'})};r.readAsDataURL(f)})})</script>`;
+  }
+
+  /** "Unlock more" on /me: once the basics are done, the features that make a page come alive (live visitors, agents on
+   *  the map), each with a ready-to-paste prompt for the owner's AI that already carries their own snippets. */
+  function unlockCard(a: any, sites: any[], agentText: string): string {
+    const st = ctx.social?.pageState?.(a.profile_id), us = ctx.social?.unlockState?.(a.profile_id);
+    if (!st || !us || C.pageChecklist(st).some(i => !i.done)) return "";
+    const items = C.unlockChecklist(us), left = items.filter(i => !i.done); if (!left.length) return "";
+    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const prompts: Record<string, string> = {
+      live: C.featurePrompt("live", { hubUrl: pub, handle: a.handle, hosted: true }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
+      agents: agentText || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }),
+    };
+    return `<div class="card" id="unlock"><b>Unlock more</b> <span class="mut">${items.length - left.length} of ${items.length} on</span>
+<p class="mut">Your basics are done. These make your city come alive. Copy a prompt and paste it into Claude Code, Codex or Cursor.</p>
+${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="mut">${esc(i.why)}</span>${prompts[i.id] ? `<pre id="unlock-${i.id}" style="max-height:140px">${esc(prompts[i.id])}</pre><button class="btn small" type="button" data-copy-text="unlock-${i.id}">Copy prompt for my AI</button>` : ""}</div>`).join("")}</div>`;
   }
 
   /** Growth cards on /me: this week's visitors, share + invite, friends (requests, current, suggestions), daily email. */
