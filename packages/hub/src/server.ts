@@ -1524,6 +1524,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
           const ns = rel.match(/^n\/([a-z0-9][a-z0-9-]*)\.html$/), tb = ns ? tombstoned(m[1], ns[1]) : undefined;
           if (tb) { res.writeHead(410, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" }); return res.end(navify(tombstonePage(m[1], ns![1], tb))); }
+          if (rel.endsWith(".html")) {   // a missing page (deleted profile, old link): a friendly page with a way on, not a bare "not found"
+            const gone = !byHandle(m[1]), h = m[1].replace(/[^a-z0-9-]/g, "");
+            res.writeHead(404, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
+            return res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not here - Caldera</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>.nf{max-width:640px;margin:0 auto;padding:64px 16px 80px;text-align:center}.nf h1{font-family:var(--font-display,'Source Serif 4',Georgia,serif);font-size:2rem;margin:0 0 10px;color:var(--text-strong)}.nf p{color:var(--text-muted);margin:0 0 22px}.nf .row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}</style></head><body><main class="nf"><h1>${gone ? `@${h} isn't on Caldera` : "This page isn't here"}</h1><p>${gone ? "This profile was deleted or never existed. Old links keep pointing here." : `It may have moved. @${h}'s page is still here.`}</p><div class="row">${gone ? "" : `<a class="btn" href="/@${h}/">Go to @${h}</a>`}<a class="btn${gone ? "" : " ghost"}" href="/people">Find people</a><a class="btn ghost" href="/world">Explore the world</a><a class="btn ghost" href="/#install">Get your own page</a></div></main></body></html>`));
+          }
           res.writeHead(404); return res.end("not found");
         }
         res.removeHeader("x-frame-options");
