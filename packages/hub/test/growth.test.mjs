@@ -166,7 +166,7 @@ test("GitHub sign-up from an invite + group: referral, friend request to the inv
   // octo's own request to mike is open, so mike shows under "Sent"; accept mike's incoming one isn't shown twice
   const hash = C.envelopeHash(r2);
   const post = (body) => fetch(b + "/me", { method: "POST", headers: { cookie, origin: "http://hub.test", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());
-  assert.match(await post({ do: "accept", req: hash, to: mk.id }), /now friends/);
+  assert.match(await post({ do: "accept", req: hash, to: mk.id }), /you.re friends now/);
   assert.equal((await (await fetch(b + `/v1/friends/${mk.id}`)).json()).friends[0].handle, "octo");
   assert.match(await post({ do: "email", email: "octo@realmail.org" }), /confirmation link/);
   assert.equal(mails.length, 1);

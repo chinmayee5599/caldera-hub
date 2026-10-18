@@ -129,7 +129,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       .run(owner, ctx.seal(e), h, 0, token, new Date().toISOString(), null, null, null, Date.now());
     const link = `${hub}/v1/email/confirm?t=${token}`;
     await send({ to: e, subject: "Confirm your daily Caldera summary",
-      html: shell("Confirm your email", `<p>Someone (hopefully you) asked for a daily Caldera summary at this address: who visited your page, kudos and friend requests, people to meet, and a nudge when your page needs attention.</p><p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Yes, send me summaries</a></p><p style="color:#8A8794;font-size:13px">If this wasn't you, ignore this email and nothing will be sent.</p>`),
+      html: shell("Confirm your email", `<p>Someone (hopefully you) asked for a daily Caldera summary at this address: who visited your page, kudos and new followers, people to meet, and a nudge when your page needs attention.</p><p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Yes, send me summaries</a></p><p style="color:#8A8794;font-size:13px">If this wasn't you, ignore this email and nothing will be sent.</p>`),
       text: `Confirm your daily Caldera summary:\n${link}\n\nIf this wasn't you, ignore this email and nothing will be sent.` });
     return `Check ${e} for a confirmation link. Summaries start once you click it.`;
   }
@@ -149,7 +149,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
   const suppressed = (email: string) => !!q("SELECT 1 FROM email_suppress WHERE hash=?").get(hashOf(email));
 
   // ---------------------------------------------------------------- the digest
-  /** The daily email, most important first: kudos, friend requests, intros, people to meet, new connections, your page,
+  /** The daily email, most important first: kudos, new followers, intros, people to meet, new connections, your page,
    *  then exactly one setup step and any unread alerts. Every section links to the place to act on it. */
   function compose(d: DigestData, unsub: string, quiet: boolean): Mail | null {
     const page = `${hub}/@${d.handle}/`, at = (h: string) => `${hub}/@${encodeURIComponent(h)}/`;
@@ -169,10 +169,10 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       d.kudos.map(k => `@${k.handle} sent you ${k.emoji} - send one back: ${at(k.handle)}`).join("\n"));
     if (d.postKudos?.length) sec("Kudos on your posts", d.postKudos.slice(0, 6).map(k => row(`<span style="font-size:20px">${esc(k.emoji)}</span> ${who(k.handle, k.name)} on your post<br>${btn(k.url, "See the post", true)}`)).join(""),
       d.postKudos.slice(0, 6).map(k => `@${k.handle} sent ${k.emoji} on your post: ${k.url}`).join("\n"));
-    // 2. friend requests (Accept on their page works for everyone: GitHub sign-ups accept now, Obsidian accepts next time it opens)
-    if (d.requests.length) sec("Friend requests", d.requests.map(r => row(`${who(r.handle, r.name)}${r.why ? ` <span style="color:#55525E">&middot; ${esc(r.why)}</span>` : ""}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}<br>${btn(at(r.handle), "Accept")}`)).join("")
-      + (d.hosted ? "" : `<p style="margin:0;color:#8A8794;font-size:12.5px">Accepting on the web works too: it goes through the next time Obsidian is open.</p>`),
-      d.requests.map(r => `@${r.handle}${r.why ? ` (${r.why})` : ""}${r.note ? `: "${r.note}"` : ""} - accept: ${at(r.handle)}`).join("\n"));
+    // 2. new followers (Follow back on their page makes you friends, for everyone)
+    if (d.requests.length) sec("New followers", d.requests.map(r => row(`${who(r.handle, r.name)}${r.why ? ` <span style="color:#55525E">&middot; ${esc(r.why)}</span>` : ""}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}<br>${btn(at(r.handle), "Follow back")}`)).join("")
+      + `<p style="margin:0;color:#8A8794;font-size:12.5px">Follow back and you're friends.</p>`,
+      d.requests.map(r => `@${r.handle}${r.why ? ` (${r.why})` : ""}${r.note ? `: "${r.note}"` : ""} follows you - follow back: ${at(r.handle)}`).join("\n"));
     // 3. intros (double opt-in)
     if (d.intros?.length) { const ans = `${hub}/me/building`;
       sec("Would like to connect", d.intros.map(x => row(`${who(x.handle, x.name)}${x.tag ? `, also building ${esc(x.tag)},` : ""} would like to connect<br>${btn(ans, "Accept")}${btn(at(x.handle), "See their page", true)}`)).join(""),
@@ -181,8 +181,8 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (d.postWaiting?.length) sec("Sent to you", d.postWaiting.slice(0, 5).map(w => row(`${esc(w.text)}<br><span style="color:#55525E">${w.kind === "help" ? "Accept to connect" : "You match. Accept to connect"}</span><br>${btn(w.url, "See it and answer")}`)).join(""),
       d.postWaiting.slice(0, 5).map(w => `${w.text} - answer: ${w.url}`).join("\n"));
     // 4. people to meet
-    if (d.suggestions.length) sec("People to meet", d.suggestions.slice(0, 3).map(x => row(`${who(x.handle, x.name)}${x.why ? ` <span style="color:#55525E">&middot; ${esc(x.why)}</span>` : ""}<br>${btn(at(x.handle), "Add friend", true)}`)).join(""),
-      d.suggestions.slice(0, 3).map(x => `@${x.handle}${x.why ? ` (${x.why})` : ""} - add friend: ${at(x.handle)}`).join("\n"));
+    if (d.suggestions.length) sec("People to meet", d.suggestions.slice(0, 3).map(x => row(`${who(x.handle, x.name)}${x.why ? ` <span style="color:#55525E">&middot; ${esc(x.why)}</span>` : ""}<br>${btn(at(x.handle), "Follow", true)}`)).join(""),
+      d.suggestions.slice(0, 3).map(x => `@${x.handle}${x.why ? ` (${x.why})` : ""} - follow: ${at(x.handle)}`).join("\n"));
     // 4b. what people are looking for that fits them, and recommendations for people like them
     if (d.lookingFor?.length) sec("Looking for", d.lookingFor.map(x => row(`${esc(x.sentence)}<br><span style="color:#55525E">You match: ${esc(x.why)}</span><br>${btn(x.url, "See the post", true)}`)).join(""),
       d.lookingFor.map(x => `${x.sentence} (you match: ${x.why}) ${x.url}`).join("\n"));

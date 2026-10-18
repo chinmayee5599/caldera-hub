@@ -65,8 +65,8 @@ export const KUDOS: Record<string, string> = { heart: "\u2764\uFE0F", up: "\u{1F
 /** Who's looking, for the inline kudos + friend controls: a signed-in member gets a short-lived action token. */
 export interface BarViewer { handle: string; token: string; sent: string | null; friend: FriendState; why?: string }
 export type FriendState = "self" | "friends" | "incoming" | "requested" | "queued" | "none";
-export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
-export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
+export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean; counts?: { friends: number; followers: number; following: number } }
+export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Follow back", requested: "Following", queued: "Following", none: "+ Follow" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
 export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number; settings?: string; conn?: { github: boolean; obsidian: boolean } }
 const LOGO = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
@@ -89,23 +89,25 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const chip = "display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:0 10px;border-radius:999px;background:var(--bg-raised,#1C1C21);border:1px solid var(--line,#2A2A2E);color:var(--text,#D6D6DC);font:500 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap";
   const views = so.showViews || so.owner ? `<span class="cb-views" title="${so.views.toLocaleString("en-US")} views${so.showViews ? "" : " (hidden: only you see this)"}" style="${chip}">&#128065;&#65039; ${compact(so.views)}${so.showViews ? "" : `<span style="color:var(--text-muted,#8A8A93)">&nbsp;&middot; hidden</span>`}</span>` : "";
   const count = (k: string) => so.tally.find(([x]) => x === k)?.[1] || 0;
+  const c = so.counts, pl = (n: number, one: string, many: string) => `<b style="color:var(--text-strong,#F2F2F5);font-weight:600">${compact(n)}</b> ${n === 1 ? one : many}`;
+  const counts = c ? `<span class="cb-counts" title="Friends follow each other" style="${chip}">${pl(c.friends, "friend", "friends")} &middot; ${pl(c.followers, "follower", "followers")} &middot; ${pl(c.following, "following", "following")}</span>` : "";
   if (so.owner) {
     const tally = so.tally.filter(([, n]) => n > 0).map(([k, n]) => `${KUDOS[k] || ""} ${compact(n)}`).join(" &nbsp;");
-    return `<span class="cb-social">${views}${tally ? `<span title="Kudos people sent you" style="${chip}">${tally}</span>` : ""}</span>`;
+    return `<span class="cb-social">${counts}${views}${tally ? `<span title="Kudos people sent you" style="${chip}">${tally}</span>` : ""}</span>`;
   }
   // everyone else: the emoji row and Add friend act right here on the page (signed-in members, with the action token)
   const v = so.viewer || null, sent = v?.sent || null;
   const kd = Object.entries(KUDOS).map(([k, em]) => `<button type="button" class="cb-k${sent === k ? " on" : ""}" data-k="${k}"${sent ? ` disabled title="You sent kudos today. More tomorrow."` : ` title="Send @${e(handle)} ${em}"`}>${em}<i>${count(k) ? compact(count(k)) : ""}</i></button>`).join("");
   const fs = v ? v.friend : "none";
-  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}${fs === "friends" && v?.why ? ` title="Connected because: ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; ${e(v.why)}` : ""}</button>`;
+  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" ? " disabled" : fs === "requested" || fs === "queued" ? ` title="You follow @${e(handle)}. Tap to unfollow."` : fs === "incoming" ? ` title="@${e(handle)} follows you. Follow back to be friends."` : ` title="Follow @${e(handle)}. If they follow you back, you're friends."`}${fs === "friends" && v?.why ? ` title="Connected because: ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; ${e(v.why)}` : ""}</button>`;
   const msg = fs === "self" ? "" : `<a class="cb-msg" href="${e(base)}/messages/@${e(handle)}" target="_blank" rel="noopener" title="Send @${e(handle)} a message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</a>`;
-  return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}${msg}</span>`;
+  return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${counts}${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}${msg}</span>`;
 }
 
 /** Inline kudos + friend for hosted pages: talks to /v1/act with the token the hub put in the page (the page is sandboxed
  *  with no cookies, so the token is the only credential). Anonymous visitors get a small sign-in prompt instead. */
 const BAR_ACT_JS = `(function(){function go(){var S=document.querySelector('.cb-social[data-api]');if(!S)return;var api=S.getAttribute('data-api'),t=S.getAttribute('data-act'),H=S.getAttribute('data-h');
-var L={friends:'Friends \\u2713',incoming:'Accept friend request',requested:'Friend request sent',queued:'Requested \\u00b7 sends from your Obsidian',none:'+ Add friend'};
+var L={friends:'Friends \\u2713',incoming:'Follow back',requested:'Following',queued:'Following',none:'+ Follow'};
 function need(el){var p=document.getElementById('cb-need');if(!p)return;p.hidden=false;var r=el.getBoundingClientRect();p.style.top=(r.bottom+window.scrollY+8)+'px';p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-300))+'px'}
 document.addEventListener('click',function(ev){var p=document.getElementById('cb-need');if(p&&!p.hidden&&!p.contains(ev.target)&&!ev.target.closest('.cb-k,[data-caldera-friend]'))p.hidden=true});
 function post(o){o.t=t;return fetch(api+'/v1/act',{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,status:r.status,j:j}})},function(){return{ok:false,status:0,j:{error:'Could not reach Caldera. Check your connection.'}}})}
@@ -114,16 +116,17 @@ function tip(el,msg){el.title=msg;var p=document.createElement('span');p.classNa
 var ks=S.querySelectorAll('.cb-k');ks.forEach(function(b){b.addEventListener('click',function(){if(!t)return need(b);ks.forEach(function(x){x.disabled=true});post({action:'kudos',kind:b.getAttribute('data-k')}).then(function(x){
 if(x.ok){b.classList.add('on','pop');var i=b.querySelector('i');var n=parseInt((i.textContent||'0'),10);if(!isNaN(n)&&!/k$/.test(i.textContent))i.textContent=String(n+1);else if(!i.textContent)i.textContent='1';burst(b,b.firstChild.textContent);tip(b,'Sent! @'+H+' will see it.');ks.forEach(function(x){x.title='You sent kudos today. More tomorrow.'})}
 else{tip(b,x.j.error||'Could not send.');if(x.status!==409)ks.forEach(function(y){y.disabled=false})}})})});
-function setF(st){document.querySelectorAll('[data-caldera-friend]').forEach(function(f){if(!L[st])return;f.setAttribute('data-state',st);if(f.classList.contains('cb-fr'))f.textContent=L[st];else f.textContent=st==='none'?'+ Add @'+H+' as friend':st==='incoming'?'Accept @'+H+"'s friend request":L[st];if(st!=='none'&&st!=='incoming'){if(f.tagName==='BUTTON')f.disabled=true;else f.setAttribute('aria-disabled','true')}})}
-document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEventListener('click',function(ev){ev.preventDefault();if(!t)return need(f);var st=f.getAttribute('data-state')||'none';if(st!=='none'&&st!=='incoming')return;
-post({action:st==='incoming'?'accept':'friend'}).then(function(x){if(x.ok){setF(x.j.state);tip(f,x.j.state==='friends'?'You and @'+H+' are friends.':x.j.state==='queued'?'Queued. It sends from your Obsidian the next time it is open.':'Friend request sent to @'+H+'.')}else tip(f,x.j.error||'Could not send the request.')})})})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
+function setF(st){document.querySelectorAll('[data-caldera-friend]').forEach(function(f){if(!L[st])return;f.setAttribute('data-state',st);f.removeAttribute('data-sure');if(f.classList.contains('cb-fr'))f.textContent=L[st];else f.textContent=st==='none'?'+ Follow @'+H:st==='incoming'?'Follow @'+H+' back':L[st];var off=st==='friends';if(f.tagName==='BUTTON')f.disabled=off;else if(off)f.setAttribute('aria-disabled','true');else f.removeAttribute('aria-disabled')})}
+document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEventListener('click',function(ev){ev.preventDefault();if(!t)return need(f);var st=f.getAttribute('data-state')||'none';if(st==='friends')return;
+if((st==='requested'||st==='queued')&&!f.getAttribute('data-sure')){f.setAttribute('data-sure','1');var l=f.textContent;f.textContent='Tap again to unfollow';setTimeout(function(){if(f.getAttribute('data-sure')){f.removeAttribute('data-sure');f.textContent=l}},3500);return}
+post({action:st==='incoming'?'accept':st==='none'?'friend':'unfollow'}).then(function(x){if(x.ok){setF(x.j.state);tip(f,x.j.state==='friends'?'You and @'+H+' follow each other: you are friends now.':x.j.state==='none'?'You unfollowed @'+H+'.':'You follow @'+H+'. If they follow you back, you are friends.')}else tip(f,x.j.error||'Could not do that.')})})})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
 
 const BAR_ACT_CSS = `<style>.cb-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 18px}.cb-row .cb-social{gap:8px}.cb-social .cb-social{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.cb-social .cb-kd{display:inline-flex;gap:2px;padding:1px;border-radius:999px;background:var(--bg-raised,#1C1C21);border:1px solid var(--line,#2A2A2E)}
 .cb-social .cb-k{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:0 7px;border-radius:999px;font-size:14px;line-height:1;transition:transform .15s,background .15s}.cb-social .cb-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:var(--text-muted,#B8B8C2);font-variant-numeric:tabular-nums}
 .cb-social .cb-k:hover:not(:disabled){background:var(--bg-sunken,#2A2636);transform:translateY(-1px) scale(1.08)}.cb-social .cb-k:disabled{cursor:default;opacity:.55}.cb-social .cb-k.on{opacity:1;background:var(--accent-soft,#3A2F5C)}.cb-social .cb-k.pop{animation:cbpop .45s ease-out}
 @keyframes cbpop{40%{transform:scale(1.35)}}.cb-social .cb-k:focus-visible,.cb-social .cb-fr:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
 .cb-social .cb-msg{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:0 12px;border-radius:999px;background:#7A58F0;color:#fff!important;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important;white-space:nowrap}.cb-social .cb-msg:hover{filter:brightness(1.08)}.cb-social .cb-msg:focus-visible{outline:2px solid #8B6CF6;outline-offset:2px}
-.cb-social .cb-fr{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--accent,#5B47B8);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;font-weight:600;white-space:nowrap}.cb-social .cb-fr:disabled{cursor:default;border-color:var(--line,#2A2A2E);color:var(--text-muted,#9A9AA6);font-weight:500}.cb-social .cb-fr[data-state="incoming"]{background:#8B6CF6;border-color:#8B6CF6}
+.cb-social .cb-fr{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--accent,#5B47B8);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;font-weight:600;white-space:nowrap}.cb-social .cb-fr:disabled{cursor:default;border-color:var(--line,#2A2A2E);color:var(--text-muted,#9A9AA6);font-weight:500}.cb-social .cb-fr[data-state="incoming"]{background:#8B6CF6;border-color:#8B6CF6}.cb-social .cb-fr[data-state="requested"],.cb-social .cb-fr[data-state="queued"]{border-color:var(--line,#2A2A2E);color:var(--text-muted,#B8B8C2);font-weight:500}
 .cb-tip,#cb-need{position:absolute;z-index:100;max-width:280px;padding:8px 11px;border-radius:10px;background:#18171D;border:1px solid #2E2A40;color:#E6E6EA;font:500 12.5px/1.4 'IBM Plex Sans',Arial,sans-serif;box-shadow:0 10px 26px rgba(0,0,0,.45)}#cb-need[hidden]{display:none}
 #cb-need b{display:block;margin-bottom:6px;color:#F2F2F5}#cb-need a{display:inline-flex;margin:4px 6px 0 0;padding:5px 11px;border-radius:999px;background:#8B6CF6;color:#fff;text-decoration:none;font-weight:600}#cb-need a.alt{background:transparent;border:1px solid #2E2A40;color:#E6E6EA}
 @media (max-width:620px){.cb-social .cb-k{padding:0 5px}.cb-social .cb-k i:empty{display:none}}@media (prefers-reduced-motion:reduce){.cb-social .cb-k.pop{animation:none}}</style>`;
@@ -132,7 +135,7 @@ const BAR_ACT_CSS = `<style>.cb-row{display:flex;flex-wrap:wrap;align-items:cent
  *  not to the site bar. Carries the sign-in prompt and the inline actions script. */
 export function socialRow(hub: string, handle: string, so: BarSocial, back = ""): string {
   const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
-  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
+  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and follow people</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
   return BAR_ACT_CSS + `<div class="cb-row">${socialChips(base, handle, so)}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
 }
 
@@ -306,6 +309,17 @@ export function createHub(opts: HubOptions) {
   const body = (pr: any) => { try { return JSON.parse(pr.manifest).body || {}; } catch { return {}; } };
   const listed = (pr: any) => body(pr).listed !== false && !modOf(pr.handle, pr.id);
   const areFriends = (a: string, b: string) => !!q("SELECT 1 FROM friends WHERE a=? AND b=?").get(a, b);
+  /** Following: a signed friend request (from Obsidian, or signed by the hub for GitHub sign-ups) or a follow tapped on the
+   *  web by an Obsidian member that their plugin hasn't signed yet. Two people who follow each other are friends. */
+  const follows = (a: string, b: string) => !!(q("SELECT 1 FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=? LIMIT 1").get(a, b) || q("SELECT 1 FROM friend_intents WHERE owner=? AND target=? AND kind='add'").get(a, b));
+  const FOLLOW_EDGES = `SELECT sender a, recipient b FROM envelopes WHERE type='friend.request' UNION SELECT owner a, target b FROM friend_intents WHERE kind='add'`;
+  function followCounts(id: string) {
+    const live = `AND x IN (SELECT id FROM profiles) AND x NOT IN (SELECT id FROM moderation WHERE id IS NOT NULL) AND x NOT IN (SELECT b FROM friends WHERE a=?)`;
+    const n = (sql: string) => (q(sql).get(id, id) as any).n as number;
+    return { friends: (q("SELECT COUNT(*) n FROM friends WHERE a=? AND b IN (SELECT id FROM profiles)").get(id) as any).n as number,
+      followers: n(`SELECT COUNT(DISTINCT x) n FROM (SELECT a x, b FROM (${FOLLOW_EDGES})) WHERE b=? ${live}`),
+      following: n(`SELECT COUNT(DISTINCT x) n FROM (SELECT b x, a FROM (${FOLLOW_EDGES})) WHERE a=? ${live}`) };
+  }
   /** Make two people friends (both directions). A real request or invite upgrades an existing welcome/repo link; a welcome
    *  or repo link never downgrades a real one. */
   function befriend(a: string, b: string, kind: "request" | "invite" | "intro" | "founder" | "repo" | "github", ts: string, why: string | null = null) {
@@ -438,6 +452,12 @@ export function createHub(opts: HubOptions) {
         if (!b.to || b.to === e.from) return { status: 400, body: { error: "bad recipient" } };
         const hash = storeEnvelope(e, b.to);
         q("DELETE FROM friend_intents WHERE owner=? AND target=?").run(e.from, b.to);   // a request queued on the web just went out
+        // following someone who already follows you: you're friends
+        if (!areFriends(e.from, b.to) && follows(b.to, e.from)) {
+          const inv = !!q("SELECT 1 FROM referrals WHERE (invitee=? AND inviter=?) OR (invitee=? AND inviter=?)").get(e.from, b.to, b.to, e.from);
+          befriend(e.from, b.to, inv ? "invite" : "request", e.ts);
+          q("DELETE FROM friend_intents WHERE owner=? AND target=?").run(b.to, e.from);
+        } else if (!areFriends(e.from, b.to)) notifyFollow(e.from, b.to);
         return { status: 200, body: { ok: true, request: hash } };
       }
       case "friend.accept": {
@@ -455,6 +475,9 @@ export function createHub(opts: HubOptions) {
         // removing a shared-repo friendship leaves a tombstone, so the repo job never connects these two again
         if (["repo", "github"].includes((q("SELECT kind FROM friends WHERE a=? AND b=?").get(e.from, b.to) as any)?.kind)) q("INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)").run(...[e.from, String(b.to)].sort(), now());
         q("DELETE FROM friends WHERE (a=? AND b=?) OR (a=? AND b=?)").run(e.from, b.to, b.to, e.from);
+        // removing a friend is unfollowing them: my own follow goes, theirs (if they followed me first) stays
+        q("DELETE FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=?").run(e.from, b.to);
+        q("DELETE FROM friend_intents WHERE owner=? AND target=?").run(e.from, b.to);
         return { status: 200, body: { ok: true } };
       }
       case "card":
@@ -607,7 +630,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 <div><h3>Help credits and asks</h3><p>Everyone starts with 100 credits. An ask can carry a bounty; the credits are held until the asker awards them to whoever helped, and come back after 30 days if nobody does. Credits have no cash value.</p>${asks.length ? `<ul>${asks.map(a => `<li>${e(a.title)}${a.bounty ? ` <span class="mut">(${a.bounty} credits)</span>` : ""}</li>`).join("")}</ul>` : `<p class="mut">No open asks right now.</p>`}</div>
 <div><h3>Offers</h3><p>What this person is happy to help with.</p>${offers.length ? `<ul>${offers.map(o => `<li>${e(o.title)}</li>`).join("")}</ul>` : `<p class="mut">No offers posted yet.</p>`}<h3>Reuse and links</h3><p>Each note shows its license. Link to any note from your own garden with <code>[[@${e(handle)}/note-slug]]</code> and it appears on that note under "Linked from other gardens".</p></div>
 </div>
-<div class="gh-cta"><a class="gh-btn" href="${e(hub)}/kudos/${encodeURIComponent(handle)}" data-caldera-friend="${e(handle)}" target="_blank" rel="noopener">+ Add @${e(handle)} as a friend</a> <span>Become friends, then give gravity, answer an ask, or link a note. New to Caldera? <a href="${e(hub)}/?invite=${encodeURIComponent(handle)}#install">Get it here</a> and you'll be walked back to add @${e(handle)}.</span></div>
+<div class="gh-cta"><a class="gh-btn" href="${e(hub)}/kudos/${encodeURIComponent(handle)}" data-caldera-friend="${e(handle)}" target="_blank" rel="noopener">+ Follow @${e(handle)}</a> <span>Follow each other and you're friends: then give gravity, answer an ask, or link a note. New to Caldera? <a href="${e(hub)}/?invite=${encodeURIComponent(handle)}#install">Get it here</a> and you'll be walked back to follow @${e(handle)}.</span></div>
 </section>`;
   }
 
@@ -1254,7 +1277,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const viewsOf = (handle: string, since = "") => (q("SELECT COUNT(DISTINCT visitor || substr(ts,1,10)) n FROM page_views WHERE handle=? AND ts > ?").get(handle, since) as any).n as number;
   const tallyOf = (id: string): [string, number][] => { const rows = q("SELECT kind, COUNT(*) n FROM kudos WHERE recipient=? GROUP BY kind").all(id) as any[];
     return Object.keys(KUDOS).map(k => [k, rows.find(r => r.kind === k)?.n || 0] as [string, number]); };
-  const barSocial = (pr: any, owner: boolean): BarSocial => ({ views: viewsOf(pr.handle), showViews: body(pr).showViews !== false, tally: tallyOf(pr.id), owner });
+  const barSocial = (pr: any, owner: boolean): BarSocial => ({ views: viewsOf(pr.handle), showViews: body(pr).showViews !== false, tally: tallyOf(pr.id), owner, counts: followCounts(pr.id) });
   /** One kudos per sender per recipient per (UTC) day; members only; never to yourself. */
   function sendKudos(sender: string, to: any, kind: string, page = ""): { status: number; body: any } {
     if (!KUDOS[kind]) return { status: 400, body: { error: "pick one of: " + Object.keys(KUDOS).join(", ") } };
@@ -1285,29 +1308,51 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function friendState(me: string, to: string): { state: FriendState; request?: string } {
     if (me === to) return { state: "self" };
     if (areFriends(me, to)) return { state: "friends" };
-    const inc = q("SELECT hash FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=? ORDER BY ts DESC LIMIT 1").get(to, me) as any;
-    if (inc) return { state: "incoming", request: inc.hash };
-    if (q("SELECT 1 FROM friend_intents WHERE owner=? AND target=?").get(me, to)) return { state: "queued" };
+    if (follows(to, me)) { const inc = q("SELECT hash FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=? ORDER BY ts DESC LIMIT 1").get(to, me) as any; return { state: "incoming", request: inc?.hash }; }
+    if (q("SELECT 1 FROM friend_intents WHERE owner=? AND target=? AND kind='add'").get(me, to)) return { state: "queued" };
     if (q("SELECT 1 FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=? LIMIT 1").get(me, to)) return { state: "requested" };
     return { state: "none" };
   }
   /** Add friend / Accept for a signed-in member. GitHub sign-ups: the hub holds their key and signs now. Obsidian members:
    *  the key never leaves their vault, so the hub queues it and their plugin signs and sends it on its next sync. */
-  function friendAct(me: string, to: any): { status: number; body: any } {
+  function friendAct(me: string, to: any, action = "friend"): { status: number; body: any } {
     if (!to?.handle || modOf(to.handle, to.id)) return { status: 404, body: { error: "unknown profile" } };
     const st = friendState(me, to.id);
     if (st.state === "self") return { status: 400, body: { error: "That's your own page." } };
+    if (action === "unfollow") { unfollow(me, to.id); return { status: 200, body: { ok: true, state: friendState(me, to.id).state } }; }
     if (st.state === "friends" || st.state === "requested" || st.state === "queued") return { status: 200, body: { ok: true, already: true, state: st.state } };
-    if (tooMany("friend:" + me, 40)) return { status: 429, body: { error: "That's a lot of friend requests for one hour. Try again later." } };
+    if (tooMany("friend:" + me, 60)) return { status: 429, body: { error: "That's a lot of follows for one hour. Try again later." } };
+    // they already follow me: following back makes us friends, right away, for everyone
+    if (st.state === "incoming") {
+      const inv = !!q("SELECT 1 FROM referrals WHERE (invitee=? AND inviter=?) OR (invitee=? AND inviter=?)").get(me, to.id, to.id, me);
+      befriend(me, to.id, inv ? "invite" : "request", now());
+      q("DELETE FROM friend_intents WHERE (owner=? AND target=?) OR (owner=? AND target=?)").run(me, to.id, to.id, me);
+      return { status: 200, body: { ok: true, state: "friends" } };
+    }
+    // a new follow: signed now for GitHub sign-ups (the hub holds their key); Obsidian members' follow counts at once and
+    // their plugin signs the request the next time it's open
     const a = q("SELECT key_sealed FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(me) as any;
     if (a?.key_sealed) {
       const id = JSON.parse(unseal(a.key_sealed)) as C.Identity;
-      const r = st.state === "incoming" ? accept(C.sign(id, "friend.accept", { request: st.request, to: to.id })) : accept(C.sign(id, "friend.request", { to: to.id, note: "" }));
+      const r = accept(C.sign(id, "friend.request", { to: to.id, note: "" }));
       if (r.status !== 200) return r;
-      return { status: 200, body: { ok: true, state: st.state === "incoming" ? "friends" : "requested" } };
+    } else q("INSERT OR REPLACE INTO friend_intents VALUES (?,?,?,?,?)").run(me, to.id, "add", null, now());
+    notifyFollow(me, to.id);
+    return { status: 200, body: { ok: true, state: friendState(me, to.id).state } };
+  }
+  /** Stop following: my request (signed or queued) goes; a friendship ends, and if they followed me first they still do. */
+  function unfollow(me: string, to: string) {
+    q("DELETE FROM friend_intents WHERE owner=? AND target=?").run(me, to);
+    q("DELETE FROM envelopes WHERE type='friend.request' AND sender=? AND recipient=?").run(me, to);
+    if (areFriends(me, to)) {
+      if (["repo", "github"].includes((q("SELECT kind FROM friends WHERE a=? AND b=?").get(me, to) as any)?.kind)) q("INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)").run(...[me, to].sort(), now());
+      q("DELETE FROM friends WHERE (a=? AND b=?) OR (a=? AND b=?)").run(me, to, to, me);
     }
-    q("INSERT OR REPLACE INTO friend_intents VALUES (?,?,?,?,?)").run(me, to.id, st.state === "incoming" ? "accept" : "add", st.request || null, now());
-    return { status: 200, body: { ok: true, state: "queued" } };
+  }
+  /** A new follower gets one bell alert (the daily email lists followers too); repeat follows of the same pair stay quiet. */
+  function notifyFollow(from: string, to: string) {
+    const fp = profile(from); if (!fp?.handle) return;
+    try { alerts.post({ title: `@${fp.handle} followed you`, body: `${fp.name && fp.name !== fp.handle ? fp.name + " " : ""}(@${fp.handle}) follows you on Caldera. Follow back and you're friends.`, ctaLabel: "See their page", ctaUrl: `/@${fp.handle}/`, target: to, key: "follow:" + from, by: "follows" }); } catch { /* never breaks a follow */ }
   }
   /** One-time "get your daily summary" strip on the owner's own page (until they subscribe or say not now). The page is
    *  sandboxed, so it acts through /v1/act with an owner token, like inline kudos. */
@@ -1316,7 +1361,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
     const api = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), t = actToken(owner, handle), sug = pr.suggestion?.email || "";
     return `<div id="cb-sum" data-api="${e(api)}" data-t="${e(t)}" style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:9px 40px 9px 16px;background:#1A1530;border-bottom:1px solid #3A2F5C;font:500 13.5px/1.35 'IBM Plex Sans',Arial,sans-serif;color:#E6E1F5">`
-      + `<span style="flex:1 1 260px"><b style="color:#fff">Get your daily summary.</b> Who visited, kudos and friend requests, people to meet. Only on days something happens.</span>`
+      + `<span style="flex:1 1 260px"><b style="color:#fff">Get your daily summary.</b> Who visited, kudos and new followers, people to meet. Only on days something happens.</span>`
       + `<span style="display:inline-flex;gap:6px;flex:1 1 300px;max-width:440px"><input id="cb-sum-e" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${e(sug)}" aria-label="Email for your daily summary" style="flex:1;min-width:0;padding:6px 10px;border-radius:8px;border:1px solid #3A2F5C;background:#0F0C1C;color:#fff;font:inherit">`
       + `<button id="cb-sum-go" type="button" style="all:unset;cursor:pointer;padding:6px 14px;border-radius:999px;background:#8B6CF6;color:#fff;font-weight:600;white-space:nowrap">Send me summaries</button></span>`
       + `<button id="cb-sum-x" type="button" aria-label="Not now" title="Not now" style="all:unset;cursor:pointer;position:absolute;top:8px;right:10px;padding:2px 6px;color:#9A93B5;font-size:18px;line-height:1">&times;</button><span id="cb-sum-m" style="flex-basis:100%;display:none;color:#CFC6F5"></span></div>`
@@ -1341,8 +1386,8 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
       const h = (h1 || h2 || "").toLowerCase(); if (h !== handle) return whole;
       if (isOwner || st === "self") return "";
       const cls = (pre + " " + post).match(/class="([^"]*)"/)?.[1] || "";
-      const label = st === "none" ? `+ Add @${handle} as friend` : st === "incoming" ? `Accept @${handle}'s friend request` : FRIEND_LABEL[st];
-      return `<a class="${esc(cls)}" href="${base}/kudos/${encodeURIComponent(handle)}" data-caldera-friend="${esc(handle)}" data-state="${st}" target="_blank" rel="noopener"${st === "none" || st === "incoming" ? "" : ' aria-disabled="true"'}>${esc(label)}</a>`;
+      const label = st === "none" ? `+ Follow @${handle}` : st === "incoming" ? `Follow @${handle} back` : FRIEND_LABEL[st];
+      return `<a class="${esc(cls)}" href="${base}/kudos/${encodeURIComponent(handle)}" data-caldera-friend="${esc(handle)}" data-state="${st}" target="_blank" rel="noopener"${st === "friends" ? ' aria-disabled="true"' : ""}>${esc(label)}</a>`;
     });
   }
 
@@ -1365,9 +1410,8 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
       const day = new Date().toISOString().slice(0, 10), done = q("SELECT kind FROM kudos WHERE sender=? AND recipient=? AND day=?").get(me, pr.id, day) as any;
       const fst = friendState(me, pr.id).state;
       const friendRow = fst === "friends" ? `<p class="mut">You and @${e(h)} are friends \u2713</p>`
-        : fst === "requested" ? `<p class="mut">Friend request sent to @${e(h)}.</p>`
-        : fst === "queued" ? `<p class="mut">Friend request queued. It sends from your Obsidian the next time it's open.</p>`
-        : `<button class="btn ghost" type="button" id="kd-friend">${fst === "incoming" ? `Accept @${e(h)}'s friend request` : `+ Add @${e(h)} as a friend`}</button>`;
+        : fst === "requested" || fst === "queued" ? `<p class="mut">You follow @${e(h)}. If they follow you back, you're friends.</p>`
+        : `<button class="btn ghost" type="button" id="kd-friend">${fst === "incoming" ? `@${e(h)} follows you. Follow back` : `+ Follow @${e(h)}`}</button>`;
       inner = `${head}<h1>${done ? "Kudos sent today" : `Send @${e(h)} kudos`}</h1>
 <p class="mut" id="kd-msg">${done ? `You sent ${KUDOS[done.kind] || ""} today. You can send @${e(h)} more kudos tomorrow.` : "One tap. They'll see it on their page and in their daily email."}</p>
 <div class="kd-pick" role="group" aria-label="Pick kudos">${Object.entries(KUDOS).map(([k, em]) => `<button type="button" data-k="${k}"${done ? " disabled" : ""} aria-label="${k}">${em}</button>`).join("")}</div>
@@ -1378,7 +1422,7 @@ pick.forEach(function(b){b.addEventListener('click',function(){pick.forEach(func
 fetch('/v1/kudos/'+H,{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({kind:b.getAttribute('data-k'),page:'web'})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,j:j}})}).then(function(x){
 if(x.ok){b.classList.add('on');burst(em);msg.textContent='Sent! @'+H+' will see it on their page.';document.querySelector('h1').textContent='Kudos sent';setTimeout(function(){try{if(window.opener)window.close()}catch(e){}},1900)}
 else{msg.textContent=x.j.error||'Could not send.';if(x.status!==409)pick.forEach(function(y){y.disabled=false})}}).catch(function(){msg.textContent='Could not send. Check your connection.';pick.forEach(function(y){y.disabled=false})})})});
-var fb=document.getElementById('kd-friend');if(fb)fb.addEventListener('click',function(){fb.disabled=true;fetch('/v1/friend/'+H,{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})}).then(function(x){fb.outerHTML='<p class="mut">'+(x.ok?(x.j.state==='friends'?'You and @'+H+' are friends.':x.j.state==='queued'?'Friend request queued. It sends from your Obsidian the next time it is open.':'Friend request sent to @'+H+'.'):(x.j.error||'Could not send the request.'))+'</p>'})});`;
+var fb=document.getElementById('kd-friend');if(fb)fb.addEventListener('click',function(){fb.disabled=true;fetch('/v1/friend/'+H,{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})}).then(function(x){fb.outerHTML='<p class="mut">'+(x.ok?(x.j.state==='friends'?'You and @'+H+' follow each other: you are friends now.':'You follow @'+H+'. If they follow you back, you are friends.'):(x.j.error||'Could not do that.'))+'</p>'})});`;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer" });
     res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kudos for @${e(h)} - Caldera</title><meta name="robots" content="noindex">
@@ -1663,8 +1707,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/friend\/([a-z0-9-]+)$/);
       if (req.method === "POST" && m) {
         if (!sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
-        const me = memberOf(req); if (!me) return json(res, 401, { error: "Sign in to add friends." });
-        const r = friendAct(me, byHandle(m[1])); return json(res, r.status, r.body);
+        const me = memberOf(req); if (!me) return json(res, 401, { error: "Sign in to follow people." });
+        const ab = await readBody(req).catch(() => ({})) as any;
+        const r = friendAct(me, byHandle(m[1]), ab?.action === "unfollow" ? "unfollow" : "friend"); return json(res, r.status, r.body);
       }
       // inline kudos + friends on hosted pages: the page's action token is the only credential (sandboxed pages send no
       // cookies, Origin is "null"); it names the viewer and the one page owner it may act on, and expires in 2 hours
@@ -1679,7 +1724,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           try { return json(res, 200, { ok: true, message: await mail.subscribe(me.id, String((b as any).email || "").slice(0, 200)) }); } catch (e: any) { return json(res, 400, { error: e.message }); }
         }
         if (b.action === "kudos") { const r = sendKudos(me.id, to, String(b.kind || ""), "inline"); return json(res, r.status, r.body); }
-        if (b.action === "friend" || b.action === "accept") { const r = friendAct(me.id, to); return json(res, r.status, r.body); }
+        if (b.action === "friend" || b.action === "accept" || b.action === "unfollow") { const r = friendAct(me.id, to, b.action === "unfollow" ? "unfollow" : "friend"); return json(res, r.status, r.body); }
         if (b.action === "intro") { const r = B.requestIntro(me.id, to); return json(res, r.status, r.body); }
         // the profile's posts card: only posts by this page's owner; Close / Delete only with the owner's own token
         if (/^post-(kudos|help|close|delete)$/.test(String(b.action))) {

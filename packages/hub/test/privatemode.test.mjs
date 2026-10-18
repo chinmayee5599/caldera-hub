@@ -26,9 +26,10 @@ async function hubWithRae() {
   return { h, d, base, rae, get };
 }
 
-test("new members default to anonymous; every public surface follows the setting, whatever built the page", async () => {
+test("private repos show (padlocked, in place) by default; every public surface follows the setting, whatever built the page", async () => {
   const { h, d, base, rae, get } = await hubWithRae();
-  // default for someone who joined after the setting shipped: anonymous
+  assert.equal(h.privateModes.modeFor(h.db.prepare("SELECT * FROM profiles WHERE id=?").get(rae.id)), "show", "unset = show, for everyone");
+  h.privateModes.set(rae.id, "anonymous");
   let city = cityData_(await get("/@rae/city.html"));
   const apart = city.districts.filter(x => x.apart);
   assert.equal(apart.length, 1); assert.equal(apart[0].repos.length, 3, "3 private repos -> the small cluster");

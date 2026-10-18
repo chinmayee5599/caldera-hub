@@ -5,8 +5,8 @@
  *
  * The setting is enforced here, on the hub, when pages and feeds are served - so it holds for every plugin version and
  * for GitHub-hosted pages alike. Where it comes from, latest first: the web setting (/settings, any owner), the signed
- * manifest's privateRepos (Obsidian: Caldera settings or Caldera/profile.md). Unset: members who joined after this
- * feature shipped get "anonymous"; earlier members keep "show" until they choose (their city doesn't change silently).
+ * manifest's privateRepos (Obsidian: Caldera settings or Caldera/profile.md). Unset: "show" for everyone
+ * (building sizes and activity are visible, names never are); members who want less choose anonymous or hidden.
  */
 import { privateModeOf, type PrivateMode } from "../../../../caldera/packages/plugin/src/city";
 
@@ -32,8 +32,8 @@ export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinc
   return {
     since,
     chosen,
-    /** what visitors get: the choice, else the default for when they joined */
-    modeFor(pr: any): PrivateMode { return chosen(pr) || (String(pr?.created || "") >= since! ? "anonymous" : "show"); },
+    /** what visitors get: the choice, else "show" */
+    modeFor(pr: any): PrivateMode { return chosen(pr) || "show"; },
     set(owner: string, mode: unknown) { const m = privateModeOf(mode); if (!m) return false; q("INSERT OR REPLACE INTO private_modes VALUES (?,?,?)").run(owner, m, nowIso()); return true; },
     /** the one-time "choose how your private repos show" prompt: true the first time only */
     promptOnce(owner: string) { if (q("SELECT 1 FROM private_mode_prompted WHERE owner=?").get(owner)) return false; q("INSERT INTO private_mode_prompted VALUES (?,?)").run(owner, nowIso()); return true; },

@@ -427,7 +427,7 @@ ${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="
   function emailCard(a: any, edits: any): string {
     const soc = ctx.social, me = a.profile_id as string, em = soc?.email?.status(me);
     const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
-    return `${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests and kudos. Never shown on your page. Unsubscribe in one click.</p>
+    return `${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, new followers and kudos. Never shown on your page. Unsubscribe in one click.</p>
 ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", "Turn off", {})}` : `${em ? `<p class="mut">Check ${esc(em.email)} for a confirmation link.</p>` : ""}<form method="post" class="row"><input type="hidden" name="do" value="email"><input type="text" name="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(em?.email || edits.ghEmail || "")}" style="flex:1 1 220px"><button class="btn small" type="submit">Email me a daily summary</button></form>`}</div>` : ""}`;
   }
   function growthCards(a: any, edits: any): string {
@@ -449,11 +449,11 @@ ${(() => { const bd = ctx.social?.building?.(a.profile_id); if (!bd) return "";
 <p class="mut">Tags from your public repos help people building the same things find you. Private repos only ever add a language.</p>
 ${bd.tags.length ? `<div class="row" style="gap:6px">${bd.tags.slice(0, 10).map(t => `<a href="/people?tag=${encodeURIComponent(t.t)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 11px;border-radius:999px;font-size:13px;text-decoration:none;${t.kind === "stack" ? "border:1px solid var(--line,#2A2A2E);color:var(--text,#E6E6EA)" : "background:var(--accent-soft,rgba(139,108,246,.10));color:var(--accent-text,#C9B8FF)"}">${esc(t.t)}</a>`).join("")}</div>` : `<p class="mut">No tags yet. They're worked out from your public GitHub within a few minutes.</p>`}
 <div class="row" style="margin-top:10px"><a class="btn small" href="/me/building">${bd.intros ? "Answer introductions" : "Edit tags"}</a></div></div>`; })()}
-<div class="card" id="friends"><b>Friends</b>
-${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
+<div class="card" id="friends"><b>Friends and followers</b> <span class="mut">&middot; follow each other and you're friends</span>
+${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Following you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Follow back", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
 ${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.why && (f.kind === "repo" || f.kind === "github") ? ` <span class="mut">(${f.kind === "repo" ? "both work on " : ""}${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
-${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
-${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
+${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">You follow: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
+${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Follow", { to: s.id })}</div>`).join("")}` : ""}</div>
 `;
   }
 
@@ -537,7 +537,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         // the first build reads the whole GitHub account (slow): send them to /me now, build in the background
         const acct0 = acct, inv = ck.cal_inv;
         void queuedBuild(acct0).catch((e: any) => console.error("github first build", e.message)).finally(() => {
-          // joined from a friend's invite: thank the inviter, and send them a friend request from the new member
+          // joined from a friend's invite: thank the inviter, and the new member follows them
           const inviter = inv ? ctx.social?.recordReferral(id.id, inv, "github") : null;
           if (inviter) try { ctx.accept(C.sign(id, "friend.request", { to: inviter, note: "I joined Caldera from your invite." })); } catch { /* best effort */ }
         });
@@ -661,7 +661,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const r = act === "accept" ? ctx.accept(C.sign(id, "friend.accept", { request: String(f.get("req") || ""), to }))
             : /^cal:[1-9A-HJ-NP-Za-km-z]+$/.test(to) && q("SELECT 1 FROM profiles WHERE id=?").get(to) ? ctx.accept(C.sign(id, "friend.request", { to, note: "" })) : { status: 404, body: { error: "unknown profile" } };
           const h = (q("SELECT handle FROM profiles WHERE id=?").get(to) as any)?.handle;
-          pre = r.status === 200 ? (act === "accept" ? `You and @${esc(h)} are now friends.` : `Friend request sent to @${esc(h)}.`) : `Couldn't do that: ${esc(r.body?.error || "error")}`;
+          pre = r.status === 200 ? (act === "accept" ? `You and @${esc(h)} follow each other: you're friends now.` : `You follow @${esc(h)}. If they follow you back, you're friends.`) : `Couldn't do that: ${esc(r.body?.error || "error")}`;
         }
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
         if (act === "gh-invite" && ctx.social?.circle) { try { pre = esc(await ctx.social.circle.invite(acct.profile_id, String(f.get("login") || ""))); } catch (e: any) { pre = esc(e.message); } }

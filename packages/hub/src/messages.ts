@@ -254,7 +254,7 @@ export function messages(c: MsgCtx) {
     const h = th.them.handle as string;
     const head = `<div class="ms-th-h"><a class="ms-back" href="/messages" aria-label="Back to messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>${avatarHtml({ avatar: th.them.avatar, name: th.them.name, handle: h }, 36)}`
       + `<span class="ms-th-who"><b>${esc(th.them.name)}</b><a href="/@${esc(h)}/">@${esc(h)}</a></span><span class="ms-grow"></span>`
-      + `${th.friends ? "" : `<a class="ms-btn ghost small hide-sm" href="/@${esc(h)}/" title="Add friend from their page">Add friend</a>`}<a class="ms-btn ghost small hide-sm" href="/@${esc(h)}/">View profile</a>`
+      + `${th.friends ? "" : `<a class="ms-btn ghost small hide-sm" href="/@${esc(h)}/" title="Follow them from their page">Follow</a>`}<a class="ms-btn ghost small hide-sm" href="/@${esc(h)}/">View profile</a>`
       + `<details class="ms-more"><summary aria-label="More: block, report or delete">&#8943;</summary><span class="ms-menu">`
       + `<a href="/@${esc(h)}/">View profile</a>${th.id ? `<button type="button" data-act="${th.state === "blocked" ? "unblock" : "block"}">${th.state === "blocked" ? "Unblock" : "Block"} @${esc(h)}</button><button type="button" data-act="report">Report</button><button type="button" data-act="delete" class="danger">Delete conversation</button>` : ""}</span></details></div>`;
     let body = "", foot = "";

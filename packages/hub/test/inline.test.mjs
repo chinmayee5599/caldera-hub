@@ -26,7 +26,7 @@ async function setup() {
   const hub = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, limits: { newProfilesPerDay: 100 } });
   const base = "http://127.0.0.1:" + await hub.listen(0);
   const post = (p, body, h = {}) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() }));
-  const ids = { ana: C.newIdentity(), bo: C.newIdentity() };
+  const ids = { ana: C.newIdentity(), bo: C.newIdentity(), cy: C.newIdentity() };
   for (const [h, id] of Object.entries(ids)) await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: h, handle: h, boxKey: id.boxPublic }), files: { "index.html": Buffer.from(PAGE.replaceAll("HANDLE", h)).toString("base64") } });
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
   const ownerCookie = async (id) => { const { body } = await post(`/v1/owner/${id.id}/link`, {}, { authorization: "Bearer " + await login(id) });
@@ -87,15 +87,11 @@ test("Add friend inline: Obsidian member's tap is queued, plugin picks it up and
     assert.equal((await S.post("/v1/envelopes", C.sign(S.ids.ana, "friend.request", { to: S.ids.bo.id, note: "" }))).status, 200);
     assert.equal((await fetch(S.base + `/v1/owner/${S.ids.ana.id}/intents`, { headers: { authorization: "Bearer " + tok } }).then(r => r.json())).intents.length, 0, "cleared when the request lands");
     assert.match(await (await S.page("bo", anaC)).text(), /data-state="requested"/);
-    // bo sees Accept on ana's page; bo's tap queues an accept; plugin accepts -> friends
+    // ana follows bo: bo sees "Follow back" on ana's page; following back -> friends
     const boC = await S.ownerCookie(S.ids.bo);
     const bt = S.tokenIn(await (await S.page("ana", boC)).text());
     assert.match(await (await S.page("ana", boC)).text(), /data-state="incoming"/);
-    assert.equal((await S.act(bt, "accept")).body.state, "queued");
-    const btok = await S.login(S.ids.bo);
-    const bl = (await fetch(S.base + `/v1/owner/${S.ids.bo.id}/intents`, { headers: { authorization: "Bearer " + btok } }).then(r => r.json())).intents;
-    assert.equal(bl[0].kind, "accept"); assert.ok(bl[0].request);
-    assert.equal((await S.post("/v1/envelopes", C.sign(S.ids.bo, "friend.accept", { request: bl[0].request, to: S.ids.ana.id }))).status, 200);
+    assert.equal((await S.act(bt, "accept")).body.state, "friends", "following back makes friends at once, Obsidian or not");
     const now = await (await S.page("ana", boC)).text();
     assert.match(now, /data-state="friends"/); assert.match(now, /Friends ✓/);
     // a GitHub sign-up (hub holds the key) adds a friend right away
@@ -121,4 +117,36 @@ test("off-site links open in a new window on every hosted page; internal links u
     assert.match(html, /<a href="#top">top<\/a>/);
     assert.equal((await fetch(S.base + "/friend/bo", { redirect: "manual" })).headers.get("location"), "/kudos/bo");
   } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
+
+test("follow model: one-way follows count as followers/following, following back makes friends, unfollow undoes it, counts on the page", async () => {
+  const S = await setup();
+  try {
+    const anaC = await S.ownerCookie(S.ids.ana), boC = await S.ownerCookie(S.ids.bo);
+    const t = S.tokenIn(await (await S.page("bo", anaC)).text());
+    await S.act(t, "friend");   // ana follows bo (Obsidian member: counts at once, signed later)
+    let bo = await (await S.page("bo", anaC)).text();
+    assert.match(bo, /data-state="queued"[^>]*>Following</);
+    assert.match(bo, /class="cb-counts"[\s\S]*?<b[^>]*>0<\/b> friends &middot; <b[^>]*>1<\/b> follower &middot; <b[^>]*>0<\/b> following/);
+    const alerts = S.hub.db.prepare("SELECT title FROM alerts WHERE target=?").all(S.ids.bo.id).map(r => r.title);
+    assert.ok(alerts.includes("@ana followed you"), "bo gets one alert");
+    // unfollow, then follow again
+    assert.equal((await S.act(t, "unfollow")).body.state, "none");
+    assert.match(await (await S.page("bo", anaC)).text(), /<b[^>]*>0<\/b> followers/);
+    await S.act(t, "friend");
+    // bo follows ana back: friends, and neither is a follower any more
+    const bt = S.tokenIn(await (await S.page("ana", boC)).text());
+    assert.match(await (await S.page("ana", boC)).text(), />Follow back</);
+    assert.equal((await S.act(bt, "accept")).body.state, "friends");
+    assert.match(await (await S.page("ana", boC)).text(), /<b[^>]*>1<\/b> friend &middot; <b[^>]*>0<\/b> followers &middot; <b[^>]*>0<\/b> following/);
+    // a plugin-signed follow from someone you already follow makes friends too (mutual = friends)
+    const cyC = await S.ownerCookie(S.ids.cy);
+    const ct = S.tokenIn(await (await S.page("ana", cyC)).text());
+    await S.act(ct, "friend");   // cy follows ana (queued)
+    assert.equal((await S.post("/v1/envelopes", C.sign(S.ids.ana, "friend.request", { to: S.ids.cy.id, note: "" }))).status, 200);
+    assert.match(await (await S.page("cy", anaC)).text(), /data-state="friends"/);
+    // ana unfollows bo (friends): the friendship ends; bo followed back last, so bo still follows ana only if bo's follow was a request
+    assert.equal((await S.act(t, "unfollow")).status, 200);
+    assert.doesNotMatch(await (await S.page("bo", anaC)).text(), /data-state="friends"/);
+  } finally { S.hub.server.close(); }
 });
