@@ -15,9 +15,14 @@ const REPOS = {
   di: [{ full_name: "di/notes", fork: false }],
 };
 const CONTRIB = { "ana/engine": ["ana", "cy"], "ana/old": ["ana", "di"], "ana/secret": ["ana", "di"], "bo/site": ["bo"], "bo/engine": ["ana", "bo"], "cy/tool": ["cy"], "di/notes": ["di"] };
+// follows: who each login follows; followers are derived. EMAILS: the public email on a GitHub profile (only some have one)
+const FOLLOWING = {}, EMAILS = { newbie: "newbie@mail.test-inbox.net", stranger: "stranger@mail.test-inbox.net" };
 let calls = [];
 const fake = async (u, init = {}) => { u = String(u); calls.push({ u, etag: init.headers?.["if-none-match"] });
-  let m = u.match(/\/users\/([^/]+)\/repos/); if (m) return J(REPOS[m[1]] || [], 200, { etag: `"r-${m[1]}"` });
+  let m = u.match(/\/users\/([^/]+)\/following/); if (m) return J((FOLLOWING[m[1]] || []).map(login => ({ login })), 200, { etag: `"fg-${m[1]}"` });
+  m = u.match(/\/users\/([^/]+)\/followers/); if (m) return J(Object.keys(FOLLOWING).filter(k => (FOLLOWING[k] || []).includes(m[1])).map(login => ({ login })), 200, { etag: `"fr-${m[1]}"` });
+  m = u.match(/\/users\/([^/?]+)$/); if (m) return J({ login: m[1], email: EMAILS[m[1]] || null }, 200, { etag: `"u-${m[1]}"` });
+  m = u.match(/\/users\/([^/]+)\/repos/); if (m) return J(REPOS[m[1]] || [], 200, { etag: `"r-${m[1]}"` });
   m = u.match(/\/repos\/([^/]+\/[^/?]+)\/contributors/); if (m) return J((CONTRIB[m[1]] || []).map(login => ({ login })), 200, { etag: `"c-${m[1]}"` });
   m = u.match(/\/repos\/([^/]+\/[^/?]+)$/); if (m) return J(m[1] === "bo/engine" ? { full_name: "bo/engine", parent: { full_name: "ana/engine" } } : { full_name: m[1] }, 200, { etag: `"d-${m[1]}"` });
   return J({}, 404); };
@@ -98,4 +103,87 @@ test("kinds: a real accepted request upgrades a founder or repo link; the founde
   const k = (a, b) => h.db.prepare("SELECT kind FROM friends WHERE a=? AND b=?").get(a.id, b.id).kind;
   assert.equal(k(mike, nick), "request", "an accepted request stays a request");
   assert.equal(k(zed, mike), "founder", "a welcome link without an accept is founder");
+});
+
+test("GitHub follows: mutual and one-way follows connect (kind github) when both have it on; a shared repo wins over a follow", async () => {
+  for (const k of Object.keys(FOLLOWING)) delete FOLLOWING[k];
+  FOLLOWING.ana = ["bo", "di", "newbie"]; FOLLOWING.bo = ["ana"]; FOLLOWING.cy = ["di"];
+  const { h, publish, gh } = await setup();
+  await publish("mike"); const ana = await publish("ana", gh("ana")), bo = await publish("bo", gh("bo")), cy = await publish("cy", gh("cy")), di = await publish("di", { ...gh("di"), autoConnectGithub: false });
+  const dry = await h.admin.repoConnect({ dry: true });
+  const row = (x, y) => dry.find(p => [p.ah, p.bh].sort().join() === [x, y].sort().join());
+  assert.equal(row("ana", "bo").kind, "repo", "ana and bo share ana/engine (via bo's fork): the repo reason wins over their mutual follow");
+  assert.equal(row("ana", "di").action, "opted-out", "di turned it off");
+  assert.equal(row("cy", "di").action, "opted-out");
+  await h.admin.repoConnect();
+  assert.equal(kind(h, ana, bo).kind, "repo");
+  assert.equal(kind(h, ana, di), undefined);
+  // a plain one-way follow between two members who both have it on
+  FOLLOWING.cy = ["bo"];
+  await h.admin.repoConnect();
+  assert.equal(kind(h, bo, cy).kind, "repo", "bo and cy already share ana/engine");
+  h.server.close();
+});
+
+test("one-way and mutual follow reasons; waiting connections are fulfilled when the person joins; tombstones respected", async () => {
+  for (const k of Object.keys(FOLLOWING)) delete FOLLOWING[k];
+  FOLLOWING.cy = ["newbie"]; FOLLOWING.newbie = ["cy"]; FOLLOWING.di = ["newbie"];
+  const { h, publish, gh } = await setup();
+  await publish("mike"); const cy = await publish("cy", gh("cy")), di = await publish("di", gh("di"));
+  await h.admin.repoConnect();
+  const waiting = h.db.prepare("SELECT member, relation FROM gh_circle WHERE login='newbie' ORDER BY member, relation").all().map(r => r.relation);
+  assert.ok(waiting.includes("following") && waiting.includes("follower"), "newbie waits in cy's and di's circles");
+  // di removes nothing yet; newbie joins with their GitHub on the page
+  const nb = await publish("newbie", gh("newbie"));
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual({ ...kind(h, cy, nb) }, { kind: "github", why: "you follow each other on GitHub" });
+  assert.deepEqual({ ...kind(h, di, nb) }, { kind: "github", why: "@di follows @newbie on GitHub" });
+  // newbie removes di: never re-added by the scan or by re-publishing
+  const port = h.server.address().port;
+  await fetch(`http://127.0.0.1:${port}/v1/envelopes`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(nb, "friend.remove", { to: di.id })) });
+  await h.admin.repoConnect();
+  assert.equal(kind(h, di, nb), undefined, "tombstoned");
+  h.server.close();
+});
+
+test("GitHub people + email invites: ranked list, email only with a public profile email, caps, suppression, unsubscribe", async () => {
+  for (const k of Object.keys(FOLLOWING)) delete FOLLOWING[k];
+  FOLLOWING.ana = ["newbie", "stranger", "quiet"]; FOLLOWING.newbie = ["ana"];
+  const sent = [];
+  const { h, base, publish, gh } = await setup({ email: { send: async m => { sent.push(m); }, schedule: false } });
+  await publish("mike"); const ana = await publish("ana", gh("ana"));
+  await h.admin.repoConnect();
+  // owner auth for the API
+  const auth = async id => { const { nonce } = await (await fetch(base + "/v1/auth/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id.id }) })).json();
+    const { token } = await (await fetch(base + "/v1/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "message", { nonce })) })).json(); return token; };
+  const tok = await auth(ana), H = { authorization: "Bearer " + tok, "content-type": "application/json" };
+  const list = await (await fetch(base + `/v1/owner/${ana.id}/github-people`, { headers: H })).json();
+  const logins = list.people.map(p => p.login);
+  assert.ok(logins.indexOf("cy") === 0 || logins[0] === "cy", "co-contributor (cy on ana/engine) ranks first");
+  assert.ok(logins.indexOf("newbie") < logins.indexOf("quiet"), "a mutual follow ranks above a one-way follow");
+  assert.equal(list.people.find(p => p.login === "quiet").canEmail, false, "no public email: no email button");
+  assert.equal(list.people.find(p => p.login === "newbie").canEmail, true);
+  assert.ok(!JSON.stringify(list).includes("@mail.test-inbox.net"), "addresses never leave the hub");
+  const inv = login => fetch(base + `/v1/owner/${ana.id}/github-invite`, { method: "POST", headers: H, body: JSON.stringify({ login }) }).then(async r => ({ status: r.status, j: await r.json() }));
+  assert.equal((await inv("quiet")).status, 400, "no public email: refused");
+  assert.equal((await inv("nobody-in-circle")).status, 400, "not in the circle: refused");
+  const ok = await inv("newbie");
+  assert.equal(ok.status, 200, JSON.stringify(ok.j));
+  assert.equal(sent.length, 1); const m = sent[0];
+  assert.equal(m.to, "newbie@mail.test-inbox.net");
+  assert.match(m.subject, /invited you to Caldera/);
+  assert.match(m.text, /\?invite=ana/); assert.match(m.text, /follow each other/);
+  assert.ok(m.headers["List-Unsubscribe"]);
+  assert.ok(!h.db.prepare("SELECT * FROM invites_sent").all().some(r => JSON.stringify(r).includes("@")), "only a hash is stored");
+  assert.equal((await inv("newbie")).status, 400, "one invite per recipient per 30 days");
+  // unsubscribe via the link, then another inviter is refused
+  const t = m.headers["List-Unsubscribe"].match(/t=([\w-]+)/)[1];
+  await fetch(base + `/v1/email/invite-unsub?t=${t}`, { method: "POST" });
+  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM email_suppress").get().n, 1);
+  h.db.prepare("DELETE FROM invites_sent").run();
+  assert.equal((await inv("newbie")).status, 400, "suppressed address is never mailed again");
+  // daily cap: 10 per inviter
+  for (let i = 0; i < 10; i++) h.db.prepare("INSERT INTO invites_sent VALUES (?,?,?,?,?)").run("x" + i, ana.id, "someone" + i, "h" + i, new Date().toISOString());
+  const capped = await inv("stranger"); assert.equal(capped.status, 400); assert.match(capped.j.error, /10 email invites today/);
+  h.server.close();
 });

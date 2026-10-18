@@ -55,7 +55,9 @@ export type FriendState = "self" | "friends" | "incoming" | "requested" | "queue
 export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Accept friend request", requested: "Friend request sent", queued: "Requested \u00b7 sends from your Obsidian", none: "+ Add friend" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
-export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number }
+export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number;
+  /** extra account-menu items [label, href, opens elsewhere?], and an optional button before the menu (e.g. "Open in Obsidian") */
+  extra?: [string, string, boolean?][]; action?: string }
 const LOGO = `<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true" style="display:block"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><path d="M11 10 L14 15 L17 8" fill="none" stroke="#F2F2F5" stroke-width="1.2"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></svg>`;
 const BAR_CSS = `<style>#caldera-bar{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:8px 12px;min-height:46px;box-sizing:border-box;padding:7px 16px;background:#111113;border-bottom:1px solid #2A2A2E;font:500 13.5px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:#D6D6DC}
 #caldera-bar a{text-decoration:none}#caldera-bar .cb-l,#caldera-bar .cb-r{display:inline-flex;align-items:center;gap:10px;min-width:0}
@@ -84,7 +86,7 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const v = so.viewer || null, sent = v?.sent || null;
   const kd = Object.entries(KUDOS).map(([k, em]) => `<button type="button" class="cb-k${sent === k ? " on" : ""}" data-k="${k}"${sent ? ` disabled title="You sent kudos today. More tomorrow."` : ` title="Send @${e(handle)} ${em}"`}>${em}<i>${count(k) ? compact(count(k)) : ""}</i></button>`).join("");
   const fs = v ? v.friend : "none";
-  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}${fs === "friends" && v?.why ? ` title="You both work on ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; both work on ${e(v.why)}` : ""}</button>`;
+  const fr = fs === "self" ? "" : `<button type="button" class="cb-fr" data-caldera-friend="${e(handle)}" data-state="${fs}"${fs === "friends" || fs === "requested" || fs === "queued" ? " disabled" : ""}${fs === "friends" && v?.why ? ` title="Connected because: ${e(v.why)}"` : ""}>${e(FRIEND_LABEL[fs])}${fs === "friends" && v?.why ? ` &middot; ${e(v.why)}` : ""}</button>`;
   return `<span class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${views}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span>${fr}</span>`;
 }
 
@@ -143,10 +145,10 @@ export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, s
     + `<a href="${e(own.publicHref)}"${own.current === "public" ? ' aria-current="page"' : ""} title="Your page as everyone sees it">&#127760;<span class="cb-v"> Public view</span></a>`
     + `<a href="${e(own.privateHref)}"${ext}${own.current === "private" ? ' aria-current="page"' : ""} title="Your page with the private sections only you see">&#128274;<span class="cb-v"> Private view</span></a></span>`;
   const menu = `<details><summary aria-label="Account">@${e(own.handle)} <span aria-hidden="true">&#9662;</span></summary><span class="cb-menu">`
-    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>`
+    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>` + (own.extra || []).map(([l, hr, x]) => `<a href="${e(hr)}"${x ? ' target="_blank" rel="noopener"' : ""}>${e(l)}</a>`).join("")
     + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
   return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
-    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
+    + chips + `<span class="cb-r">${own.action || ""}${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${menu}</span></div>`;
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -248,6 +250,8 @@ export function createHub(opts: HubOptions) {
     CREATE TABLE IF NOT EXISTS friend_intents (owner TEXT, target TEXT, kind TEXT, request TEXT, ts TEXT, PRIMARY KEY (owner, target));
     CREATE INDEX IF NOT EXISTS kudos_to ON kudos(recipient, ts);
     CREATE TABLE IF NOT EXISTS repo_tombstones (a TEXT, b TEXT, ts TEXT, PRIMARY KEY (a, b));
+    CREATE TABLE IF NOT EXISTS gh_circle (member TEXT, login TEXT, relation TEXT, repo TEXT, seen TEXT, PRIMARY KEY (member, login, relation, repo));
+    CREATE INDEX IF NOT EXISTS gh_circle_login ON gh_circle(login);
     CREATE TABLE IF NOT EXISTS friend_meta (k TEXT PRIMARY KEY, v TEXT);
   `);
   // how two people became friends: request (accepted), invite (accepted request from an invitee), founder (the welcome
@@ -291,9 +295,10 @@ export function createHub(opts: HubOptions) {
   const areFriends = (a: string, b: string) => !!q("SELECT 1 FROM friends WHERE a=? AND b=?").get(a, b);
   /** Make two people friends (both directions). A real request or invite upgrades an existing welcome/repo link; a welcome
    *  or repo link never downgrades a real one. */
-  function befriend(a: string, b: string, kind: "request" | "invite" | "founder" | "repo", ts: string, why: string | null = null) {
-    // what an incoming kind may replace: a real request or invite replaces welcome/repo links, a shared repo replaces a welcome
-    const over = kind === "request" || kind === "invite" ? "('founder','repo')" : kind === "repo" ? "('founder')" : "('')";
+  function befriend(a: string, b: string, kind: "request" | "invite" | "founder" | "repo" | "github", ts: string, why: string | null = null) {
+    // what an incoming kind may replace: a real request or invite replaces any automatic link, a shared repo replaces a
+    // follow or a welcome, a GitHub follow replaces a welcome
+    const over = kind === "request" || kind === "invite" ? "('founder','repo','github')" : kind === "repo" ? "('founder','github')" : kind === "github" ? "('founder')" : "('')";
     for (const [x, y] of [[a, b], [b, a]]) q(`INSERT INTO friends (a, b, ts, kind, why) VALUES (?,?,?,?,?) ON CONFLICT(a, b) DO UPDATE SET
       why=CASE WHEN COALESCE(friends.kind,'request') IN ${over} THEN excluded.why ELSE friends.why END,
       kind=CASE WHEN COALESCE(friends.kind,'request') IN ${over} THEN excluded.kind ELSE friends.kind END`).run(x, y, ts, kind, why);
@@ -391,6 +396,11 @@ export function createHub(opts: HubOptions) {
         storeEnvelope(e, null);
         indexGarden(e.from, handle, b.garden);
         if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
+        { // a new member, or one whose page just gained a GitHub link: connect their GitHub circle on Caldera
+          const ghIn = (m: any) => { try { return JSON.stringify(m?.links || []).match(/github\.com\/[A-Za-z0-9-]+/gi)?.map(x => x.toLowerCase()).sort().join() || ""; } catch { return ""; } };
+          const before = existing ? ghIn(JSON.parse(existing.manifest).body) : "";
+          if (!existing || ghIn(b) !== before) setTimeout(() => { try { circleHooks.joined?.(e.from); } catch (err: any) { console.error("circle join", err?.message); } }, 0);
+        }
         if (!existing && opts.founder) {   // the founder is everyone's first friend; it can be removed like any other
           const f = byHandle(opts.founder.toLowerCase());
           if (f && f.id !== e.from) befriend(f.id, e.from, "founder", now());
@@ -424,7 +434,7 @@ export function createHub(opts: HubOptions) {
       }
       case "friend.remove": {
         // removing a shared-repo friendship leaves a tombstone, so the repo job never connects these two again
-        if ((q("SELECT kind FROM friends WHERE a=? AND b=?").get(e.from, b.to) as any)?.kind === "repo") q("INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)").run(...[e.from, String(b.to)].sort(), now());
+        if (["repo", "github"].includes((q("SELECT kind FROM friends WHERE a=? AND b=?").get(e.from, b.to) as any)?.kind)) q("INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)").run(...[e.from, String(b.to)].sort(), now());
         q("DELETE FROM friends WHERE (a=? AND b=?) OR (a=? AND b=?)").run(e.from, b.to, b.to, e.from);
         return { status: 200, body: { ok: true } };
       }
@@ -482,7 +492,40 @@ export function createHub(opts: HubOptions) {
   }
 
   /** The garden listed in a signed manifest: note index (for the feed) + links into other gardens (for their backlinks). */
+  // A garden note other gardens link to, later unpublished: keep only its handle, slug and published title, so links into it
+  // land on a "taken private" page instead of a 404 (no content is kept). Republishing the slug drops the tombstone.
+  db.exec("CREATE TABLE IF NOT EXISTS garden_tombstones (handle TEXT, slug TEXT, title TEXT, removed_at TEXT, PRIMARY KEY (handle, slug))");
+  const tombstoned = (handle: string, slug: string) => q("SELECT title, removed_at FROM garden_tombstones WHERE handle=? AND slug=?").get(handle, slug) as { title: string; removed_at: string } | undefined;
+
   function indexGarden(owner: string, handle: string, garden: unknown) {
+    const before = handle ? q("SELECT slug, title FROM garden_notes WHERE owner=? AND handle=?").all(owner, handle) as { slug: string; title: string }[] : [];
+    indexGardenRows(owner, handle, garden);
+    if (!handle) return;
+    const kept = new Set((q("SELECT slug FROM garden_notes WHERE owner=?").all(owner) as { slug: string }[]).map(r => r.slug));
+    for (const r of before) if (!kept.has(r.slug) && q("SELECT 1 FROM garden_links WHERE dst_handle=? AND dst_slug=? AND owner<>? LIMIT 1").get(handle, r.slug, owner))
+      q("INSERT OR REPLACE INTO garden_tombstones VALUES (?,?,?,?)").run(handle, r.slug, r.title, now());
+    for (const sl of kept) q("DELETE FROM garden_tombstones WHERE handle=? AND slug=?").run(handle, sl);
+  }
+
+  /** "This note was taken private" page for a tombstoned garden note: who linked to it, and the way back to the garden. */
+  function tombstonePage(handle: string, slug: string, t: { title: string; removed_at: string }): string {
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    const hub = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
+    const day = new Date(t.removed_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const from = (q(`SELECT l.src_handle, l.src_slug, l.src_title, p.id FROM garden_links l JOIN profiles p ON p.id=l.owner WHERE l.dst_handle=? AND l.dst_slug=? LIMIT 50`).all(handle, slug) as any[]).filter(r => !modOf(r.src_handle, r.id));
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${e(t.title)} (made private) - Caldera</title><meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>:root{--bg:#111113;--raised:#18181B;--line:#2A2A2F;--text:#E6E6EA;--muted:#8A8A93;--strong:#F7F7FA;--accent-text:#B9A6FF}
+@media (prefers-color-scheme: light){:root{--bg:#FAFAF7;--raised:#FFF;--line:#E4E4DF;--text:#26262B;--muted:#6B6B73;--strong:#111;--accent-text:#5A3CD0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 'IBM Plex Sans',system-ui,sans-serif}main{max-width:640px;margin:0 auto;padding:56px 16px 64px}
+a{color:var(--accent-text);text-decoration:none}h1{font:600 1.7rem/1.2 'Source Serif 4',Georgia,serif;color:var(--strong);margin:6px 0 10px}.k{color:var(--muted);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid var(--line);background:var(--raised);border-radius:12px;padding:16px 18px;margin-top:22px}</style></head><body><main>
+<div class="k">&#128274; Made private</div><h1>${e(t.title)}</h1>
+<p>This note was taken private by <a href="${hub}/@${e(handle)}/">@${e(handle)}</a> on ${e(day)}. Its content is no longer published; only the title stays here so links into it still lead somewhere.</p>
+<div class="card">${from.length ? `<b>Linked from</b><ul>${from.map(r => `<li><a href="${hub}/@${e(r.src_handle)}/n/${e(r.src_slug)}.html">${e(r.src_title)}</a> <span style="color:var(--muted)">@${e(r.src_handle)}</span></li>`).join("")}</ul>` : ""}
+<a href="${hub}/@${e(handle)}/garden.html">Walk @${e(handle)}'s garden &rarr;</a></div></main></body></html>`;
+  }
+
+  function indexGardenRows(owner: string, handle: string, garden: unknown) {
     q("DELETE FROM garden_notes WHERE owner=?").run(owner); q("DELETE FROM garden_links WHERE owner=?").run(owner);
     if (!handle || !Array.isArray(garden)) return;
     const str = (v: unknown, n: number) => String(v ?? "").slice(0, n);
@@ -614,10 +657,25 @@ export function createHub(opts: HubOptions) {
       .map(pr => ({ handle: pr.handle as string, live: liveStats(pr.id, false, since) }));
     return foldLive(per, now());
   }
-  function worldNav(): string {
+  /** THE site header (logo, How it works, People, World, Guide, What's new, FAQ, Sign in, Get started), taken from the site's
+   *  guide.html so hub-rendered pages match the static ones; current = the nav href to mark (e.g. "/world"). */
+  function siteHeader(current = ""): string {
     let h = ""; try { const g = fs.readFileSync(path.join(opts.siteDir || "", "guide.html"), "utf8"); h = g.slice(g.indexOf('<header class="nav">'), g.indexOf("</header>") + 9); } catch { /* no site */ }
-    if (!h.startsWith("<header")) h = `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a></nav></header>`;
-    return h.replace(/ aria-current="page"/g, "").replace('href="/world"', 'href="/world" aria-current="page"').replace(/href="\.\/"/g, 'href="/"').replace(/href="#/g, 'href="/#') + `<script src="/assets/site.js" defer></script>`;
+    if (!h.startsWith("<header")) h = `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav><a class="btn small" href="/#install">Get started</a></header>`;
+    h = h.replace(/ aria-current="page"/g, "").replace(/href="\.\/"/g, 'href="/"').replace(/href="\.\/#/g, 'href="/#').replace(/href="#/g, 'href="/#');
+    return current ? h.replace(`href="${current}"`, `href="${current}" aria-current="page"`) : h;
+  }
+  function worldNav(): string { return siteHeader("/world") + `<script src="/assets/site.js" defer></script>`; }
+  /** Give a hub-rendered page the site header: replaces its own header (or the old ".top" link row), adds the site styles
+   *  ahead of the page's own (so the page keeps its look) and the script that turns "Sign in" into the account menu. */
+  function navify(html: string, current = ""): string {
+    const head = siteHeader(current);
+    if (/<header class="nav">[\s\S]*?<\/header>/.test(html)) html = html.replace(/<header class="nav">[\s\S]*?<\/header>/, head);
+    else if (/<div class="top">[\s\S]*?<\/div>/.test(html)) html = html.replace(/<div class="top">[\s\S]*?<\/div>/, "").replace(/<body[^>]*>/i, b => b + head);
+    else html = html.replace(/<body[^>]*>/i, b => b + head);
+    if (!html.includes("/assets/site.css")) html = html.replace(/<head>/i, `<head><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">`);
+    if (!html.includes("/assets/site.js")) html = html.replace(/<\/body>/i, `<script src="/assets/site.js" defer></script></body>`);
+    return html;
   }
   async function worldPreview(): Promise<Buffer> {
     if (worldPng && Date.now() - worldPng.at < 10 * 60_000) return worldPng.png;
@@ -633,11 +691,11 @@ export function createHub(opts: HubOptions) {
 
   function erase(id: string) {
     const pr = profile(id);
-    if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); }
+    if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id); q("DELETE FROM signin_links WHERE owner=?").run(id); q("DELETE FROM pair_codes WHERE owner=?").run(id);
-    for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM repo_tombstones WHERE a=? OR b=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
+    for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM repo_tombstones WHERE a=? OR b=?", "DELETE FROM gh_circle WHERE member=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
       "DELETE FROM gravity WHERE sender=? OR recipient=?", "DELETE FROM ledger WHERE who=?", "DELETE FROM envelopes WHERE sender=? OR recipient=?", "DELETE FROM tokens WHERE id=?", "DELETE FROM garden_notes WHERE owner=?", "DELETE FROM garden_links WHERE owner=?", "DELETE FROM kudos WHERE sender=? OR recipient=?", "DELETE FROM friend_intents WHERE owner=? OR target=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
     }
@@ -673,6 +731,8 @@ export function createHub(opts: HubOptions) {
   /** Hub-side live blocks on hosted pages: links from other gardens, the garden home, layout fixes for old builds. */
   function liveBlocks(handle: string, rel: string, html: string): string {
     const note = rel.match(/^n\/([a-z0-9-]+)\.html$/);
+    if (note && html.includes('class="xlink"')) html = html.replace(/(<a class="xlink" href="[^"]*\/@([a-z0-9-]+)\/n\/([a-z0-9-]+)\.html"[^>]*>)([\s\S]*?)<\/a>/g, (all, open, h, sl, inner) =>
+      tombstoned(h, sl) ? `${open}${inner} <span class="xl-private" style="opacity:.7;font-size:.85em">(made private)</span></a>` : all);
     if (note) html = html.replace("<!--caldera:xlinks-->", xlinksBlock(handle, note[1]));
     if (rel === "garden.html") {   // garden home: live gravity/credits/asks/links block (marker from 0.6.0; older builds: before the stage filter)
       const gh = gardenHomeBlock(handle);
@@ -842,7 +902,8 @@ export function createHub(opts: HubOptions) {
     const stale = hosted ? 0 : staleDays(owner);
     return { stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note })),
-      friends: q("SELECT p.handle, p.name, f.kind, f.why FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ? AND COALESCE(f.kind,'request')<>'founder'").all(owner, since) as any[],
+      friends: (q("SELECT p.handle, p.name, f.kind, f.why, p.created FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ? AND COALESCE(f.kind,'request')<>'founder'").all(owner, since) as any[])
+        .map(r => ({ handle: r.handle, name: r.name, kind: r.kind, why: r.why, joined: !!r.created && r.created > since })),
       gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
       links: (q("SELECT COUNT(*) n FROM garden_links WHERE dst_handle=? AND src_handle<>?").get(h, h) as any).n,
       invited: q("SELECT p.handle FROM referrals r JOIN profiles p ON p.id=r.invitee WHERE r.inviter=? AND r.ts > ?").all(owner, since) as any[],
@@ -854,10 +915,14 @@ export function createHub(opts: HubOptions) {
   const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor });
   if (opts.email?.schedule) mail.schedule();
 
+  const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
+  const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
+    siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private")) : ""; } },
-    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
+    social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe },
+      circle: { people: (id: string) => githubPeople(id), invite: (id: string, login: string) => githubInvite(id, login), signedIn: (id: string) => circleHooks.signedIn?.(id) } } });
 
   // shared-repo friendships: members who both contributed to the same public GitHub repo become friends (kind "repo")
   const repoJob = repoConnector({
@@ -867,12 +932,79 @@ export function createHub(opts: HubOptions) {
       const logins = new Set<string>(GH.ghLoginsOf(pr));
       for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
       for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
-      return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: body(pr).autoConnectRepos === false };
+      return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: autoOff(pr) };
     }),
     kindOf: (a, b) => (q("SELECT COALESCE(kind,'request') k FROM friends WHERE a=? AND b=?").get(a, b) as any)?.k ?? null,
     tombstoned: (a, b) => !!q("SELECT 1 FROM repo_tombstones WHERE a=? AND b=?").get(...[a, b].sort()),
-    connect: (a, b, repo) => { befriend(a, b, "repo", now(), repo); worldCache = null; },
+    connect: (a, b, kind, why) => { befriend(a, b, kind, now(), why); worldCache = null; },
+    storeCircle: (member, edges) => {
+      const t = now(), ins = q("INSERT INTO gh_circle VALUES (?,?,?,?,?) ON CONFLICT(member, login, relation, repo) DO UPDATE SET seen=excluded.seen");
+      q("DELETE FROM gh_circle WHERE member=?").run(member);   // each scan is the member's whole circle: replace, don't accumulate
+      for (const e of edges.slice(0, 5000)) ins.run(member, e.login, e.relation, e.repo || "", t);
+      q("DELETE FROM gh_circle WHERE seen < ?").run(new Date(Date.now() - 90 * DAY).toISOString());   // forget circles not seen for 90 days (members who stopped being scanned)
+    },
   });
+  const loginsOf = (pr: any): string[] => { const s = new Set<string>(GH.ghLoginsOf(pr));
+    for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) s.add(String(r.login).toLowerCase());
+    for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) s.add(String(r.login).toLowerCase());
+    return [...s].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)); };
+  /** Someone just joined (or added their GitHub): connect them with every member who has them in their GitHub circle. */
+  function fulfilCircle(id: string): number {
+    const pr = profile(id); if (!pr?.handle || autoOff(pr)) return 0;
+    const ls = loginsOf(pr); if (!ls.length) return 0;
+    const rows = q(`SELECT member, relation, repo FROM gh_circle WHERE login IN (${ls.map(() => "?").join(",")}) AND member<>?`).all(...ls, id) as any[];
+    const per = new Map<string, { following: boolean; follower: boolean; repo: string }>();
+    for (const r of rows) { const x = per.get(r.member) || { following: false, follower: false, repo: "" }; if (r.relation === "following") x.following = true; else if (r.relation === "follower") x.follower = true; else if (r.repo && !x.repo) x.repo = r.repo; per.set(r.member, x); }
+    let n = 0;
+    for (const [mid, x] of per) {
+      const m = profile(mid); if (!m?.handle || modOf(m.handle, m.id) || autoOff(m)) continue;
+      if (q("SELECT 1 FROM repo_tombstones WHERE a=? AND b=?").get(...[mid, id].sort())) continue;
+      const cur = (q("SELECT COALESCE(kind,'request') k FROM friends WHERE a=? AND b=?").get(mid, id) as any)?.k;
+      const kind = x.repo ? "repo" : "github", rank: Record<string, number> = { founder: 0, github: 1, repo: 2, request: 3, invite: 3 };
+      if (cur && (rank[cur] ?? 3) >= rank[kind]!) continue;
+      // m.following = m follows the newcomer; m.follower = the newcomer follows m
+      const why = x.repo ? x.repo : x.following && x.follower ? "you follow each other on GitHub" : x.following ? `@${m.handle} follows @${pr.handle} on GitHub` : `@${pr.handle} follows @${m.handle} on GitHub`;
+      befriend(mid, id, kind, now(), why); n++;
+    }
+    if (n) worldCache = null;
+    return n;
+  }
+  const lastScan = new Map<string, number>();
+  /** scan one member's GitHub circle soon (sign-up, sign-in, a GitHub link added), at most every 6 hours per member */
+  function scanSoon(id: string) {
+    if (!opts.repoJob || Date.now() - (lastScan.get(id) || 0) < 6 * 3600_000) return; lastScan.set(id, Date.now());
+    setTimeout(() => { void repoJob.run({ only: id }).catch(e => console.error("circle scan", e.message)); }, 2000).unref?.();
+  }
+  circleHooks.joined = (id: string) => { fulfilCircle(id); scanSoon(id); };
+  /** "Your GitHub people": circle logins not on Caldera yet, co-contributors first, then mutual follows. Only the member sees it. */
+  async function githubPeople(id: string) {
+    const members = new Set<string>(); for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]) for (const l of loginsOf(pr)) members.add(l);
+    const per = new Map<string, { following: boolean; follower: boolean; repos: string[] }>();
+    for (const r of q("SELECT login, relation, repo FROM gh_circle WHERE member=?").all(id) as any[]) {
+      if (members.has(r.login)) continue;
+      const x = per.get(r.login) || { following: false, follower: false, repos: [] };
+      if (r.relation === "following") x.following = true; else if (r.relation === "follower") x.follower = true; else if (r.repo && !x.repos.includes(r.repo)) x.repos.push(r.repo);
+      per.set(r.login, x);
+    }
+    const rank = (x: { following: boolean; follower: boolean; repos: string[] }) => x.repos.length ? 0 : x.following && x.follower ? 1 : x.following ? 2 : 3;
+    const list = [...per].sort((a, b) => rank(a[1]) - rank(b[1]) || a[0].localeCompare(b[0])).slice(0, 60);
+    const month = new Date(Date.now() - 30 * DAY).toISOString();
+    return Promise.all(list.map(async ([login, x], i) => ({ login, avatar: `https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`, url: `https://github.com/${encodeURIComponent(login)}`,
+      relation: x.repos.length ? `works on ${x.repos[0]}` : x.following && x.follower ? "you follow each other" : x.following ? "you follow them" : "follows you",
+      invited: !!q("SELECT 1 FROM invites_sent WHERE login=? AND ts > ?").get(login, month),
+      canEmail: i < 25 ? !!(await repoJob.publicEmail(login)) : false })));   // only a yes/no: the address itself is never kept
+  }
+  /** Email one of your GitHub people an invite: only to the PUBLIC email on their GitHub profile, within the caps. */
+  async function githubInvite(id: string, raw: string): Promise<string> {
+    const login = String(raw || "").toLowerCase(); const pr = profile(id); if (!pr?.handle) throw new Error("Publish your page first.");
+    const rel = q("SELECT relation, repo FROM gh_circle WHERE member=? AND login=?").all(id, login) as any[];
+    if (!rel.length) throw new Error(`@${login} isn't in your GitHub circle.`);
+    const to = await repoJob.publicEmail(login); if (!to) throw new Error(`@${login} has no public email on GitHub. Copy your invite link instead.`);
+    const repo = rel.find(r => r.relation === "repo" && r.repo)?.repo, fol = rel.some(r => r.relation === "following"), fer = rel.some(r => r.relation === "follower");
+    const why = repo ? `you both work on ${repo}` : fol && fer ? "you follow each other on GitHub" : fol ? `@${pr.handle} follows you on GitHub` : `you follow @${pr.handle} on GitHub`;
+    return mail.sendInvite({ inviter: id, inviterName: pr.name || "", inviterHandle: pr.handle, login, to, why, link: `${PUB()}/?invite=${encodeURIComponent(pr.handle)}` });
+  }
+  circleHooks.signedIn = (id: string) => scanSoon(id);
   (admin as any).repoConnect = (o: { dry?: boolean } = {}) => repoJob.run(o);
   if (opts.repoJob) { const t0 = setTimeout(function tick() { void repoJob.run().catch(e => console.error("repo-connect", e.message)); const t = setTimeout(tick, 6 * 3600_000); t.unref?.(); }, 5 * 60_000); t0.unref?.(); }
 
@@ -893,10 +1025,66 @@ export function createHub(opts: HubOptions) {
   /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
   function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
     const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
-    const privateHref = priv ? priv + sub : hosted ? `${PUB()}/me` : "obsidian://caldera?open=private";
-    return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref, privateExternal: !priv && !hosted, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale,
-      note: priv ? "Private view opens your private address (your Tailscale devices only)." : hosted ? "Private view is your account page." : "Private view opens Caldera in Obsidian on this computer." };
+    const extra: [string, string, boolean?][] = [];
+    if (hosted) extra.push(["Account settings", `${PUB()}/me`]);
+    if (priv) extra.push(["Private address (Tailscale)", priv + sub, true]);
+    return { handle: h, current, publicHref: `${PUB()}/@${h}/${sub}`, privateHref: `${PUB()}/@${h}/private/${sub}`, signout: `${PUB()}/signout?h=${encodeURIComponent(h)}`, stale, extra,
+      note: hosted ? "Private view: your page with the parts only you see." : "Private view: your page with the private sections pushed from Obsidian, shown only to you." };
   }
+  /** The signed-in owner of this profile, for the web private view: "fresh" (owner sign-in under 30 days old, or this hosted
+   *  profile's GitHub session), "stale" (signed in, but too long ago), or null (not the owner: they get a plain 404). */
+  function ownerFresh(req: http.IncomingMessage, pr: any): "fresh" | "stale" | null {
+    const t = reqCookies(req)[OWN_COOKIE];
+    const row = t ? q("SELECT created FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now()) as any : null;
+    if (row) return Date.now() - Date.parse(row.created) < 30 * DAY ? "fresh" : "stale";
+    const a = GH.account(req); return a && !a.claimed && a.profile_id === pr.id ? "fresh" : null;
+  }
+  /** /@h/private/...: the same page the private (Tailscale) address shows, on the public hub, for the signed-in owner.
+   *  Static files (images, css) are the public ones and are served to anyone; HTML only to the owner. Returns false = 404. */
+  async function servePrivateWeb(req: http.IncomingMessage, res: http.ServerResponse, pr: any, sub: string): Promise<boolean> {
+    const h = pr.handle as string, dir = path.join(opts.dataDir, "profiles", h);
+    if (!sub) { res.writeHead(301, { location: `/@${h}/private/` }); res.end(); return true; }
+    let rel = sub.slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
+    const file = path.join(dir, path.normalize(rel)), isHtml = /\.html$/i.test(rel);
+    if (!isHtml && rel !== "live.json") {   // the page's own assets: identical to the public ones
+      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return false;
+      res.writeHead(200, { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "cache-control": "no-cache", "x-robots-tag": "noindex" }); fs.createReadStream(file).pipe(res); return true;
+    }
+    if (rel === "live.json") {   // the private city polls this; the token in the page (not a cookie: the page is sandboxed) proves it's the owner's page
+      const url = new URL(req.url || "/", "http://hub"), t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10);
+      if (t !== liveToken(h) && t !== liveToken(h, y)) return false;
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" });
+      res.end(JSON.stringify(liveStats(pr.id, true, url.searchParams.get("since")) || { at: now(), districts: {} })); return true;
+    }
+    const who = ownerFresh(req, pr); if (!who) return false;
+    const base = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "vary": "Cookie", "referrer-policy": "no-referrer" };
+    if (who === "stale") { res.writeHead(200, base); res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in again - Caldera</title></head><body><main style="max-width:520px;margin:0 auto;padding:48px 16px"><h1>Sign in again to see your private view</h1><p>For your privacy, the private view needs a sign-in from the last 30 days.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(h)}">Sign in</a></p></main></body></html>`)); return true; }
+    const row = q("SELECT blob, built FROM owner_private WHERE owner=?").get(pr.id) as any;
+    if (!row && !hostedOf(pr.id)) {   // the owner hasn't turned it on in Obsidian yet: tell them how (only the owner ever sees this)
+      res.writeHead(200, base); res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Private view - Caldera</title></head><body><main style="max-width:560px;margin:0 auto;padding:48px 16px"><h1>Turn on your private view</h1><p>Your private sections (journal details, people, private repos in your city) live in your vault. To see them here, open Obsidian, go to Settings &rsaquo; Caldera and turn on <b>Private web view</b>. Obsidian then pushes them, encrypted, to caldera.social, and only you see them when signed in.</p><p><a class="btn" href="obsidian://caldera?open=private">Open Caldera in Obsidian</a> <a class="btn ghost" href="/@${encodeURIComponent(h)}/">Back to your public page</a></p></main></body></html>`)); return true;
+    }
+    let priv: { layer: string; pages: Record<string, string>; vault?: string } = { layer: "", pages: {} };
+    if (row) { try { const s = unseal(row.blob); priv = s.startsWith('{"layer"') ? JSON.parse(s) : { layer: s, pages: {} }; } catch { priv = { layer: "<p>Couldn't read the private layer. Push again from Obsidian.</p>", pages: {} }; } }
+    const own = priv.pages[rel];
+    if (!own && (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory())) return false;
+    let html = own || liveBlocks(h, rel, fs.readFileSync(file, "utf8"));
+    const headers: Record<string, string> = { ...base, "content-security-policy": PROFILE_CSP };
+    if (rel === "index.html" && row) html = html.replace("<!--caldera:owner-->", priv.layer);
+    if (rel === "city.html") {
+      if (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id)) html = injectLive(html, { url: `live.json?t=${liveToken(h)}`, mode: "private" });
+      html = cityExtras(html, pr.id); headers["content-security-policy"] = cityCsp(originOf(opts.publicUrl));
+    }
+    const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
+    const nav = navFor(pr, "private", rel);
+    nav.note = row ? `Private sections pushed from Obsidian ${ago(row.built)}. Only you see this page, while signed in.` : "Your page with the parts only you see.";
+    const openIn = hostedOf(pr.id) ? "" : `<a class="cb-obs" href="${priv.vault ? `obsidian://open?vault=${encodeURIComponent(priv.vault)}` : "obsidian://caldera?open=private"}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;border:1px solid #5B47B8;color:#F2F2F5;text-decoration:none;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap">Open in Obsidian &#8599;</a>`;
+    nav.action = openIn;
+    const bar = calderaBar(opts.publicUrl || "https://caldera.social", h, nav);
+    html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
+    res.writeHead(200, headers); res.end(html); return true;
+  }
+  /** Is the web private view on for this profile? Hosted (GitHub) profiles: always; vault profiles: once Obsidian pushed a layer. */
+  const privateWebOn = (pr: any) => hostedOf(pr.id) || !!q("SELECT 1 FROM owner_private WHERE owner=?").get(pr.id);
   /** Is this request from the owner of `handle`? Returns their nav for the public page, or null. */
   function ownerBar(req: http.IncomingMessage, handle: string, rel = "index.html"): OwnerNav | null {
     const pr = byHandle(handle); if (!pr) return null;
@@ -928,7 +1116,7 @@ export function createHub(opts: HubOptions) {
 .si .card{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0}.si .card h2{font-size:1.05rem;margin:0 0 4px}.si .mut{color:var(--text-muted,#9A9AA6);font-size:.93em}
 .si input[type=email]{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px 12px;font:inherit;margin:8px 0 10px}
 .si .code{font:500 2rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.18em;padding:10px 0}.si .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.si button.btn{cursor:pointer}</style></head>
-<body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header><main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}<script src="/assets/site.js" defer></script></body></html>`);
+<body>${siteHeader("/signin")}<main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}<script src="/assets/site.js" defer></script></body></html>`);
   };
   const hostedOf = (owner: string) => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
   /** The profile this browser is signed in as (owner cookie), if any. */
@@ -1006,7 +1194,7 @@ export function createHub(opts: HubOptions) {
     const vp = me ? profile(me) : null; if (!vp?.handle || !pr || me === pr.id || modOf(vp.handle, vp.id)) return null;
     const day = new Date().toISOString().slice(0, 10), done = q("SELECT kind FROM kudos WHERE sender=? AND recipient=? AND day=?").get(me, pr.id, day) as any;
     const fr = q("SELECT kind, why FROM friends WHERE a=? AND b=?").get(me, pr.id) as any;
-    return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state, why: fr?.kind === "repo" && fr.why ? String(fr.why) : undefined };
+    return { handle: vp.handle, token: actToken(me!, pr.handle), sent: done?.kind || null, friend: friendState(me!, pr.id).state, why: fr?.why && fr.kind === "repo" ? `both work on ${fr.why}` : fr?.why && fr.kind === "github" ? String(fr.why) : undefined };
   }
   /** Add-friend links in pages built by any plugin version (obsidian:// links, the 0.19.3+ data-caldera-friend link and the
    *  garden home button) become the inline control, labelled for this viewer. The page owner sees no Add-friend link. */
@@ -1064,7 +1252,7 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
 .kd-pick button:hover:not(:disabled){transform:translateY(-2px) scale(1.06);border-color:var(--accent,#8B6CF6)}.kd-pick button:disabled{opacity:.45;cursor:default}.kd-pick button.on{opacity:1;border-color:var(--accent,#8B6CF6);transform:scale(1.12)}
 .kd .row{display:flex;flex-wrap:wrap;gap:8px}.kd-friend{border-top:1px solid var(--line,#2A2440);padding-top:14px}.kd button.btn{cursor:pointer}
 .kd-fly{position:fixed;bottom:30%;font-size:28px;pointer-events:none;animation:kdfly 1.7s ease-out forwards}@keyframes kdfly{0%{transform:translate(0,0) scale(.6);opacity:0}15%{opacity:1}100%{transform:translate(var(--dx),-360px) scale(1.25);opacity:0}}
-@media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
+@media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body>${siteHeader()}<script src="/assets/site.js" defer></script><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
   function signinGeneral(res: http.ServerResponse) {
@@ -1133,12 +1321,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "GET" && p === "/v1/gardens/recent") return json(res, 200, { notes: recentGardenNotes(Math.max(1, Math.min(100, Number(url.searchParams.get("limit")) || 60))) });
       if (req.method === "GET" && (p === "/gardens" || p === "/gardens/")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
-        return res.end(gardensPage(recentGardenNotes(80), opts.publicUrl || "https://caldera.social"));
+        return res.end(navify(gardensPage(recentGardenNotes(80), opts.publicUrl || "https://caldera.social")));
       }
       { const g = p.match(/^\/g\/([a-z0-9][a-z0-9-]{1,29})\/?$/);
         if (req.method === "GET" && g) {
           res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" });
-          return res.end(groupPage({ slug: g[1], hub: opts.publicUrl || "https://caldera.social", members: groupMembers(g[1]) }));
+          return res.end(navify(groupPage({ slug: g[1], hub: opts.publicUrl || "https://caldera.social", members: groupMembers(g[1]) })));
         } }
       if (req.method === "GET" && p === "/v1/world") { res.setHeader("cache-control", "public, max-age=60"); const w = worldNow(); return json(res, 200, { at: w.at, members: w.members, links: w.links, city: w.city }); }
       if (req.method === "GET" && p === "/v1/world/live") { res.setHeader("cache-control", "no-store"); return json(res, 200, worldLive(url.searchParams.get("since"))); }
@@ -1206,6 +1394,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // /@mike (no slash, any case) 301s to /@mike/ so the page's relative img/ and assets/ paths resolve
       m = p.match(/^\/@([A-Za-z0-9-]+)$/);
       if (req.method === "GET" && m) { res.writeHead(301, { location: `/@${m[1].toLowerCase()}/${url.search}` }); return res.end(); }
+      m = p.match(/^\/@([a-z0-9-]+)\/private(\/.*)?$/);
+      if (req.method === "GET" && m) {   // the owner's private view on the web: signed-in owner only, everyone else a plain 404
+        const prv = byHandle(m[1]);
+        if (prv && !modOf(m[1]) && await servePrivateWeb(req, res, prv, m[2] || "")) return;
+        res.writeHead(404, { "vary": "Cookie" }); return res.end("not found");
+      }
       m = p.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
       if (req.method === "GET" && m) {
         if (modOf(m[1])) { res.writeHead(410, { "content-type": "text/plain" }); return res.end("This profile is not available."); }
@@ -1218,7 +1412,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         let rel = (m[2] || "/").slice(1) || "index.html";
         if (rel.endsWith("/")) rel += "index.html";
         const file = path.join(dir, path.normalize(rel));
-        if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end("not found"); }
+        if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+          const ns = rel.match(/^n\/([a-z0-9][a-z0-9-]*)\.html$/), tb = ns ? tombstoned(m[1], ns[1]) : undefined;
+          if (tb) { res.writeHead(410, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" }); return res.end(navify(tombstonePage(m[1], ns![1], tb))); }
+          res.writeHead(404); return res.end("not found");
+        }
         res.removeHeader("x-frame-options");
         const headers = { "content-type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "x-robots-tag": "noindex", "content-security-policy": PROFILE_CSP, "cache-control": "no-cache" };
         if (path.extname(file).toLowerCase() === ".html") {   // every hosted page gets the Caldera bar, whatever plugin version built it
@@ -1465,6 +1663,28 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         return res.end(mail.page("You're unsubscribed", "<p>No more Caldera summary emails will go to this address. You can turn them back on any time from Caldera.</p>"));
       }
 
+      if (p === "/v1/email/invite-unsub" && (req.method === "GET" || req.method === "POST")) {
+        const t = (url.searchParams.get("t") || "").replace(/[^\w-]/g, "");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        if (req.method === "GET") return res.end(mail.page("No more Caldera emails", `<form method="post" action="${p}?t=${t}"><p>Stop all Caldera emails to this address, including invites from people you know.</p><button class="btn" type="submit">Don't email me</button></form>`));
+        mail.inviteUnsub(t);   // idempotent; also the RFC 8058 one-click POST
+        return res.end(mail.page("Done", "<p>Caldera won't email this address again.</p>"));
+      }
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/github-people$/);
+      if (req.method === "GET" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const pr = profile(m[1]); if (!pr?.handle) return json(res, 404, { error: "publish your profile first" });
+        const link = `${PUB()}/?invite=${encodeURIComponent(pr.handle)}`;
+        return json(res, 200, { people: await githubPeople(m[1]), inviteLink: link, invitesLeft: Math.max(0, mail.inviteCap - mail.invitesToday(m[1])),
+          message: `I'm on Caldera, a social network for GitHub and Obsidian (my repos are a little city). Join me: ${link}` });
+      }
+      m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/github-invite$/);
+      if (req.method === "POST" && m) {
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        const { login } = await readBody(req) as { login?: string };
+        try { return json(res, 200, { ok: true, message: await githubInvite(m[1], String(login || "")) }); } catch (e: any) { return json(res, 400, { error: e.message }); }
+      }
+
       // Owner-only activity for the private view inside Obsidian: who looked, what they read, gravity, new friends, links in.
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/activity$/);
       if (req.method === "GET" && m) {
@@ -1489,14 +1709,18 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/private$/);
       if (req.method === "POST" && m) {
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
-        const pr = profile(m[1]); if (!pr?.handle || !privateFor(pr.handle)) return json(res, 403, { error: "no private address is set up for this profile on this hub" });
-        const { html, built, pages, v } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown>; v?: string };
+        const pr = profile(m[1]); if (!pr?.handle) return json(res, 403, { error: "publish your profile first" });
+        const { html, built, pages, v, vault } = await readBody(req) as { html?: string; built?: string; pages?: Record<string, unknown>; v?: string; vault?: string };
         const newer = staleClient(m[1], "private", v); if (newer) return json(res, 409, { error: `Caldera ${newer} already pushed this; update Caldera here (you have ${v || "an older version"})` });
         if (typeof html !== "string" || html.length > 3_000_000) return json(res, 400, { error: "bad private layer" });
         const priv: Record<string, string> = {};   // private versions of whole pages (only the city, for now)
         for (const [k, v] of Object.entries(pages || {})) if (k === "city.html" && typeof v === "string" && v.length < 4_000_000) priv[k] = v;
-        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv })), String(built || now()).slice(0, 40), now());
-        return json(res, 200, { ok: true, url: privateFor(pr.handle) });
+        q("INSERT OR REPLACE INTO owner_private VALUES (?,?,?,?)").run(m[1], seal(JSON.stringify({ layer: html, pages: priv, vault: typeof vault === "string" ? vault.slice(0, 200) : "" })), String(built || now()).slice(0, 40), now());
+        return json(res, 200, { ok: true, url: `${PUB()}/@${pr.handle}/private/`, tailscale: privateFor(pr.handle) });
+      }
+      if (req.method === "DELETE" && m) {   // the owner turned the private web view off: the hub forgets the layer
+        if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
+        q("DELETE FROM owner_private WHERE owner=?").run(m[1]); return json(res, 200, { ok: true });
       }
 
       // live traffic: the owner registers their sites (one key per district); the hub hands back each site's server secret

@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.19.5",
+      "date": "2026-10-18",
+      "title": "Your GitHub people",
+      "items": [
+        "Caldera now connects you with members you follow or who follow you on GitHub, as well as people on the same repos. The reason shows on the friend button, in your friends list, in the daily email and on the World map, where GitHub friendships glow sky-blue.",
+        "People in your GitHub circle who aren't on Caldera yet are remembered by their GitHub username only. When they join, you start out connected, and your daily email says \"@them just joined Caldera - you're connected because ...\".",
+        "New \"Your GitHub people\" list in the Caldera panel and on your account page: the people you follow, who follow you, or who work on your repos, ranked co-contributors first. Copy an invite message to send them, or email an invite to people who show an email on their public GitHub profile (10 a day; each person gets at most one Caldera invite a month, with one-click unsubscribe).",
+        "The setting is now \"Connect me with my GitHub people\" (autoConnectGithub in Caldera/profile.md; autoConnectRepos still works). Turning it off stops all automatic GitHub connections."
+      ]
+    },
+    {
       "version": "0.19.4",
       "date": "2026-10-18",
       "title": "Friends who work on the same repos",

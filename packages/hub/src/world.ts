@@ -13,7 +13,7 @@ export interface WorldMemberIn {
   city: CityData | null; notes: number; busy: number;
 }
 export interface WorldMember { handle: string; name: string; headline: string; isNew: boolean; groups: string[]; friends: number; city: string; page: string }
-/** A friendship ray: [@a, @b, kind (0 request/invite, 1 founder welcome, 2 shared repo), why (repo full name for kind 2)]. */
+/** A friendship ray: [@a, @b, kind (0 request/invite, 1 founder welcome, 2 shared repo, 3 GitHub follow), why (repo, or the follow)]. */
 export type WorldLink = [string, string, number, string?];
 export interface World { at: string; members: WorldMember[]; city: CityData; links: WorldLink[]; start: string | null }
 
@@ -66,8 +66,8 @@ export function buildWorld(members: WorldMemberIn[], friendships: ([string, stri
     if (!listed.has(a) || !listed.has(b) || a === b) continue;
     const k = a < b ? a + "|" + b : b + "|" + a; if (seen.has(k)) continue; seen.add(k);
     // kind from the friends table; without it (older callers) a link touching the founder counts as a welcome link
-    const n = kind === "repo" ? 2 : kind === "founder" ? 1 : kind ? 0 : founder && (a === founder || b === founder) ? 1 : 0;
-    links.push(n === 2 && why ? ["@" + a, "@" + b, n, String(why).slice(0, 140)] : ["@" + a, "@" + b, n]);
+    const n = kind === "repo" ? 2 : kind === "github" ? 3 : kind === "founder" ? 1 : kind ? 0 : founder && (a === founder || b === founder) ? 1 : 0;
+    links.push((n === 2 || n === 3) && why ? ["@" + a, "@" + b, n, String(why).slice(0, 140)] : ["@" + a, "@" + b, n]);
   }
   links.sort((x, y) => (x[2] === 1 ? 1 : 0) - (y[2] === 1 ? 1 : 0));   // real and shared-repo friendships first, the founder's welcome links after (and fainter)
   const all = districts.flatMap(d => d.repos);

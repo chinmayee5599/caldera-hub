@@ -13,7 +13,7 @@ export interface Mail { to: string; subject: string; html: string; text: string;
 export interface DigestData {
   handle: string; name: string; hosted: boolean;
   views24: number; visitors24: number; views7: number; visitors7: number;
-  requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string; kind?: string; why?: string }[];
+  requests: { handle: string; name: string; note: string }[]; friends: { handle: string; name: string; kind?: string; why?: string; joined?: boolean }[];
   gravity: { handle: string; reason: string }[]; links: number; invited: { handle: string }[]; credits: number;
   suggestions: { handle: string; name: string; why: string }[]; newMembers: { handle: string; name: string }[];
   /** days since a vault-published page last updated (3+), takes the place of the finish-your-page step */
@@ -125,8 +125,11 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       d.kudos.map(k => `@${k.handle} sent kudos`).join("\n"));
     if (d.requests.length) sec("Friend requests", d.requests.map(r => `<p style="margin:6px 0">${who(r.handle, r.name)}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}</p>`).join("") + `<p style="margin:12px 0 0"><a href="${esc(accept)}" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Accept</a>${d.hosted ? "" : ` <span style="color:#8A8794;font-size:13px">(opens Obsidian; or open the Caldera panel)</span>`}</p>`,
       d.requests.map(r => `@${r.handle}${r.note ? `: "${r.note}"` : ""}`).join("\n") + `\nAccept: ${d.hosted ? accept : "open the Caldera panel in Obsidian"}`);
-    if (d.friends.length) sec("New friends", `<p style="margin:0">${d.friends.map(f => f.kind === "repo" && f.why ? `You and ${who(f.handle, f.name)} both work on <b>${esc(f.why)}</b> - you're now connected` : who(f.handle, f.name)).join("<br>")}</p>`,
-      d.friends.map(f => f.kind === "repo" && f.why ? `You and @${f.handle} both work on ${f.why} - you're now connected` : "@" + f.handle).join("\n"));
+    // automatic connections say why: a shared repo or a GitHub follow, and whether the person just joined Caldera
+    const because = (f: DigestData["friends"][number]) => f.kind === "repo" && f.why ? `you both work on ${f.why}` : f.kind === "github" && f.why ? f.why : "";
+    if (d.friends.length) sec("New friends", `<p style="margin:0">${d.friends.map(f => { const b = because(f);
+        return !b ? who(f.handle, f.name) : f.joined ? `${who(f.handle, f.name)} just joined Caldera - you're connected because ${esc(b)}` : `You and ${who(f.handle, f.name)} are now connected: ${esc(b)}`; }).join("<br>")}</p>`,
+      d.friends.map(f => { const b = because(f); return !b ? "@" + f.handle : f.joined ? `@${f.handle} just joined Caldera - you're connected because ${b}` : `You and @${f.handle} are now connected: ${b}`; }).join("\n"));
     if (d.gravity.length) sec("Gravity", d.gravity.map(g => `<p style="margin:4px 0">@${esc(g.handle)}${g.reason ? `: ${esc(g.reason)}` : ""}</p>`).join(""), d.gravity.map(g => `@${g.handle}${g.reason ? ": " + g.reason : ""}`).join("\n"));
     if (d.links) sec("Your garden", `<p style="margin:0">${pl(d.links, "new link")} from other gardens. <a href="${esc(page)}garden.html" style="color:#6E4FE0">See them</a></p>`, `${pl(d.links, "new link")} from other gardens. ${page}garden.html`);
     if (d.invited.length) sec("Your invites", `<p style="margin:0">${d.invited.map(i => "@" + esc(i.handle)).join(", ")} joined from your invite${d.credits ? `: +${d.credits} help credits` : ""}.</p>`, `${d.invited.map(i => "@" + i.handle).join(", ")} joined from your invite${d.credits ? ` (+${d.credits} credits)` : ""}.`);
@@ -187,5 +190,34 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
       text: `Sign in as the owner of @${handle} on caldera.social (works once, for 15 minutes):\n${link}\n\nIf this wasn't you, ignore this email.` });
   }
 
-  return { subscribe, confirm, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, hashOf, matches, hasConfirmed, sendSignin };
+  // ---- invites to GitHub people who aren't on Caldera yet: member-initiated only, to a PUBLIC GitHub profile email, never
+  // stored (only a hash, for caps and unsubscribes). 10 per inviter per day; one per recipient per 30 days across everyone.
+  q("CREATE TABLE IF NOT EXISTS invites_sent (id TEXT PRIMARY KEY, inviter TEXT, login TEXT, hash TEXT, ts TEXT)").run();
+  const INVITES_PER_DAY = 10;
+  function inviteBlock(inviter: string, login: string, email: string): string | null {
+    const bad = validEmail(email); if (bad) return "That GitHub profile's email can't be mailed.";
+    if (suppressed(email)) return `@${login} asked not to get Caldera emails.`;
+    const day = new Date(Date.now() - DAY).toISOString(), month = new Date(Date.now() - 30 * DAY).toISOString(), h = hashOf(email);
+    if ((q("SELECT COUNT(*) n FROM invites_sent WHERE inviter=? AND ts > ?").get(inviter, day) as any).n >= INVITES_PER_DAY) return `You've sent ${INVITES_PER_DAY} email invites today. Copy your invite link instead, or try tomorrow.`;
+    if (q("SELECT 1 FROM invites_sent WHERE (hash=? OR lower(login)=lower(?)) AND ts > ?").get(h, login, month)) return `@${login} already got a Caldera invite this month. Send them your invite link instead.`;
+    return null;
+  }
+  async function sendInvite(o: { inviter: string; inviterName: string; inviterHandle: string; login: string; to: string; why: string; link: string }): Promise<string> {
+    const blocked = inviteBlock(o.inviter, o.login, o.to); if (blocked) throw new Error(blocked);
+    const id = crypto.randomBytes(18).toString("base64url"), un = `${hub}/v1/email/invite-unsub?t=${id}`, who = o.inviterName || "@" + o.inviterHandle;
+    q("INSERT INTO invites_sent VALUES (?,?,?,?,?)").run(id, o.inviter, o.login.toLowerCase(), hashOf(o.to), new Date().toISOString());
+    const why = o.why ? ` (${o.why})` : "";
+    await send({ to: o.to, subject: ascii(`${who} invited you to Caldera`),
+      html: shell(`${esc(who)} invited you to Caldera`, `<p style="margin:0 0 12px">Hi @${esc(o.login)},</p><p style="margin:0 0 12px">${esc(who)} (@${esc(o.inviterHandle)}) is on Caldera and thought you'd like it${esc(why)}.</p><p style="margin:0 0 12px">Caldera is a free, open-source social network for GitHub and Obsidian: your public repos become a living city, and you meet people by what they build. Signing up with GitHub takes about 30 seconds, and you'll start out connected with ${esc(who)}.</p><p style="margin:22px 0"><a href="${esc(o.link)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">See ${esc(who)}'s page and join</a></p><p style="color:#8A8794;font-size:13px;margin:0">We found this address on your public GitHub profile. This is the only invite we'll send you this month, and you won't get another from us unless someone you know asks. <a href="${esc(un)}" style="color:#6E4FE0">Don't email me about Caldera</a> (one click).</p>`),
+      text: ascii(`Hi @${o.login},\n\n${who} (@${o.inviterHandle}) is on Caldera and thought you'd like it${why}.\n\nCaldera is a free, open-source social network for GitHub and Obsidian: your public repos become a living city, and you meet people by what they build. Signing up with GitHub takes about 30 seconds.\n\nSee ${who}'s page and join: ${o.link}\n\nWe found this address on your public GitHub profile.\n\n--\nDon't want Caldera emails? One click: ${un}`),
+      headers: { "List-Unsubscribe": `<${un}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
+    return `Invite sent to @${o.login}.`;
+  }
+  /** One click from an invite email: that address never gets another Caldera email (the hash goes on the suppression list). */
+  function inviteUnsub(id: string): boolean {
+    const r = q("SELECT hash FROM invites_sent WHERE id=?").get(id) as any; if (!r) return false;
+    q("INSERT OR REPLACE INTO email_suppress VALUES (?,?,?)").run(r.hash, "invite-unsubscribed", new Date().toISOString()); return true;
+  }
+
+  return { subscribe, confirm, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, hashOf, matches, hasConfirmed, sendSignin, sendInvite, inviteBlock, inviteUnsub, invitesToday: (inviter: string) => (q("SELECT COUNT(*) n FROM invites_sent WHERE inviter=? AND ts > ?").get(inviter, new Date(Date.now() - DAY).toISOString()) as any).n as number, inviteCap: INVITES_PER_DAY };
 }

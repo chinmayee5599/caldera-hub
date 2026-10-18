@@ -18,15 +18,19 @@ import { renderProfile, type ProfileData, type DailyEntry } from "../../../../ca
 import { cityData, publicCity, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 import { cleanImage } from "./images";
 
+export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string;
   accept: (e: C.Envelope) => { status: number; body: any }; erase: (id: string) => void;
   dataDir: string; publicUrl: string; privateUrl?: string;
+  /** the site header for pages shown without the owner bar */
+  siteNav?: () => string;
   json: (res: http.ServerResponse, status: number, body: unknown) => void; readBody: (req: http.IncomingMessage) => Promise<any>;
   allowNewProfile: (req: http.IncomingMessage) => boolean; byHandle: (h: string) => any; reserved: Set<string>;
   /** growth helpers from the hub: suggestions, open requests, referrals */
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
-    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null };
+    recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null;
+    circle?: { people: (id: string) => Promise<GhPerson[]>; invite: (id: string, login: string) => Promise<string>; signedIn: (id: string) => void } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
   /** test hook: replaces fetch for GitHub calls */
@@ -94,7 +98,7 @@ export function github(ctx: GhCtx) {
 .me label{display:block;font-weight:500;margin:10px 0 4px}.me input[type=text],.me textarea{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:8px 10px;font:inherit}
 .me textarea{min-height:84px}.me .mut{color:var(--text-muted,#9A9AA6);font-size:.92em}.me code,.me pre{font-family:'IBM Plex Mono',monospace;font-size:12px}.me pre{white-space:pre-wrap;word-break:break-all;background:var(--bg,#0E0B16);border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px;max-height:220px;overflow:auto}
 .me .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.me .who{display:flex;gap:14px;align-items:center}.me .who img{width:64px;height:64px;border-radius:50%}.me .danger{color:#F0716A}
-.me button.btn{cursor:pointer}</style></head><body>${bar || `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header>`}<main class="me">${body}</main><script src="/assets/site.js" defer></script>
+.me button.btn{cursor:pointer}</style></head><body>${bar || (ctx.siteNav ? ctx.siteNav() : `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav></header>`)}<main class="me">${body}</main><script src="/assets/site.js" defer></script>
 <script>document.querySelectorAll('[data-copy-text]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-copy-text')).textContent;navigator.clipboard.writeText(t).then(function(){b.textContent='Copied'},function(){})})})</script></body></html>`);
   };
 
@@ -223,7 +227,8 @@ export function github(ctx: GhCtx) {
   }, 10 * 60_000); timer.unref?.();
 
   // ------------------------------------------------------------------ the /me page
-  function mePage(res: http.ServerResponse, a: any, note = "") {
+  const peopleOf = async (a: any): Promise<GhPerson[]> => { try { return (await ctx.social?.circle?.people(a.profile_id)) || []; } catch { return []; } };
+  function mePage(res: http.ServerResponse, a: any, note = "", people: GhPerson[] = []) {
     const pr = q("SELECT * FROM profiles WHERE id=?").get(a.profile_id) as any, edits = JSON.parse(a.edits || "{}");
     const url = `${pub}/@${a.handle}/`, ak = q("SELECT key, secret FROM agent_keys WHERE owner=?").get(a.profile_id) as any;
     const sites = q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(a.profile_id) as any[];
@@ -235,7 +240,12 @@ export function github(ctx: GhCtx) {
 3. In ~/.claude/settings.json, add hooks (keep existing ones) that run \`node ~/.caldera/agent-hook.mjs\` for UserPromptSubmit, PostToolUse, Stop, Notification and SessionEnd.
 4. Test: echo '{"hook_event_name":"UserPromptSubmit","session_id":"caldera-test-1","cwd":"'$PWD'","prompt":"Testing the Caldera agent hook"}' | node ~/.caldera/agent-hook.mjs, then send SessionEnd for the same session.` : "";
     const claim = a.claim_code && a.claim_expires > Date.now() ? a.claim_code : "";
-    const growth = growthCards(a, edits);
+    const invite = `${pub}/?invite=${encodeURIComponent(a.handle)}`, msg = `I'm on Caldera, a social network for GitHub and Obsidian (my repos are a little city). Join me: ${invite}`;
+    const ghp = people.length ? `<div class="card" id="github-people"><b>Your GitHub people</b><p class="mut">People you follow, who follow you, or who work on your repos, who aren't on Caldera yet. When they join, you'll start out connected.</p>
+<pre id="gh-msg" style="white-space:pre-wrap">${esc(msg)}</pre><button class="btn small" type="button" data-copy-text="gh-msg">Copy invite message</button>
+<div style="margin-top:10px">${people.slice(0, 30).map(x => `<div class="row" style="justify-content:space-between;margin:6px 0"><span class="row"><img src="${esc(x.avatar)}" alt="" width="28" height="28" style="border-radius:50%"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">@${esc(x.login)}</a> <span class="mut">${esc(x.relation)}</span></span>`
+      + (x.invited ? `<span class="mut">invited</span>` : x.canEmail ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="gh-invite"><input type="hidden" name="login" value="${esc(x.login)}"><button class="btn small ghost" type="submit">Email invite</button></form>` : `<span class="mut">no public email: send the message</span>`) + `</div>`).join("")}</div></div>` : "";
+    const growth = growthCards(a, edits) + ghp;
     page(res, 200, "Your Caldera", `${note ? `<div class="card">${note}</div>` : ""}
 <div class="who"><img src="${esc(url)}${esc(photoPath(pr))}" alt=""><div><h1>${esc(pr?.name || a.login)}</h1><div class="mut">@${esc(a.handle)} &middot; signed in with GitHub as ${esc(a.login)}</div></div></div>
 <div class="card"><b>Your page:</b> <a href="${esc(url)}">${esc(url)}</a><br><span class="mut">Built from your GitHub and refreshed every 6 hours${a.refreshed ? `; last ${esc(new Date(a.refreshed).toUTCString().slice(5, 22))} UTC` : ""}. Your repos are a city at <a href="${esc(url)}city.html">city.html</a>.</span>
@@ -304,7 +314,7 @@ if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'
 <p style="margin:12px 0 4px"><b>Invite a friend</b> <span class="mut">(you get ${25} help credits when they join)</span></p><pre id="inv">${esc(invite)}</pre><button class="btn small" type="button" data-copy-text="inv">Copy invite link</button></div>
 <div class="card" id="friends"><b>Friends</b>
 ${rq.incoming.length ? `<p style="margin:.5em 0 .3em">Waiting for you:</p>${rq.incoming.map(r => `<div class="row" style="margin:6px 0">${who(r.handle, r.name)}${r.note ? ` <span class="mut">"${esc(r.note)}"</span>` : ""} ${btn("accept", "Accept", { req: r.request, to: r.id })}</div>`).join("")}` : ""}
-${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.kind === "repo" && f.why ? ` <span class="mut">(both work on ${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
+${friends.length ? `<p style="margin:.6em 0 .3em">Your friends:</p><div class="row">${friends.map(f => who(f.handle, f.name) + (f.why && (f.kind === "repo" || f.kind === "github") ? ` <span class="mut">(${f.kind === "repo" ? "both work on " : ""}${esc(f.why)})</span>` : "")).join(" &middot; ")}</div>` : `<p class="mut">No friends yet.</p>`}
 ${rq.outgoing.length ? `<p class="mut" style="margin:.6em 0 0">Sent, waiting: ${rq.outgoing.map(r => "@" + esc(r.handle)).join(", ")}</p>` : ""}
 ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.map(s => `<div class="row" style="margin:6px 0">${who(s.handle, s.name)} <span class="mut">${esc(s.why)}</span> ${btn("add", "Add friend", { to: s.id })}</div>`).join("")}` : ""}</div>
 ${soc?.email ? `<div class="card" id="email"><b>Daily summary email</b><p class="mut">One short email on days something happens: who visited, friend requests, links into your garden. Never shown on your page. Unsubscribe in one click.</p>
@@ -362,14 +372,14 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
-            addCookie(res, ctx.owner.start(pr.id)); done(`/@${pr.handle}/`); return true;
+            addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); done(`/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
         }
         if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
-          startSession(res, me.id); done("/me"); return true;
+          startSession(res, me.id); ctx.social?.circle?.signedIn(acct.profile_id); done("/me"); return true;
         }
         // new account: a little history keeps bots out
         if (Date.now() - Date.parse(me.created_at) < 30 * DAY || (Number(me.public_repos) || 0) + (Number(me.followers) || 0) < 1) {
@@ -426,7 +436,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       }
       if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
-        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : ""); return true; }
+        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
       if (req.method === "POST") {
         const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
@@ -454,10 +464,11 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
           pre = r.status === 200 ? (act === "accept" ? `You and @${esc(h)} are now friends.` : `Friend request sent to @${esc(h)}.`) : `Couldn't do that: ${esc(r.body?.error || "error")}`;
         }
         if (act === "email" && ctx.social?.email) { const em = (f.get("email") || "").trim().slice(0, 200); try { pre = esc(await ctx.social.email.subscribe(acct.profile_id, em)); } catch (e: any) { pre = esc(e.message); } }
+        if (act === "gh-invite" && ctx.social?.circle) { try { pre = esc(await ctx.social.circle.invite(acct.profile_id, String(f.get("login") || ""))); } catch (e: any) { pre = esc(e.message); } }
         if (act === "email-off" && ctx.social?.email) { ctx.social.email.unsubscribe(acct.profile_id); pre = "Daily summary emails are off."; }
         let note = pre || (act === "claim" ? "Here's your code. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up)." : "");
         if (act === "save" || act === "refresh" || act === "remove-banner") { try { await build(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
-        mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note); return true;
+        mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
       }
     }
     // Obsidian claims a hosted profile: one-time code -> the profile's key, once; the hub deletes its copy
