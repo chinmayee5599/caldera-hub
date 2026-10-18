@@ -33,7 +33,7 @@ export const SETTINGS_CSS = `<style>
 .conn-row>summary::-webkit-details-marker{display:none}.conn-row>summary:hover{background:var(--bg-sunken,rgba(255,255,255,.03))}
 .conn-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--text-muted,#6B6B78);box-shadow:0 0 0 3px rgba(128,128,140,.15)}
 .conn-dot.on{background:#3FB97F;box-shadow:0 0 0 3px rgba(63,185,127,.22)}
-.conn-t{flex:1;min-width:0}.conn-t b{display:block;color:var(--text-strong,#F7F7FA);font-weight:600}.conn-t span{display:block;color:var(--text-muted,#9A9AA6);font-size:13.5px;overflow-wrap:anywhere}
+.conn-t{flex:1;min-width:0}.conn-t>b{display:block;color:var(--text-strong,#F7F7FA);font-weight:600}.conn-t span{display:block;color:var(--text-muted,#9A9AA6);font-size:13.5px;overflow-wrap:anywhere}
 .conn-act{flex:none;font-size:13px;font-weight:600;color:var(--accent-text,#B9A6FF);white-space:nowrap}.conn-row[open] .conn-act .when-closed,.conn-row:not([open]) .conn-act .when-open{display:none}
 .conn-body{padding:2px 16px 16px 38px}.conn-body ol{margin:6px 0 0;padding-left:20px}.conn-body li{margin:10px 0}.conn-body li::marker{color:var(--text-muted,#9A9AA6)}
 .conn-code{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}.conn-code code{font:600 18px 'IBM Plex Mono',monospace;letter-spacing:.04em;padding:8px 12px;border-radius:8px;border:1px dashed var(--accent,#8B6CF6);background:var(--bg,#0E0B16);color:var(--text-strong,#F7F7FA)}
