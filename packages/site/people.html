@@ -58,23 +58,25 @@
   document.querySelectorAll("[data-sort]").forEach(function (b) { b.setAttribute("aria-selected", String(b.getAttribute("data-sort") === sort)); });
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function card(p) {
-    var a = el("a", "pcard"); a.href = "@" + encodeURIComponent(p.handle) + "/";
+    // the whole card opens the profile (a stretched link on the name); the footer holds the profile and city links, inside the card
+    var href = "@" + encodeURIComponent(p.handle) + "/";
+    var a = el("div", "pcard");
     var top = el("div", "pcard-top");
     var av = el("div", "pcard-av");
     if (p.avatar) { var img = new Image(); img.alt = ""; img.loading = "lazy"; img.src = p.avatar.replace(/^\//, ""); img.onerror = function () { img.remove(); av.textContent = (p.name || p.handle).charAt(0).toUpperCase(); }; av.appendChild(img); }
     else av.textContent = (p.name || p.handle).charAt(0).toUpperCase();
-    var who = el("div", "pcard-who"); who.appendChild(el("b", null, p.name || p.handle)); who.appendChild(el("span", null, "@" + p.handle));
+    var who = el("div", "pcard-who"); var nm = el("a", "pcard-name", p.name || p.handle); nm.href = href; who.appendChild(nm); who.appendChild(el("span", null, "@" + p.handle));
     top.appendChild(av); top.appendChild(who);
     if (p.invited > 0) a.title = "Brought " + p.invited + (p.invited === 1 ? " person" : " people") + " to Caldera";
     if (p.week > 0) { var s = el("div", "pcard-score"); s.appendChild(el("b", null, String(p.week))); s.appendChild(el("span", null, "this week")); top.appendChild(s); }
     a.appendChild(top);
     if (p.headline) a.appendChild(el("p", "pcard-line", p.headline));
     if (p.topics && p.topics.length) { var t = el("div", "pcard-topics"); p.topics.forEach(function (x) { t.appendChild(el("span", null, x)); }); a.appendChild(t); }
-    if (!p.city) return a;
-    // person -> city -> repos: the city gets its own link under the card (links can't nest)
-    var wrap = el("div", "pcard-wrap"); wrap.appendChild(a);
-    var c = el("a", "pcard-city", "\uD83C\uDFD9\uFE0F Walk the city \u2192"); c.href = "@" + encodeURIComponent(p.handle) + "/city.html"; wrap.appendChild(c);
-    return wrap;
+    var foot = el("div", "pcard-foot");
+    var pl = el("a", "pcard-link", "Profile \u2192"); pl.href = href; foot.appendChild(pl);
+    if (p.city) { var c = el("a", "pcard-link", "\uD83C\uDFD9\uFE0F Walk the city \u2192"); c.href = href + "city.html"; foot.appendChild(c); }
+    a.appendChild(foot);
+    return a;
   }
   function load() {
     var url = "v1/directory?sort=" + sort + "&q=" + encodeURIComponent(input.value.trim());
