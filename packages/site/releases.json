@@ -1,6 +1,22 @@
 {
  "releases": [
   {
+   "version": "0.19.1",
+   "date": "2026-10-17",
+   "title": "Real weather, people on foot, the day's traces",
+   "items": [
+    "The sky over every city now matches the weather where you are: clear, partly cloudy, overcast, fog, drizzle, rain, storms with lightning, or snow, with the wind moving the clouds and the rain. Dawn and dusk follow your real sunrise and sunset. Caldera looks up the weather from your connection each time and keeps nothing about where you are.",
+    "Pick a different sky with the new Weather button: Auto (your weather), Clear, Rain, Snow or Fog. Your browser remembers the choice.",
+    "Visitors now parachute down at street scale, the size of the cars, then walk along the street to a building's door and go in. Signups and sales walk in too, after their celebration.",
+    "People who have left walk back out as faint ghosts and fade at the edge of the district. When you open your city, the last half hour of departures replays in the first 20 seconds, so it feels alive straight away.",
+    "Worn paths: faint footprints lead to your busiest buildings, darker with more visitors today and fading through the day. They reset at your midnight, and they show in rain and snow too.",
+    "Your city shows how many people visited today and how many are on your sites now.",
+    "Clouds drift smoothly and never jump or reset, including when you resize the pop-out.",
+    "Only you, on your own city: if live visitors or AI-agent drones aren't set up yet, a quiet row under the map shows how, with each site's one-line snippet, a Copy button and a prompt for your AI. Visitors never see it. It goes away when your first visit arrives, or when you dismiss it."
+   ],
+   "howto": "Open your city (caldera.social/@you/city.html or My view in Obsidian). The weather button sits next to the lighting button."
+  },
+  {
    "version": "0.19.0",
    "date": "2026-10-17",
    "title": "Views and kudos",
