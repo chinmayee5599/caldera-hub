@@ -13,7 +13,7 @@ import * as C from "@caldera/core";
 import { github } from "./github";
 import { connDots, type Conn } from "./settings";
 import { alertsStore, bellHtml, type PostAlert, type Audience } from "./alerts";
-import { appHeader, currentFor, swapHeader, swapFooter, HEADER_MARK, type HeaderItem, type HeaderViewer } from "./header";
+import { appHeader, currentFor, swapHeader, swapFooter, setSiteFooter, HEADER_MARK, type HeaderItem, type HeaderViewer } from "./header";
 import { loadExt, type Ext } from "./ext";
 export { fallbacks as publicExt, type Ext } from "./ext";
 export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
@@ -668,6 +668,35 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     cardInflight.set(key, job); return job;
   }
   const cardInflight = new Map<string, Promise<Buffer>>(); let cardsRendering = 0; const cardWaiters: (() => void)[] = [];
+  // ---------------------------------------------------------------- search engines + AI assistants on profile pages
+  // Listed members' pages are indexable (their choice in Settings). New members agree to this at sign-up; members who
+  // joined before it shipped get a 7-day notice first (privacy policy: material changes are announced before they apply).
+  q("CREATE TABLE IF NOT EXISTS search_prefs (owner TEXT PRIMARY KEY, on_ INTEGER, ts TEXT)").run();
+  let SEO_SINCE = (q("SELECT v FROM hub_meta WHERE k='seo_since'").get() as any)?.v as string | undefined;
+  if (!SEO_SINCE) { SEO_SINCE = (opts as any).seoSince || now(); q("INSERT OR REPLACE INTO hub_meta VALUES ('seo_since', ?)").run(SEO_SINCE); }
+  function searchable(pr: any): boolean {
+    if (!pr?.handle || !listed(pr)) return false;
+    const pref = q("SELECT on_ FROM search_prefs WHERE owner=?").get(pr.id) as any; if (pref) return !!pref.on_;
+    return String(pr.created || "") >= SEO_SINCE! || Date.now() >= Date.parse(SEO_SINCE!) + 7 * DAY;
+  }
+  /** index/follow, canonical, a real title and description, and ProfilePage + Person JSON-LD (what AI answers quote) */
+  function profileSeo(pr: any, rel: string, html: string): string {
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+    const base = `${hubUrl()}/@${pr.handle}/`, url = base + (rel === "city.html" ? "city.html" : ""), b = body(pr), name = pr.name || "@" + pr.handle;
+    const tags = (() => { try { return B.tagsOf(pr).map((t: any) => t.t).slice(0, 10); } catch { return [] as string[]; } })();
+    const links = (Array.isArray(b.links) ? b.links : []).map((l: any) => Array.isArray(l) ? l[1] : l?.url).filter((u: any) => typeof u === "string" && /^https:\/\//.test(u)).slice(0, 8);
+    const c = cityOf(pr.handle), fc = followCounts(pr.id);
+    const desc = (rel === "city.html" ? `${name}'s GitHub as a living city on Caldera${c?.buildings ? `: ${c.buildings} repos` : ""}. ` : "") + (pr.headline || `${name} builds with AI. Profile, projects and GitHub city on Caldera.`) + (tags.length ? ` Building: ${tags.slice(0, 5).join(", ")}.` : "");
+    const title = rel === "city.html" ? `${name}'s GitHub city | Caldera` : `${name} (@${pr.handle})${pr.headline ? ` - ${String(pr.headline).slice(0, 60)}` : ""} | Caldera`;
+    const person = { "@type": "Person", "@id": base + "#person", name, alternateName: "@" + pr.handle, url: base, description: pr.headline || undefined, image: `${base}card.png`,
+      sameAs: links.length ? links : undefined, knowsAbout: tags.length ? tags : undefined,
+      interactionStatistic: [{ "@type": "InteractionCounter", interactionType: "https://schema.org/FollowAction", userInteractionCount: fc.followers + fc.friends }] };
+    const ld = { "@context": "https://schema.org", "@graph": [{ "@type": "ProfilePage", "@id": url, url, name: title, dateModified: pr.updated, mainEntity: { "@id": base + "#person" }, isPartOf: { "@type": "WebSite", name: "Caldera", url: hubUrl() + "/" } }, person,
+      { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Caldera", item: hubUrl() + "/" }, { "@type": "ListItem", position: 2, name: "People", item: hubUrl() + "/people" }, { "@type": "ListItem", position: 3, name, item: base }] }] };
+    html = html.replace(/<meta name="robots"[^>]*>/gi, "").replace(/<link rel="canonical"[^>]*>/gi, "").replace(/<meta name="description"[^>]*>/gi, "")
+      .replace(/<title>[\s\S]*?<\/title>/i, `<title>${e(title)}</title>`);
+    return html.replace(/<\/head>/i, `<meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${e(url)}"><meta name="description" content="${e(desc.slice(0, 300))}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script></head>`);
+  }
   function previewTags(handle: string, rel: string): string {
     const pr = byHandle(handle); if (!pr) return "";
     const v = String(Date.parse(pr.updated) || 0).slice(-8) + ["show", "anonymous", "hidden"].indexOf(PM.modeFor(pr)), base = `${hubUrl()}/@${handle}/`;   // a new picture when the private-repos setting changes
@@ -1066,7 +1095,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
-  const GH = github({ accountOk: ext.githubAccountOk, privateMode: PM, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
+  const GH = github({ accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
@@ -1583,7 +1612,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   const GHP = ghPreview({ dataDir: opts.dataDir, hub: () => hubUrl(), fetch: opts.githubFetch || fetch, token: () => GH.anyToken(), header: HEADER_MARK, tooMany, ipOf,
     memberOf: memberOfLogin, memberCity: (h: string) => { const pr = byHandle(h); return pr && !modOf(pr.handle, pr.id) ? publicCityOf(h) : null; }, pause: opts.githubFetch ? 0 : 150 });
 
+  // the big footer from the site build (assets/footer.html), re-read when the site is redeployed
+  let footerAt = 0, footerChecked = 0;
+  const freshFooter = () => { if (!opts.siteDir || Date.now() - footerChecked < 30_000) return; footerChecked = Date.now();
+    try { const f = path.join(opts.siteDir, "assets", "footer.html"), mt = fs.statSync(f).mtimeMs; if (mt !== footerAt) { footerAt = mt; setSiteFooter(fs.readFileSync(f, "utf8")); } } catch { /* the short footer */ } };
   const server = http.createServer(async (req, res) => {
+    freshFooter();
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     guardLinks(req, res, [], () => headerFor(req, (() => { try { return new URL(req.url || "/", "http://hub").pathname; } catch { return "/"; } })()));
     try {
@@ -1624,6 +1658,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       }
       if ((p === "/gh" || p.startsWith("/gh/")) && await GHP.route(req, res, url, p)) return;
       { const mb = p.match(/^\/@([a-z0-9-]+)\/badge\.svg$/); if (req.method === "GET" && mb) { await GHP.memberBadge(res, mb[1], url.searchParams.get("style") === "card" ? "card" : "flat"); return; } }
+      // every indexable member page and city, for search engines (robots.txt points here)
+      if (req.method === "GET" && p === "/sitemap-profiles.xml") {
+        const rows = (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY updated DESC").all() as any[]).filter(searchable);
+        const u = (loc: string, mod: string) => `<url><loc>${loc}</loc><lastmod>${String(mod || now()).slice(0, 10)}</lastmod></url>`;
+        res.writeHead(200, { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        return res.end(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${rows.map(r => u(`${PUB()}/@${r.handle}/`, r.updated) + (cityOf(r.handle)?.buildings ? u(`${PUB()}/@${r.handle}/city.html`, r.updated) : "")).join("")}</urlset>\n`);
+      }
       if (req.method === "GET" && p === "/world/preview.png") { const png = await worldPreview(); res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=600" }); return res.end(png); }
       const m0 = p.match(/^\/watch\/@([a-z0-9-]+)\/?$/);
       if (req.method === "GET" && m0) {
@@ -1732,6 +1773,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           if (rel === "index.html") html = dropHelpExchange(html);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
+          if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;

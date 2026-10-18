@@ -42,6 +42,8 @@ export interface GhCtx {
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
   /** how private repos show on a member's public city (privatemode.ts) */
+  /** search engines: may this member's page be indexed (listed members, after the notice period), and their choice */
+  searchPref?: { on: (pr: any) => boolean; set: (owner: string, on: boolean) => void };
   privateMode?: { modeFor: (pr: any) => "show" | "anonymous" | "hidden"; chosen: (pr: any) => string | undefined; set: (owner: string, mode: unknown) => boolean; since: string };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
@@ -51,6 +53,12 @@ export interface EmailHooks { status: (owner: string) => { email: string; confir
   suggest?: (owner: string, email: string, verified: boolean, source: string) => void; promptFor?: (owner: string) => { suggestion: { email: string; verified: boolean } | null } | null; dismissPrompt?: (owner: string) => void }
 const GROUP = /^[a-z0-9][a-z0-9-]{1,29}$/;
 /** Settings > Privacy: how private repos show on the public city (one form, both kinds of member). */
+function searchForm(on: boolean): string {
+  return `<form method="post" class="card" id="search-engines"><input type="hidden" name="do" value="search"><b>Search engines and AI assistants</b>
+<p class="mut" style="margin:4px 0 10px">Let Google, Bing, ChatGPT, Claude and Perplexity find and cite your public page and city (only while you're listed in People). Your private view and anything not already public are never indexed.</p>
+<label><input type="checkbox" name="on" ${on ? "checked" : ""}> Show my page in search engines and AI answers</label>
+<div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save</button></div></form>`;
+}
 function privateReposForm(mode: string, chosen: boolean): string {
   const opt = (v: string, t: string, d: string) => `<label class="pr-opt"><input type="radio" name="mode" value="${v}"${mode === v ? " checked" : ""}> <b>${t}</b><span class="mut">${d}</span></label>`;
   return `<form method="post" class="card" id="private-repos"><input type="hidden" name="do" value="private-repos"><b>Private repos on my city</b>
@@ -338,7 +346,7 @@ ${sectionHead("privacy", "Privacy")}<form method="post" class="card" id="privacy
 <label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory and on the World map</label>
 <label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me automatically with people I know from GitHub (shared repos, mutual follows)</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save</button></div></form>
-${ctx.privateMode && pr ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}
+${ctx.privateMode && pr ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}${ctx.searchPref && pr ? searchForm(ctx.searchPref.on(pr)) : ""}
 ${sectionHead("account", "Account")}<div class="card danger-zone"><div class="row" style="justify-content:space-between"><form method="post"><input type="hidden" name="do" value="logout"><button class="btn small ghost" type="submit">Sign out</button></form>
 <form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut" style="display:inline"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>
 <p class="mut" style="margin-top:8px">Deleting removes your page, city and data, and revokes Caldera's access to your GitHub.</p></div>`, ctx.owner?.bar?.(a.profile_id) || "");
@@ -369,7 +377,7 @@ ${sectionHead("page", "Your page", "Edited from Obsidian (<code>Caldera/profile.
 ${(() => { const t = C.editPrompt({ hubUrl: pub, handle }); return `<pre id="pr-edit" style="max-height:120px">${esc(t)}</pre><button class="btn small" type="button" data-copy-text="pr-edit">Copy prompt for my AI</button>`; })()}</div>
 ${sectionHead("people", "People")}${growthCards({ profile_id: owner, handle }, {})}
 ${sectionHead("notifications", "Notifications")}${emailCard({ profile_id: owner, handle }, {})}
-${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>${ctx.privateMode ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}
+${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>${ctx.privateMode ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}${ctx.searchPref ? searchForm(ctx.searchPref.on(pr)) : ""}
 ${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn small ghost" href="/signout?h=${encodeURIComponent(handle)}">Sign out of this browser</a>
 <p class="mut" style="margin-top:10px">To delete your Caldera profile, run <b>Caldera: Delete my profile from the hub</b> in Obsidian. Your vault is never touched.</p></div>`, ctx.owner?.bar?.(owner) || "");
   }
@@ -629,6 +637,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         }
         if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(me); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
         if (act === "private-repos" && ctx.privateMode) pre = ctx.privateMode.set(me, f.get("mode")) ? "Saved. Your public city follows it right away (your private view still shows everything)." : "Pick one of the three options.";
+        if (act === "search" && ctx.searchPref) { ctx.searchPref.set(me, !!f.get("on")); pre = f.get("on") ? "Saved. Search engines and AI assistants can find your page." : "Saved. Your page asks search engines not to index it."; }
         vaultPage(res, q("SELECT * FROM profiles WHERE id=?").get(me), pre); return true;
       }
       const acct = who.acct;
@@ -651,6 +660,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
         if (act === "private-repos" && ctx.privateMode) ctx.privateMode.set(acct.profile_id, f.get("mode"));
+        if (act === "search" && ctx.searchPref) ctx.searchPref.set(acct.profile_id, !!f.get("on"));
         if (act === "privacy") { const prev = JSON.parse(acct.edits || "{}"); q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify({ ...prev, listed: f.get("listed") === "on", autoConnectRepos: f.get("autoConnectRepos") === "on" }), acct.gh_id); }
         if (act === "remove-banner") { for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(upDir(acct.gh_id), `banner.${ext}`), { force: true }); }
         let claimCode = "";

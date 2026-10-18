@@ -150,3 +150,23 @@ test("follow model: one-way follows count as followers/following, following back
     assert.doesNotMatch(await (await S.page("bo", anaC)).text(), /data-state="friends"/);
   } finally { S.hub.server.close(); }
 });
+
+test("profile SEO: listed members who joined after the change are indexable with ProfilePage JSON-LD; earlier members wait 7 days; opt-out and unlisted stay noindex", async () => {
+  const S = await setup();
+  try {
+    // ana/bo were created in setup (now): after seo_since -> indexable
+    let r = await S.page("ana"); let h = await r.text();
+    assert.equal(r.headers.get("x-robots-tag"), "index, follow, max-image-preview:large");
+    assert.match(h, /<meta name="robots" content="index, follow/); assert.doesNotMatch(h, /noindex/);
+    assert.match(h, /"@type":"ProfilePage"/); assert.match(h, /"alternateName":"@ana"/); assert.match(h, /<link rel="canonical" href="http:\/\/hub.test\/@ana\/">/);
+    const sm = await (await fetch(S.base + "/sitemap-profiles.xml")).text(); assert.match(sm, /@ana\//);
+    // an older member, inside the notice period: not yet
+    S.hub.db.prepare("UPDATE profiles SET created='2020-01-01T00:00:00.000Z' WHERE handle='bo'").run();
+    r = await S.page("bo"); assert.equal(r.headers.get("x-robots-tag"), "noindex");
+    // opting out
+    const id = S.hub.db.prepare("SELECT id FROM profiles WHERE handle='ana'").get().id;
+    S.hub.db.prepare("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(id, 0, new Date().toISOString());
+    r = await S.page("ana"); assert.equal(r.headers.get("x-robots-tag"), "noindex");
+    assert.doesNotMatch(await (await fetch(S.base + "/sitemap-profiles.xml")).text(), /@ana\//);
+  } finally { S.hub.server.close(); }
+});

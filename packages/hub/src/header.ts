@@ -176,4 +176,7 @@ export function swapHeader(html: string, header: string): string | null {
 
 /** THE site footer: one set of links on every page that has a footer. */
 export const SITE_FOOTER = `<footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/learn">Learn</a> &middot; <a href="/changelog">What's new</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>`;
-export function swapFooter(html: string): string { return html.replace(/<footer class="footer">[\s\S]*?<\/footer>/, SITE_FOOTER); }
+let FOOTER = SITE_FOOTER;
+/** The site build writes the full footer (every Learn page, by topic) to assets/footer.html; the hub serves that one. */
+export function setSiteFooter(html: string | null) { FOOTER = html && /^<footer class="footer/.test(html.trim()) ? html.trim() : SITE_FOOTER; }
+export function swapFooter(html: string): string { return html.replace(/<footer class="footer[^"]*">[\s\S]*?<\/footer>/, () => FOOTER); }
