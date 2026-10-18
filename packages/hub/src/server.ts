@@ -683,11 +683,12 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function profileSeo(pr: any, rel: string, html: string): string {
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const base = `${hubUrl()}/@${pr.handle}/`, url = base + (rel === "city.html" ? "city.html" : ""), b = body(pr), name = pr.name || "@" + pr.handle;
+    const cut = (t: string, n: number) => { const first = t.split(/(?<=[.!?])\s/)[0]; if (first.length <= n) return first.replace(/[.!?]$/, ""); const w = t.slice(0, n).replace(/\s+\S*$/, ""); return w.replace(/[,;:\s]+$/, "") + "\u2026"; };
     const tags = (() => { try { return B.tagsOf(pr).map((t: any) => t.t).slice(0, 10); } catch { return [] as string[]; } })();
     const links = (Array.isArray(b.links) ? b.links : []).map((l: any) => Array.isArray(l) ? l[1] : l?.url).filter((u: any) => typeof u === "string" && /^https:\/\//.test(u)).slice(0, 8);
     const c = cityOf(pr.handle), fc = followCounts(pr.id);
     const desc = (rel === "city.html" ? `${name}'s GitHub as a living city on Caldera${c?.buildings ? `: ${c.buildings} repos` : ""}. ` : "") + (pr.headline || `${name} builds with AI. Profile, projects and GitHub city on Caldera.`) + (tags.length ? ` Building: ${tags.slice(0, 5).join(", ")}.` : "");
-    const title = rel === "city.html" ? `${name}'s GitHub city | Caldera` : `${name} (@${pr.handle})${pr.headline ? ` - ${String(pr.headline).slice(0, 60)}` : ""} | Caldera`;
+    const title = rel === "city.html" ? `${name}'s GitHub city | Caldera` : `${name} (@${pr.handle})${pr.headline ? ` - ${cut(String(pr.headline), 60)}` : ""} | Caldera`;
     const person = { "@type": "Person", "@id": base + "#person", name, alternateName: "@" + pr.handle, url: base, description: pr.headline || undefined, image: `${base}card.png`,
       sameAs: links.length ? links : undefined, knowsAbout: tags.length ? tags : undefined,
       interactionStatistic: [{ "@type": "InteractionCounter", interactionType: "https://schema.org/FollowAction", userInteractionCount: fc.followers + fc.friends }] };
