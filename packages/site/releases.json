@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.19.3",
+      "date": "2026-10-17",
+      "title": "Kudos and Add friend, right on the page",
+      "items": [
+        "Kudos happen on the page now: tap ❤️ 👍 🔥 or ✨ in the bar at the top of anyone's page and it lands right there, with the count going up. No more pop-up window.",
+        "Add friend works on the page too, and shows where you stand: Friends ✓, Friend request sent, or Accept. If you signed up with GitHub it sends at once; if your page comes from Obsidian, it's queued and Obsidian signs and sends it the next time it's open (your key never leaves your vault).",
+        "If you're not signed in, tapping kudos or Add friend shows a small sign-in prompt (GitHub first).",
+        "Every link that leaves caldera.social now opens in a new window, on every page."
+      ]
+    },
+    {
       "version": "0.19.2",
       "date": "2026-10-17",
       "title": "Tidier city corner",

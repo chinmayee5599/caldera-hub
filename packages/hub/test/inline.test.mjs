@@ -1,0 +1,124 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import * as C from "@caldera/core";
+import { createHub } from "../dist/server.js";
+
+// inline kudos + Add friend on hosted pages, and the new-window rule for off-site links
+const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
+const UA = { "user-agent": "Mozilla/5.0" };
+const PAGE = `<html><head></head><body><nav><a class="tree-row friend-row" href="obsidian://caldera?friend=HANDLE" target="_blank" rel="noopener">+ Add @HANDLE as friend</a></nav>
+<table><tr><td><a href="https://github.com/x/proj">proj</a></td><td><a href="http://hub.test/@other/">in</a></td><td><a href="#top">top</a></td></tr></table></body></html>`;
+
+async function setup() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-inline-"));
+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  fs.writeFileSync(path.join(d, "github-app.json"), JSON.stringify({ id: 1, slug: "t", client_id: "cid", client_secret: "csec", pem: privateKey.export({ type: "pkcs1", format: "pem" }) }));
+  const fake = async (u) => { u = String(u);
+    if (u.endsWith("/access_token")) return J({ access_token: "tok", expires_in: 28800 });
+    if (u.endsWith("/user")) return J({ id: 99, login: "gina", name: "Gina", created_at: "2019-01-01T00:00:00Z", public_repos: 1, followers: 1, html_url: "https://github.com/gina", avatar_url: "https://avatars.githubusercontent.com/u/1" });
+    if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"));
+    if (u.includes("/repos?") || u.includes("/events")) return J([]);
+    return J({}, 404); };
+  const hub = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, limits: { newProfilesPerDay: 100 } });
+  const base = "http://127.0.0.1:" + await hub.listen(0);
+  const post = (p, body, h = {}) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() }));
+  const ids = { ana: C.newIdentity(), bo: C.newIdentity() };
+  for (const [h, id] of Object.entries(ids)) await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: h, handle: h, boxKey: id.boxPublic }), files: { "index.html": Buffer.from(PAGE.replaceAll("HANDLE", h)).toString("base64") } });
+  const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
+  const ownerCookie = async (id) => { const { body } = await post(`/v1/owner/${id.id}/link`, {}, { authorization: "Bearer " + await login(id) });
+    const r = await fetch(body.url.replace("http://hub.test", base), { redirect: "manual" }); return (r.headers.get("set-cookie") || "").split(";")[0]; };
+  const page = (h, cookie) => fetch(`${base}/@${h}/`, { headers: { ...UA, ...(cookie ? { cookie } : {}) } });
+  const act = (t, action, kind) => fetch(base + "/v1/act", { method: "POST", headers: { "content-type": "text/plain", origin: "null" }, body: JSON.stringify({ t, action, kind }) }).then(async r => ({ status: r.status, body: await r.json(), acao: r.headers.get("access-control-allow-origin") }));
+  const tokenIn = (html) => (html.match(/data-act="([^"]+)"/) || [])[1];
+  return { hub, d, base, post, ids, login, ownerCookie, page, act, tokenIn };
+}
+
+test("members get an action token for that page only; inline kudos works from a sandboxed page; forgery, expiry and recipient swap refused", async () => {
+  const S = await setup();
+  try {
+    const anaC = await S.ownerCookie(S.ids.ana);
+    const anon = await (await S.page("bo")).text();
+    assert.equal(S.tokenIn(anon), undefined, "no token for anonymous viewers");
+    assert.match(anon, /href="http:\/\/hub\.test\/kudos\/bo" data-caldera-friend="bo" data-state="none"/, "obsidian:// add-friend link rewritten");
+    assert.doesNotMatch(anon, /obsidian:\/\/caldera\?friend=/);
+    const r = await S.page("bo", anaC), html = await r.text(), t = S.tokenIn(html);
+    assert.ok(t, "member gets a token"); assert.match(r.headers.get("content-security-policy"), /^sandbox /); assert.match(r.headers.get("content-security-policy"), /connect-src 'self'/);
+    assert.doesNotMatch(r.headers.get("content-security-policy"), /allow-same-origin/);
+    assert.match(html, /@ana</, "the bar shows who's signed in");
+    // own page: no token, no add-friend link
+    const own = await (await S.page("ana", anaC)).text();
+    assert.equal(S.tokenIn(own), undefined); assert.doesNotMatch(own, /data-caldera-friend/);
+    // anonymous can't act
+    assert.equal((await S.act("", "kudos", "heart")).status, 401);
+    // kudos with the token, Origin null, CORS open; once a day
+    const k = await S.act(t, "kudos", "fire"); assert.equal(k.status, 200); assert.equal(k.acao, "*");
+    assert.equal(S.hub.db.prepare("SELECT COUNT(*) n FROM kudos k JOIN profiles p ON p.id=k.recipient WHERE p.handle='bo'").get().n, 1);
+    assert.equal((await S.act(t, "kudos", "heart")).status, 409, "one kudos per day");
+    const again = await (await S.page("bo", anaC)).text();
+    assert.match(again, /class="cb-k on" data-k="fire" disabled/, "already-sent shows disabled");
+    // forgery: tampered payload (point the token at ana's own page or change the expiry) is refused
+    const [p] = t.split("."), o = JSON.parse(Buffer.from(p, "base64url").toString());
+    const swap = Buffer.from(JSON.stringify({ ...o, h: "ana" })).toString("base64url") + "." + t.split(".")[1];
+    assert.equal((await S.act(swap, "kudos", "up")).status, 401, "recipient swap refused");
+    assert.equal((await S.act(t.slice(0, -2) + "xx", "kudos", "up")).status, 401, "bad signature refused");
+    assert.equal((await S.act(S.hub.act.token(S.ids.ana.id, "bo", -1000), "kudos", "up")).status, 401, "expired token refused");
+    // a token minted for a deleted viewer stops working
+    assert.equal((await S.act(S.hub.act.token("cal:nobody", "bo"), "kudos", "up")).status, 401);
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
+
+test("Add friend inline: Obsidian member's tap is queued, plugin picks it up and the hub clears it; GitHub member signs now; Friends state", async () => {
+  const S = await setup();
+  try {
+    const anaC = await S.ownerCookie(S.ids.ana);
+    const t = S.tokenIn(await (await S.page("bo", anaC)).text());
+    const f = await S.act(t, "friend"); assert.equal(f.status, 200); assert.equal(f.body.state, "queued");
+    assert.equal((await S.act(t, "friend")).body.state, "queued", "idempotent");
+    assert.match(await (await S.page("bo", anaC)).text(), /data-state="queued"/);
+    // the plugin: list intents (signed in), sign + send, intent cleared
+    const tok = await S.login(S.ids.ana);
+    const list = await fetch(S.base + `/v1/owner/${S.ids.ana.id}/intents`, { headers: { authorization: "Bearer " + tok } }).then(r => r.json());
+    assert.deepEqual(list.intents.map(x => [x.handle, x.kind]), [["bo", "add"]]);
+    assert.equal((await fetch(S.base + `/v1/owner/${S.ids.bo.id}/intents`, { headers: { authorization: "Bearer " + tok } })).status, 401, "only your own queue");
+    assert.equal((await S.post("/v1/envelopes", C.sign(S.ids.ana, "friend.request", { to: S.ids.bo.id, note: "" }))).status, 200);
+    assert.equal((await fetch(S.base + `/v1/owner/${S.ids.ana.id}/intents`, { headers: { authorization: "Bearer " + tok } }).then(r => r.json())).intents.length, 0, "cleared when the request lands");
+    assert.match(await (await S.page("bo", anaC)).text(), /data-state="requested"/);
+    // bo sees Accept on ana's page; bo's tap queues an accept; plugin accepts -> friends
+    const boC = await S.ownerCookie(S.ids.bo);
+    const bt = S.tokenIn(await (await S.page("ana", boC)).text());
+    assert.match(await (await S.page("ana", boC)).text(), /data-state="incoming"/);
+    assert.equal((await S.act(bt, "accept")).body.state, "queued");
+    const btok = await S.login(S.ids.bo);
+    const bl = (await fetch(S.base + `/v1/owner/${S.ids.bo.id}/intents`, { headers: { authorization: "Bearer " + btok } }).then(r => r.json())).intents;
+    assert.equal(bl[0].kind, "accept"); assert.ok(bl[0].request);
+    assert.equal((await S.post("/v1/envelopes", C.sign(S.ids.bo, "friend.accept", { request: bl[0].request, to: S.ids.ana.id }))).status, 200);
+    const now = await (await S.page("ana", boC)).text();
+    assert.match(now, /data-state="friends"/); assert.match(now, /Friends ✓/);
+    // a GitHub sign-up (hub holds the key) adds a friend right away
+    const a = await fetch(S.base + "/auth/github", { redirect: "manual" });
+    const jar = (a.headers.getSetCookie?.() || []).map(c => c.split(";")[0]).filter(c => !c.endsWith("="));
+    const state = new URL(a.headers.get("location")).searchParams.get("state");
+    const cb = await fetch(S.base + `/auth/github/callback?code=x&state=${state}`, { headers: { cookie: jar.join("; ") }, redirect: "manual" });
+    const sess = (cb.headers.getSetCookie?.() || []).map(c => c.split(";")[0]).find(c => c.startsWith("cal_s="));
+    const gt = S.tokenIn(await (await S.page("bo", sess)).text()); assert.ok(gt, "GitHub member gets a token");
+    const g = await S.act(gt, "friend"); assert.equal(g.body.state, "requested");
+    assert.equal(S.hub.db.prepare("SELECT COUNT(*) n FROM envelopes WHERE type='friend.request' AND recipient=?").get(S.ids.bo.id).n, 2);
+    // cookie route from the hub's own pages: cross-site refused
+    assert.equal((await fetch(S.base + "/v1/friend/bo", { method: "POST", headers: { cookie: anaC, origin: "https://evil.example" } })).status, 403);
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
+
+test("off-site links open in a new window on every hosted page; internal links untouched", async () => {
+  const S = await setup();
+  try {
+    const html = await (await S.page("bo")).text();
+    assert.match(html, /<a href="https:\/\/github.com\/x\/proj" target="_blank" rel="noopener noreferrer">proj<\/a>/);
+    assert.match(html, /<a href="http:\/\/hub.test\/@other\/">in<\/a>/);
+    assert.match(html, /<a href="#top">top<\/a>/);
+    assert.equal((await fetch(S.base + "/friend/bo", { redirect: "manual" })).headers.get("location"), "/kudos/bo");
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});

@@ -1,0 +1,117 @@
+/**
+ * The World (caldera.social/world): every listed member's city as one neighborhood of a single map, drawn by the same
+ * renderer as a member's own city (same buildings, cars and people, the viewer's time of day and weather).
+ *
+ * Built only from what is already public: each member's PUBLIC city (the data on their hosted city.html), re-cleaned
+ * here so a private or locked building can never carry a name, link or history. Unlisted and moderated profiles never
+ * appear. Live activity is the same coarse public projection a member's own public city gets, folded per member.
+ */
+import { CITY_CSS, CITY_JS, type CityData, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
+
+export interface WorldMemberIn {
+  handle: string; name: string; headline: string; created: string; groups: string[]; friends: number;
+  city: CityData | null; notes: number; busy: number;
+}
+export interface WorldMember { handle: string; name: string; headline: string; isNew: boolean; groups: string[]; friends: number; city: string; page: string }
+export interface World { at: string; members: WorldMember[]; city: CityData; links: [string, string, number][]; start: string | null }
+
+const MAX_PER_MEMBER = 30, MAX_BUILDINGS = 900, MAX_LINKS = 300, NEW_MS = 48 * 3600_000;
+const str = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").slice(0, n);
+
+/** One building, re-cleaned: public repos keep name/link/history; anything else becomes a nameless padlocked block. */
+export function cleanRepo(r: CityRepo, project: string): CityRepo {
+  const url = typeof r.url === "string" && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(r.url) ? r.url : undefined;
+  if (r.locked || r.public !== true || !r.name) {
+    return { name: "", project, public: false, locked: true, language: "Private", commits: Math.max(0, Math.round(Number(r.commits) || 0)), weeks: [], week: (Number(r.week) || 0) > 0 ? 1 : 0, today: 0 };
+  }
+  return { name: str(r.name, 100), project, public: true, language: str(r.language || "Other", 30), commits: Math.max(0, Math.round(Number(r.commits) || 0)),
+    weeks: (Array.isArray(r.weeks) ? r.weeks : []).slice(-12).map(w => Math.max(0, Math.round(Number(w) || 0))), week: Math.max(0, Math.round(Number(r.week) || 0)), today: 0,
+    pushed: typeof r.pushed === "string" && Date.parse(r.pushed) ? new Date(r.pushed).toISOString() : undefined, url, description: r.description ? str(r.description, 200) : undefined };
+}
+
+/** Lay out the world: members ordered so groups cluster together and the newest sit at the edge. */
+export function buildWorld(members: WorldMemberIn[], friendships: [string, string][], founder: string | null, hub: string, now = Date.now()): World {
+  const base = hub.replace(/\/$/, "");
+  const isNew = (m: WorldMemberIn) => now - Date.parse(m.created) < NEW_MS;
+  const order = [...members].sort((a, b) => Number(isNew(a)) - Number(isNew(b))
+    || (a.groups[0] || "￿").localeCompare(b.groups[0] || "￿")
+    || b.busy - a.busy || a.handle.localeCompare(b.handle));
+  let left = MAX_BUILDINGS;
+  const districts = order.map(m => {
+    const key = "@" + m.handle;
+    const all = (m.city?.districts || []).flatMap(d => d.repos || []).map(r => cleanRepo(r, key));
+    all.sort((a, b) => (b.week * 20 + b.commits) - (a.week * 20 + a.commits));
+    const repos = all.slice(0, Math.max(0, Math.min(MAX_PER_MEMBER, left))); left -= repos.length;
+    return { name: key, notes: Math.min(16, Math.max(0, m.notes)), repos };
+  });
+  const listed = new Set(members.map(m => m.handle)), seen = new Set<string>(), links: [string, string, number][] = [];
+  for (const [a, b] of friendships) {
+    if (!listed.has(a) || !listed.has(b) || a === b) continue;
+    const k = a < b ? a + "|" + b : b + "|" + a; if (seen.has(k)) continue; seen.add(k);
+    links.push(["@" + a, "@" + b, founder && (a === founder || b === founder) ? 1 : 0]);
+  }
+  links.sort((x, y) => x[2] - y[2]);   // real friendships first, the founder's welcome links after (and fainter)
+  const all = districts.flatMap(d => d.repos);
+  const busiest = [...members].sort((a, b) => b.busy - a.busy)[0];
+  return {
+    at: new Date(now).toISOString(),
+    members: order.map(m => ({ handle: m.handle, name: str(m.name, 80), headline: str(m.headline, 160), isNew: isNew(m), groups: m.groups.slice(0, 8), friends: m.friends,
+      city: `${base}/@${m.handle}/city.html`, page: `${base}/@${m.handle}/` })),
+    city: { generated: new Date(now).toISOString(), districts, private: false, totals: { commits: all.reduce((s, r) => s + r.commits, 0), active: all.filter(r => r.week > 0).length } },
+    links: links.slice(0, MAX_LINKS),
+    start: busiest && busiest.busy > 0 ? "@" + busiest.handle : order.length ? "@" + order[0].handle : null,
+  };
+}
+
+/** Public live activity folded per member: activity level, coarse arrivals, today's coarse counts, agents (no ids). */
+export function foldLive(per: { handle: string; live: any }[], at: string) {
+  const out: any = { at, districts: {}, agents: [], arrivals: {}, today: {}, left: {} };
+  let anyArr = false;
+  for (const { handle, live } of per) {
+    if (!live) continue; const k = "@" + handle;
+    const lv = Object.values(live.districts || {}).reduce((m: number, d: any) => Math.max(m, Number(d?.level) || 0), 0);
+    out.districts[k] = { level: lv };
+    for (const a of Array.isArray(live.agents) ? live.agents.slice(0, 20) : []) out.agents.push({ id: String(a.id || "").slice(0, 10) + handle.slice(0, 4), d: k, state: a.state });
+    if (live.arrivals) { anyArr = true; const x = out.arrivals[k] = { v: 0, s: 0, b: 0 }; for (const v of Object.values(live.arrivals) as any[]) { x.v += +v.v || 0; x.s += +v.s || 0; x.b += +v.b || 0; } }
+    for (const t of Object.values(live.today || {}) as any[]) {
+      const y = out.today[k] ||= { v: 0, q: Array(96).fill(0), t0: t.t0 };
+      y.v += +t.v || 0; (t.q || []).forEach((n: number, i: number) => { if (i < 96) y.q[i] += +n || 0; });
+    }
+    const lf = Object.values(live.left || {}).reduce((s: number, n: any) => s + (+n || 0), 0); if (lf) out.left[k] = lf;
+  }
+  if (!anyArr) delete out.arrivals;
+  return out;
+}
+
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").replace(/ /g, "\\u2028").replace(/ /g, "\\u2029");
+
+/** The world page: the city renderer in world mode, with the site's own look around it. */
+export function worldPage(w: World, o: { hub: string; nav: string }): string {
+  const hub = o.hub.replace(/\/$/, ""), n = w.members.length, b = w.city.districts.reduce((s, d) => s + d.repos.length, 0);
+  const data = { ...w.city, openBase: "", world: { m: Object.fromEntries(w.members.map(m => ["@" + m.handle, m])), links: w.links, start: w.start } };
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Caldera world: every member's city on one map</title>
+<meta name="description" content="Every Caldera member's GitHub and Obsidian city on one live map: ${n} neighborhoods, ${b} buildings, friendships as highways.">
+<meta property="og:title" content="The Caldera world"><meta property="og:description" content="Every member's city on one live map."><meta property="og:image" content="${esc(hub)}/og.jpg"><meta property="og:url" content="${esc(hub)}/world">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="canonical" href="${esc(hub)}/world">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>${CITY_CSS}
+.w-main{max-width:1280px;margin:0 auto;padding:18px 16px 48px}.w-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin:6px 0 12px}
+.w-head h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(1.6rem,3.2vw,2.3rem);margin:0;color:var(--text-strong,#F7F7FA)}.w-head p{margin:0;color:var(--text-muted,#8A8A93);max-width:70ch}
+.w-main .c-stage{height:min(78vh,820px);min-height:440px}@media (max-width:600px){.w-main .c-stage{height:72vh;min-height:380px}}
+.w-foot{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;color:var(--text-muted,#8A8A93)}.w-foot a{color:var(--accent-text,#B9A6FF)}
+.w-legend i{display:inline-block;width:18px;height:4px;border-radius:2px;background:#454752;vertical-align:middle;margin-right:6px;box-shadow:inset 0 0 0 1px rgba(255,214,120,.6)}</style></head><body>
+${o.nav}
+<main class="w-main">
+<div class="w-head"><h1>The world</h1><p>Every member's city on one map: ${n} neighborhood${n === 1 ? "" : "s"}, ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"}. Friendships are the highways between them. Click a name to fly there, click it again to walk in.</p></div>
+<div class="c-stage" id="stage"><canvas id="city" aria-label="Isometric world map of ${n} member cities"></canvas>
+<div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
+<div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
+<div class="c-card" id="card" hidden></div><div class="c-hint">Drag to move &middot; scroll or pinch to zoom &middot; click a name to fly there</div></div>
+<div class="w-foot"><span class="w-legend"><i></i>Friendship highway</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
+</main>
+<script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })}</script>
+<script type="application/json" id="city-data">${safeJson(data)}</script>
+<script>${CITY_JS}</script></body></html>`;
+}
