@@ -13,7 +13,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
 .brand:hover { text-decoration: none; }
 .nav nav { flex: 1; display: flex; gap: 22px; flex-wrap: wrap; }
 .nav nav a { color: var(--text-muted); font-size: 14.5px; }
-.btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 22px; border-radius: var(--radius-round); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 22px; border-radius: var(--radius-round); background: var(--accent-btn, var(--accent)); color: var(--on-accent); font-weight: 600; }
 .btn:hover { text-decoration: none; filter: brightness(1.08); }
 .btn.ghost { background: transparent; color: var(--text-strong); border: 1px solid var(--line-strong); }
 .btn.small { min-height: 38px; padding: 0 16px; font-size: 14px; }
@@ -102,7 +102,7 @@ main { overflow-x: clip; }
 .prompt-file { font-family: var(--font-mono); font-size: 13px; color: var(--text-strong); display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 18%, transparent); flex: none; }
 .pf-meta { color: var(--text-muted); }
-.btn.copy { gap: 8px; min-height: 42px; padding: 0 18px; border: 0; cursor: pointer; font: 600 14.5px var(--font-body); flex: none; transition: background .2s; }
+.btn.copy { gap: 8px; min-height: 46px; padding: 0 18px; border: 0; cursor: pointer; font: 600 14.5px var(--font-body); flex: none; transition: background .2s; }
 .btn.copy .ic { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .btn.copy .ic-check, .btn.copy.is-copied .ic-copy { display: none; }
 .btn.copy.is-copied .ic-check { display: block; }
@@ -159,7 +159,7 @@ section h2 { line-height: 1.12; }
 .people-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-strong); font: 15px var(--font-body); outline: none; }
 .people-sort { display: inline-flex; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-round); background: var(--bg-sunken); }
 .people-sort button { border: 0; background: none; color: var(--text-muted); font: 500 14px var(--font-body); padding: 8px 14px; border-radius: var(--radius-round); cursor: pointer; }
-.people-sort button[aria-selected="true"] { background: var(--bg-raised); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.people-sort button[aria-selected="true"] { background: var(--accent-btn, var(--accent)); color: #fff; }
 .people-count { margin: 6px 0 18px; font-variant-numeric: tabular-nums; }
 .people-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .ptag { display: inline-flex; align-items: center; min-height: 34px; padding: 0 13px; border-radius: var(--radius-round); font: 500 13.5px var(--font-body); cursor: pointer; transition: background .15s, border-color .15s, color .15s; }

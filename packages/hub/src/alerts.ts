@@ -95,7 +95,7 @@ export function alertItem(a: AlertRow, hub: string, idp: string): string {
 /** Shared alert styles (scoped by the containers that use them). Uses Caldera's tokens with dark fallbacks. */
 export const ALERT_CSS = `.al-item{padding:12px 2px;border-top:1px solid var(--line,#2A2A2F)}.al-item:first-child{border-top:0}
 .al-top{display:flex;align-items:baseline;gap:8px}.al-t{flex:1;min-width:0;color:var(--text-strong,#F2F2F5);font-weight:600}.al-d{flex:none;color:var(--text-muted,#8A8A93);font-size:12px}
-.al-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#F0716A;align-self:center}.al-pin{font-size:12px}
+.al-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--danger,#F0716A);align-self:center}.al-pin{font-size:12px}
 .al-body{color:var(--text,#D6D6DC);font-size:13.5px;line-height:1.55}.al-body p{margin:.5em 0}.al-body ul{margin:.4em 0;padding-left:18px}.al-body li{margin:.25em 0}
 .al-body code{font:12px 'IBM Plex Mono',monospace;padding:1px 5px;border-radius:5px;background:rgba(127,127,140,.18)}.al-body a{color:var(--accent-text,#B9A6FF)}
 .al-cta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.al-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#8B6CF6;color:#fff;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap}
@@ -111,7 +111,7 @@ export function bellHtml(hub: string, rows: AlertRow[], seenUrl: string): string
   const base = hub.replace(/\/$/, ""), unread = rows.filter(a => !a.read).length;
   const bell = `<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="display:block"><path d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.7A1 1 0 0 0 5.3 17h13.4a1 1 0 0 0 .9-1.7L18 12.6V9a6 6 0 0 0-6-6Zm0 19a3 3 0 0 0 2.9-2.2H9.1A3 3 0 0 0 12 22Z" fill="currentColor"/></svg>`;
   return `<style>#caldera-bar .cb-bell{position:relative}#caldera-bar .cb-bell>summary{padding:0 8px;border-color:transparent;color:#D6D6DC}#caldera-bar .cb-bell>summary:hover{border-color:#2E2A40}
-#caldera-bar .cb-badge{position:absolute;top:-3px;right:-2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#F0716A;color:#fff;font:700 10.5px/16px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
+#caldera-bar .cb-badge{position:absolute;top:-3px;right:-2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:var(--danger,#F0716A);color:#fff;font:700 10.5px/16px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
 #caldera-bar .cb-al{position:absolute;right:0;top:calc(100% + 6px);z-index:80;width:min(380px,calc(100vw - 24px));max-height:min(70vh,560px);overflow:auto;background:#18171D;border:1px solid #2E2A40;border-radius:12px;padding:6px 14px 10px;box-shadow:0 12px 30px rgba(0,0,0,.45);font-family:'IBM Plex Sans',Arial,sans-serif;text-align:left;white-space:normal;--line:#2A2A2F;--text:#D6D6DC;--text-strong:#F2F2F5;--text-muted:#8A8A93;--accent-text:#B9A6FF}
 #caldera-bar .cb-al h4{margin:8px 0 2px;font:600 13px 'IBM Plex Sans',Arial,sans-serif;color:#F2F2F5;display:flex;justify-content:space-between}#caldera-bar .cb-al h4 a{color:#B9A6FF;font-weight:500}
 #caldera-bar .cb-al .al-empty{color:#8A8A93;font-size:13px;padding:10px 0}#caldera-bar .cb-al ${ALERT_CSS.replace(/\n/g, "\n#caldera-bar .cb-al ").replace(/}(?=[^\n])/g, "}#caldera-bar .cb-al ")}

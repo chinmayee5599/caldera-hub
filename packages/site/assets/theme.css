@@ -63,6 +63,10 @@
   --accent-soft: rgba(139, 108, 246, .10);
   --accent-2: #4FB89A;     /* secondary accent (help exchange, gravity) */
   --on-accent: #FFFFFF;
+  --accent-btn: #6D4AE8;   /* button fills: white text passes 4.5:1 */
+  --header-bg: #141416;    /* the one header ground (= bg-tab) */
+  --success: #3FB97F;      /* connection lights (status only) */
+  --danger: #F0716A;       /* alert badges, destructive links */
   --chart-bar: var(--accent);
   --chart-bar-quiet: rgba(139, 108, 246, .55);
   --graph-node: #6E6E78;
@@ -92,6 +96,7 @@
   --accent-text: #5A38D6;
   --accent-soft: rgba(109, 74, 232, .08);
   --accent-2: #138A6A;
+  --accent-btn: #6D4AE8;
   --graph-node: #A8A8B3;
   --heat-0: #EDEDF0;
   --heat-1: #D9D0FB;

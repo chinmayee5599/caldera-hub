@@ -13,7 +13,7 @@ import * as C from "@caldera/core";
 import { github } from "./github";
 import { connDots, type Conn } from "./settings";
 import { alertsStore, bellHtml, type PostAlert, type Audience } from "./alerts";
-import { appHeader, currentFor, swapHeader, HEADER_MARK, type HeaderItem, type HeaderViewer } from "./header";
+import { appHeader, currentFor, swapHeader, swapFooter, HEADER_MARK, type HeaderItem, type HeaderViewer } from "./header";
 import { loadExt, type Ext } from "./ext";
 export { fallbacks as publicExt, type Ext } from "./ext";
 export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
@@ -1207,8 +1207,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>
 .si{max-width:560px;margin:0 auto;padding:32px 16px 64px}.si h1{font-family:'Source Serif 4',Georgia,serif;font-size:1.9rem;margin:.2em 0 .3em}.si .lede{color:var(--text-muted,#9A9AA6);margin:0 0 18px}
-.si .card{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;padding:16px 18px;margin:14px 0}.si .card h2{font-size:1.05rem;margin:0 0 4px}.si .mut{color:var(--text-muted,#9A9AA6);font-size:.93em}
-.si input[type=email]{width:100%;box-sizing:border-box;background:var(--bg,#0E0B16);color:inherit;border:1px solid var(--line,#2A2440);border-radius:8px;padding:10px 12px;font:inherit;margin:8px 0 10px}
+.si .card{background:var(--bg-raised,#232327);border:1px solid var(--line,#2A2A2E);border-radius:12px;padding:16px 18px;margin:14px 0}.si .card h2{font-size:1.05rem;margin:0 0 4px}.si .mut{color:var(--text-muted,#9A9AA6);font-size:.93em}
+.si input[type=email]{width:100%;box-sizing:border-box;background:var(--bg,#1C1C1F);color:inherit;border:1px solid var(--line,#2A2A2E);border-radius:8px;padding:10px 12px;font:inherit;margin:8px 0 10px}
 .si .code{font:500 2rem/1.2 'IBM Plex Mono',monospace;letter-spacing:.18em;padding:10px 0}.si .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.si button.btn{cursor:pointer}</style></head>
 <body>${siteHeader("/signin")}<main class="si">${inner}</main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>${script ? `<script>${script}</script>` : ""}<script src="/assets/site.js" defer></script></body></html>`);
   };
@@ -1361,9 +1361,9 @@ var fb=document.getElementById('kd-friend');if(fb)fb.addEventListener('click',fu
 body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}.kd h1{font-family:'Source Serif 4',Georgia,serif;font-size:1.6rem;margin:14px 0 4px}.kd .mut{color:var(--text-muted,#9A9AA6);margin:0 0 14px}.kd .small{font-size:.85em;display:block;margin-top:6px}
 .kd-who{display:flex;gap:12px;align-items:center}.kd-who img,.kd-ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none}.kd-ini{display:grid;place-items:center;background:var(--accent,#8B6CF6);color:#fff;font-weight:600;font-size:1.2rem}.kd-who b{display:block}.kd-who .mut{margin:0}
 .kd-tally{display:flex;gap:12px;margin-top:10px;font-size:15px;font-variant-numeric:tabular-nums}
-.kd-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0 18px}.kd-pick button{font-size:34px;line-height:1;padding:16px 0;border-radius:14px;border:1px solid var(--line,#2A2440);background:var(--bg-raised,#16131F);cursor:pointer;transition:transform .15s,border-color .15s}
+.kd-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0 18px}.kd-pick button{font-size:34px;line-height:1;padding:16px 0;border-radius:14px;border:1px solid var(--line,#2A2A2E);background:var(--bg-raised,#232327);cursor:pointer;transition:transform .15s,border-color .15s}
 .kd-pick button:hover:not(:disabled){transform:translateY(-2px) scale(1.06);border-color:var(--accent,#8B6CF6)}.kd-pick button:disabled{opacity:.45;cursor:default}.kd-pick button.on{opacity:1;border-color:var(--accent,#8B6CF6);transform:scale(1.12)}
-.kd .row{display:flex;flex-wrap:wrap;gap:8px}.kd-friend{border-top:1px solid var(--line,#2A2440);padding-top:14px}.kd button.btn{cursor:pointer}
+.kd .row{display:flex;flex-wrap:wrap;gap:8px}.kd-friend{border-top:1px solid var(--line,#2A2A2E);padding-top:14px}.kd button.btn{cursor:pointer}
 .kd-fly{position:fixed;bottom:30%;font-size:28px;pointer-events:none;animation:kdfly 1.7s ease-out forwards}@keyframes kdfly{0%{transform:translate(0,0) scale(.6);opacity:0}15%{opacity:1}100%{transform:translate(var(--dx),-360px) scale(1.25);opacity:0}}
 @media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body>${siteHeader()}<script src="/assets/site.js" defer></script><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   }
@@ -1417,7 +1417,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (hdr && (out.includes(HEADER_MARK) || out.includes('<header class="nav"'))) {
           try {
             const r = hdr(), swapped = swapHeader(out, r.header);
-            if (swapped !== null) { out = swapped;
+            if (swapped !== null) { out = swapFooter(swapped);
               const h0 = held ? held.find((x: any) => x && typeof x === "object" && !Array.isArray(x)) : null;
               if (r.signedIn) { if (h0) { h0["cache-control"] = "private, no-store"; h0["vary"] = "Cookie"; } else { res.setHeader("cache-control", "private, no-store"); res.setHeader("vary", "Cookie"); } }
               else if (h0) h0["vary"] = "Cookie"; else res.setHeader("vary", "Cookie"); }

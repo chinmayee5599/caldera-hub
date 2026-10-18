@@ -23,12 +23,12 @@ const ago = (iso?: string) => { if (!iso) return ""; const m = Math.max(0, Math.
 
 /** Styles for /settings (Caldera's tokens from theme.css, dark fallbacks). */
 export const SETTINGS_CSS = `<style>
-.set-nav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px -16px 4px;padding:8px 16px;background:var(--bg,#0E0B16);border-bottom:1px solid var(--line,#2A2440)}
+.set-nav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px -16px 4px;padding:8px 16px;background:var(--bg,#1C1C1F);border-bottom:1px solid var(--line,#2A2A2E)}
 .set-nav::-webkit-scrollbar{display:none}.set-nav a{flex:none;padding:6px 12px;border-radius:999px;color:var(--text-muted,#9A9AA6);font-size:14px;text-decoration:none;border:1px solid transparent}
-.set-nav a:hover{color:var(--text,#E6E6EA);border-color:var(--line,#2A2440)}
+.set-nav a:hover{color:var(--text,#E6E6EA);border-color:var(--line,#2A2A2E)}
 .me h2.set-h{font-family:'Source Serif 4',Georgia,serif;font-size:1.35rem;margin:30px 0 4px;scroll-margin-top:64px}.me p.set-sub{margin:0 0 6px;color:var(--text-muted,#9A9AA6);font-size:.95em}
-.conn{background:var(--bg-raised,#16131F);border:1px solid var(--line,#2A2440);border-radius:12px;margin:14px 0;overflow:hidden}
-.conn-row{border-top:1px solid var(--line,#2A2440)}.conn-row:first-child{border-top:0}
+.conn{background:var(--bg-raised,#232327);border:1px solid var(--line,#2A2A2E);border-radius:12px;margin:14px 0;overflow:hidden}
+.conn-row{border-top:1px solid var(--line,#2A2A2E)}.conn-row:first-child{border-top:0}
 .conn-row>summary,.conn-row>.conn-head{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}.conn-row>.conn-head{cursor:default}
 .conn-row>summary::-webkit-details-marker{display:none}.conn-row>summary:hover{background:var(--bg-sunken,rgba(255,255,255,.03))}
 .conn-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--text-muted,#6B6B78);box-shadow:0 0 0 3px rgba(128,128,140,.15)}
@@ -36,7 +36,7 @@ export const SETTINGS_CSS = `<style>
 .conn-t{flex:1;min-width:0}.conn-t>b{display:block;color:var(--text-strong,#F7F7FA);font-weight:600}.conn-t span{display:block;color:var(--text-muted,#9A9AA6);font-size:13.5px;overflow-wrap:anywhere}
 .conn-act{flex:none;font-size:13px;font-weight:600;color:var(--accent-text,#B9A6FF);white-space:nowrap}.conn-row[open] .conn-act .when-closed,.conn-row:not([open]) .conn-act .when-open{display:none}
 .conn-body{padding:2px 16px 16px 38px}.conn-body ol{margin:6px 0 0;padding-left:20px}.conn-body li{margin:10px 0}.conn-body li::marker{color:var(--text-muted,#9A9AA6)}
-.conn-code{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}.conn-code code{font:600 18px 'IBM Plex Mono',monospace;letter-spacing:.04em;padding:8px 12px;border-radius:8px;border:1px dashed var(--accent,#8B6CF6);background:var(--bg,#0E0B16);color:var(--text-strong,#F7F7FA)}
+.conn-code{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}.conn-code code{font:600 18px 'IBM Plex Mono',monospace;letter-spacing:.04em;padding:8px 12px;border-radius:8px;border:1px dashed var(--accent,#8B6CF6);background:var(--bg,#1C1C1F);color:var(--text-strong,#F7F7FA)}
 .conn-wait{display:inline-flex;align-items:center;gap:8px;color:var(--text-muted,#9A9AA6);font-size:13.5px}.conn-wait i{width:8px;height:8px;border-radius:50%;background:var(--accent,#8B6CF6);animation:connp 1.4s ease-in-out infinite}
 @keyframes connp{50%{opacity:.25}}@media (prefers-reduced-motion:reduce){.conn-wait i{animation:none}}
 @media (max-width:520px){.conn-body{padding-left:16px}.conn-act{font-size:12.5px}}

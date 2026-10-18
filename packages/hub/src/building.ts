@@ -158,7 +158,7 @@ if(x.ok){b.textContent=x.j.state==='friends'?'Friends \u2713':'Intro requested';
   const CHIP_CSS = `<style>.cb-build{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-6px 0 18px;font:500 12.5px/1.2 'IBM Plex Sans',Arial,sans-serif}
 .cb-build-l{color:var(--text-muted,#8A8A93);text-transform:uppercase;letter-spacing:.06em;font-size:11px;margin-right:2px}
 .cb-tag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;text-decoration:none;transition:border-color .15s,background .15s}
-.cb-tag-prob{background:var(--accent-soft,#2A2440);color:var(--accent-text,#C9B8FF);border:1px solid transparent}
+.cb-tag-prob{background:var(--accent-soft,rgba(139,108,246,.10));color:var(--accent-text,#C9B8FF);border:1px solid transparent}
 .cb-tag-stack{background:transparent;color:var(--text,#D6D6DC);border:1px solid var(--line,#2A2A2E)}
 .cb-tag:hover{border-color:var(--accent,#8B6CF6);text-decoration:none}.cb-tag:focus-visible,.cb-tag-edit:focus-visible{outline:2px solid var(--accent,#8B6CF6);outline-offset:2px}
 .cb-tag-edit{color:var(--text-muted,#8A8A93);font-size:12px;margin-left:4px;text-decoration:underline;text-underline-offset:2px}.cb-build-none{color:var(--text-muted,#8A8A93)}
