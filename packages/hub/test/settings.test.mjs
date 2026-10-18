@@ -51,8 +51,8 @@ test("/settings: GitHub sign-up sees lights + in-page Obsidian connect; vault ow
   assert.match(html, /Connected as <b>@newbie<\/b>/, "GitHub light on");
   assert.match(html, /id="conn-obsidian"[\s\S]*?conn-dot"/, "Obsidian light off");
   assert.match(html, /Import a GitHub sign-up/, "in-page Obsidian steps");
-  assert.match(html, /cb-conn/, "owner bar shows connection dots");
-  assert.match(html, /href="http:\/\/hub\.test\/settings">Settings<\/a>/, "account menu has Settings");
+  assert.match(html, /class="ch-conn"/, "account menu shows connection dots");
+  assert.match(html, /href="http:\/\/hub\.test\/settings"[^>]*>(<svg[\s\S]*?<\/svg>)?Settings<\/a>/, "account menu has Settings");
   for (const sec of ["connections", "alerts", "page", "people", "notifications", "privacy", "account"]) assert.match(html, new RegExp(`id="${sec}"`), sec);
   let st = await (await fetch(base + "/settings/status", { headers: { cookie: s.sess } })).json();
   assert.equal(st.conn.github.on, true); assert.equal(st.conn.obsidian.on, false); assert.equal(st.conn.hosted, true);
@@ -91,23 +91,23 @@ test("alerts: pinned first, audience, unread badge on the owner's bar, seen beac
   const list = h.admin.alertList(); assert.equal(list[0].id, pin, "pinned on top");
   // the owner's public page carries the bell with an unread badge of 2 (the github-only one is not for a vault page)
   let page = await (await fetch(base + "/@mike/", { headers: ck })).text();
-  assert.match(page, /class="cb-bell"/); assert.match(page, /<span class="cb-badge">2<\/span>/);
+  assert.match(page, /class="ch-bell"/); assert.match(page, /<span class="ch-badge">2<\/span>/);
   assert.match(page, /Welcome to Caldera - from Mike/); assert.doesNotMatch(page, /GitHub people only/);
-  assert.match(page, /<b>there<\/b>/); assert.match(page, /<li>one<\/li>/); assert.match(page, /href="http:\/\/hub\.test\/guide"/);
+  assert.match(page, /Older news/, "the bell lists titles; bodies are on /alerts");
   assert.ok(page.indexOf("Welcome to Caldera") < page.indexOf("Older news"), "pinned listed first");
   // anonymous visitors see no bell
-  assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: { "user-agent": "Mozilla/5.0" } })).text(), /cb-bell/);
+  assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: { "user-agent": "Mozilla/5.0" } })).text(), /ch-bell/);
   // the seen beacon (signed token) clears the badge; a forged token does nothing
   assert.equal((await fetch(base + "/v1/alerts/seen?t=forged.sig")).status, 200);
   const seen = page.match(/data-seen="([^"]+)"/)[1].replace(/&amp;/g, "&").replace("http://hub.test", base);
   assert.equal((await fetch(seen)).status, 200);
   page = await (await fetch(base + "/@mike/", { headers: ck })).text();
-  assert.doesNotMatch(page, /<span class="cb-badge">/, "all read");
+  assert.doesNotMatch(page, /<span class="ch-badge">/, "all read");
   // a new alert shows up unread; /alerts lists and marks it read
   h.admin.alertPost({ title: "Fresh", body: "new" });
-  assert.match(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="cb-badge">1<\/span>/);
+  assert.match(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="ch-badge">1<\/span>/);
   const al = await (await fetch(base + "/alerts", { headers: ck })).text(); assert.match(al, /Fresh/); assert.match(al, /THE PROMPT/, "copy text is in the page for the copy button");
-  assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="cb-badge">/, "/alerts marked it read");
+  assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="ch-badge">/, "/alerts marked it read");
   assert.equal((await fetch(base + "/alerts", { redirect: "manual" })).headers.get("location"), "/signin");
   // releases post once per version
   const a1 = h.admin.alertPost({ title: "New in Caldera 9.9.9: x", body: "- y", version: "9.9.9" }).posted, a2 = h.admin.alertPost({ title: "again", body: "z", version: "9.9.9" }).posted;

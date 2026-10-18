@@ -35,7 +35,7 @@ after(() => { hub.server.close(); fs.rmSync(dir, { recursive: true, force: true 
 
 test("anonymous bar links to /signin; the sign-in page lists the right ways in", async () => {
   const html = await (await fetch(`${base}/@mike/`, { headers: UA })).text();
-  assert.match(html, /href="https:\/\/hub\.test\/signin\?h=mike"/); assert.match(html, /Get your own page/);
+  assert.match(html, /href="https:\/\/hub\.test\/signin\?h=mike"/); assert.match(html, /Get started/);
   const si = await (await fetch(base + "/signin?h=mike")).text();
   assert.match(si, /Email me a sign-in link/); assert.match(si, /Pair from Obsidian/); assert.doesNotMatch(si, /Sign in with GitHub/);
   assert.match(await (await fetch(base + "/signin?h=cy")).text(), /no confirmed summary email/);
@@ -53,7 +53,7 @@ test("email sign-in: same answer for right and wrong addresses, link only to the
   const show = await fetch(base + link); assert.equal(show.status, 200); assert.equal(show.headers.get("set-cookie"), null, "GET never signs in (mail scanners)");
   const use = await form("/signin/link", { c }); assert.equal(use.status, 303); assert.equal(use.headers.get("location"), "/@mike/");
   const cookie = (use.headers.get("set-cookie") || "").split(";")[0]; assert.match(cookie, /^cal_own=[0-9a-f]{64}$/);
-  assert.match(await ownerPage(cookie), /viewing your public page/);
+  assert.match(await ownerPage(cookie), /data-state="own"/);
   assert.equal((await form("/signin/link", { c })).status, 400, "single use");
 });
 
@@ -85,7 +85,7 @@ test("pairing: only the page's own key can approve; approved code signs in once;
   assert.equal(ok.status, 200); assert.equal(ok.body.handle, "mike");
   assert.equal((await (await fetch(base + "/signin/pair/status?p=" + pc2.poll)).json()).state, "approved");
   const done = await form("/signin/pair/done", { p: pc2.poll }); assert.equal(done.status, 303);
-  assert.match(await ownerPage((done.headers.get("set-cookie") || "").split(";")[0]), /viewing your public page/);
+  assert.match(await ownerPage((done.headers.get("set-cookie") || "").split(";")[0]), /data-state="own"/);
   assert.equal((await form("/signin/pair/done", { p: pc2.poll })).status, 400, "single use");
   const { body: pc3 } = await post("/signin/pair", { h: "mike" });
   hub.db.prepare("UPDATE pair_codes SET expires=?").run(Date.now() - 1);

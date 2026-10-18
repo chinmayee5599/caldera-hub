@@ -35,7 +35,7 @@ after(() => { hub.server.close(); fs.rmSync(dir, { recursive: true, force: true 
 
 test("anonymous visitors: sign-up bar, view counted, no private address anywhere", async () => {
   const r = await page("mike"); const html = await r.text();
-  assert.match(html, /Get your own page/); assert.doesNotMatch(html, /priv\.tailnet|viewing your public page|Private view/);
+  assert.match(html, /Get started/); assert.doesNotMatch(html, /priv\.tailnet|data-state="own"|private sections only you see/);
   assert.equal(r.headers.get("vary"), "Cookie");
   assert.equal(await views(ids.mike), 1);
 });
@@ -60,14 +60,14 @@ test("owner sees a Private view button on their own page only, and their visits 
   const { cookie } = await ownerCookie(ids.mike);
   const before = await views(ids.mike);
   const html = await (await page("mike", cookie)).text();
-  assert.match(html, /You're viewing your public page/); assert.match(html, /href="https:\/\/priv\.tailnet\.test\/@mike\/"[^>]*>&#128274;<span class="cb-v"> Private view</);
-  assert.match(html, /aria-current="page"[^>]*>&#127760;<span class="cb-v"> Public view/, "the switch shows Public view as current");
-  assert.match(html, /href="https:\/\/hub\.test\/signout\?h=mike">Sign out</);
-  assert.doesNotMatch(html, /Get your own page/);
+  assert.match(html, /data-state="own"/); assert.match(html, /href="https:\/\/priv\.tailnet\.test\/@mike\/" title="Your profile with the private sections only you see"/);
+  assert.match(html, /aria-current="page" title="Your profile as everyone sees it"/, "the switch shows Public as current");
+  assert.match(html, /href="https:\/\/hub\.test\/signout\?h=mike"[^>]*>(<svg[\s\S]*?<\/svg>)?Sign out</);
+  assert.doesNotMatch(html, /Get started/);
   assert.equal(await views(ids.mike), before, "owner views not counted");
   const other = await (await page("ana", cookie)).text();
-  assert.doesNotMatch(other, /priv\.tailnet|viewing your public page/, "mike's cookie means nothing on ana's page");
-  assert.doesNotMatch(await (await page("mike", "cal_own=" + "0".repeat(64))).text(), /Private view/, "forged cookie");
+  assert.doesNotMatch(other, /priv\.tailnet|data-state="own"/, "mike's cookie means nothing on ana's page");
+  assert.doesNotMatch(await (await page("mike", "cal_own=" + "0".repeat(64))).text(), /data-state="own"/, "forged cookie");
 });
 
 test("stale page: only the owner sees 'Last updated N days ago'", async () => {
@@ -75,25 +75,25 @@ test("stale page: only the owner sees 'Last updated N days ago'", async () => {
   try {
     const { cookie } = await ownerCookie(ids.mike);
     const mine = await (await page("mike", cookie)).text();
-    assert.match(mine, /Last updated 5 days ago/); assert.match(mine, /Private view/);
-    assert.doesNotMatch(await (await page("mike")).text(), /Last updated|days ago/, "anonymous visitors never see staleness");
+    assert.match(mine, /Updated 5d ago/); assert.match(mine, /data-state="own"/);
+    assert.doesNotMatch(await (await page("mike")).text(), /Updated \d+d ago/, "anonymous visitors never see staleness");
     hub.db.prepare("UPDATE profiles SET updated=? WHERE handle='mike'").run(new Date(Date.now() - 2 * 86400_000).toISOString());
-    assert.doesNotMatch(await (await page("mike", cookie)).text(), /Last updated/, "under 3 days: no notice");
+    assert.doesNotMatch(await (await page("mike", cookie)).text(), /Updated \d+d ago/, "under 3 days: no notice");
   } finally { hub.db.prepare("UPDATE profiles SET updated=? WHERE handle='mike'").run(new Date().toISOString()); }
 });
 
 test("plugin owner without a private address gets an Obsidian link; sign out clears it", async () => {
   const { cookie } = await ownerCookie(ids.ana);
-  assert.match(await (await page("ana", cookie)).text(), /href="obsidian:\/\/caldera\?open=private" target="_blank"[^>]*>&#128274;<span class="cb-v"> Private view/);
+  assert.match(await (await page("ana", cookie)).text(), /href="obsidian:\/\/caldera\?open=private" title="Opens your private view in Obsidian"/);
   const legacy = await fetch(`${base}/v1/own/out?h=ana`, { headers: { cookie }, redirect: "manual" });
   assert.equal(legacy.status, 302); assert.equal(legacy.headers.get("location"), "/signout?h=ana", "old sign-out links go through /signout");
   const ask = await (await fetch(`${base}/signout?h=ana`, { headers: { cookie } })).text();
   assert.match(ask, /signed in as <b>@ana<\/b>/); assert.match(ask, /method="post"/);
   assert.equal((await fetch(`${base}/signout?h=ana`, { method: "POST", headers: { cookie, origin: "https://evil.example" }, redirect: "manual" })).status, 403, "cross-site sign-out refused");
-  assert.match(await (await page("ana", cookie)).text(), /Private view/, "still signed in after the refused attempt");
+  assert.match(await (await page("ana", cookie)).text(), /data-state="own"/, "still signed in after the refused attempt");
   const out = await fetch(`${base}/signout?h=ana`, { method: "POST", headers: { cookie, origin: "https://hub.test" }, redirect: "manual" });
   assert.equal(out.status, 303); assert.equal(out.headers.get("location"), "/@ana/");
   assert.match(out.headers.get("set-cookie"), /cal_own=; .*Max-Age=0/); assert.match(out.headers.get("set-cookie"), /cal_s=; .*Max-Age=0/);
-  assert.doesNotMatch(await (await page("ana", cookie)).text(), /Private view/, "session deleted server-side");
+  assert.doesNotMatch(await (await page("ana", cookie)).text(), /data-state="own"/, "session deleted server-side");
   assert.match(await (await fetch(`${base}/signout`, { headers: { cookie } })).text(), /You're signed out/);
 });

@@ -13,6 +13,7 @@ import * as C from "@caldera/core";
 import { github } from "./github";
 import { connDots, type Conn } from "./settings";
 import { alertsStore, bellHtml, type PostAlert, type Audience } from "./alerts";
+import { appHeader, currentFor, swapHeader, HEADER_MARK, type HeaderItem, type HeaderViewer } from "./header";
 import { loadExt, type Ext } from "./ext";
 export { fallbacks as publicExt, type Ext } from "./ext";
 export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
@@ -133,31 +134,11 @@ export function socialRow(hub: string, handle: string, so: BarSocial, back = "")
 /** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
  *  (public page with the owner cookie, or the private address): logo, the [Public view | Private view] switch in the same
  *  place on both addresses, then the account menu (@handle, Your public page, Private view, Sign out). Same height either way. */
-export function calderaBar(hub: string, handle: string, own?: OwnerNav | null, social?: BarSocial, bell = ""): string {
-  const back = `/@${handle}/`;   // sign-in from this page comes back here
-  const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
-  const e = (v: string) => v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-  const chips = social && !social.inPage ? socialChips(base, handle, social) : "";
-  if (!own) {
-    const v = social?.viewer || null;
-    // anyone tapping kudos or Add friend without being signed in gets this small prompt (sign-in opens in a new window:
-    // the page is sandboxed and can't navigate the top window)
-    const need = social && !social.inPage ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and add friends</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
-    const right = v ? `<a href="${base}/@${encodeURIComponent(v.handle)}/" title="Signed in as @${e(v.handle)}" style="color:#B8B8C2;font-size:12.5px;white-space:nowrap">@${e(v.handle)}</a>`
-      : `<a href="${base}/signin?h=${encodeURIComponent(handle)}" rel="nofollow" style="color:#8A8A93;font-size:12.5px;white-space:nowrap"><span class="cb-tag">Owner? </span>Sign in</a>`;
-    return BAR_CSS + (social && !social.inPage ? BAR_ACT_CSS : "") + `<div id="caldera-bar" class="cb-anon"><span class="cb-l"><a class="cb-brand" href="${join}">${LOGO}<span>Caldera</span><span class="cb-tag" style="font:400 12.5px 'IBM Plex Sans',Arial,sans-serif;color:#8A8A93;margin-left:4px">the social network for GitHub and Obsidian</span></a></span>`
-      + chips + `<span class="cb-r">${v ? bell : ""}${right}${v ? "" : `<a class="cb-btn" href="${join}#install"><span class="cb-tag">Get your own page</span><span class="cb-short">Get a page</span></a>`}</span></div>` + need + (social && !social.inPage ? `<script>${BAR_ACT_JS}</script>` : "");
-  }
-  const ext = own.privateExternal ? ' target="_blank" rel="noopener"' : "";
-  const sw = `<span class="cb-sw" role="group" aria-label="Which view"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">${own.current === "public" ? "You're viewing your public page" : "Private address: you're in your private view"}</span>`
-    + `<a href="${e(own.publicHref)}"${own.current === "public" ? ' aria-current="page"' : ""} title="Your page as everyone sees it">&#127760;<span class="cb-v"> Public view</span></a>`
-    + `<a href="${e(own.privateHref)}"${ext}${own.current === "private" ? ' aria-current="page"' : ""} title="Your page with the private sections only you see">&#128274;<span class="cb-v"> Private view</span></a></span>`;
-  const menu = `<details><summary aria-label="Account">@${e(own.handle)} <span aria-hidden="true">&#9662;</span></summary><span class="cb-menu">`
-    + `<a href="${e(own.publicHref)}">Your public page</a><a href="${e(own.privateHref)}"${ext}>Private view</a>${own.settings ? `<a href="${e(own.settings)}">Settings</a>` : ""}`
-    + (own.note ? `<small>${e(own.note)}</small>` : "") + `<a href="${e(own.signout)}">Sign out</a></span></details>`;
-  const dots = own.conn && own.settings ? connDots(own.settings, own.conn) : "";
-  return BAR_CSS + `<div id="caldera-bar"><span class="cb-l"><a class="cb-brand" href="${base}/" title="Caldera">${LOGO}<span class="cb-word">Caldera</span></a>${sw}</span>`
-    + chips + `<span class="cb-r">${own.stale ? `<span class="cb-stale" title="Your page updates while Obsidian is open. Open it to refresh the page.">Last updated ${own.stale} days ago</span>` : ""}${bell}${dots}${menu}</span></div>`;
+/** The bar on hosted pages is now THE header (header.ts), swapped in at response time for the viewer of each request,
+ *  so every page shows the same bar whatever plugin version built it. Callers keep this name; it returns the marker. */
+export function calderaBar(hub: string, handle: string, _own?: OwnerNav | null, social?: BarSocial, _bell = ""): string {
+  // pages with no title area to hang the social row on keep it right under the header
+  return HEADER_MARK + (social && !social.inPage ? socialRow(hub, handle, social, `/@${handle}/`) : "");
 }
 
 /** Heatmap fix for profiles built before plugin 0.5.1 (their profile.css is frozen in the bundle): cells fill the column,
@@ -701,7 +682,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   }
   /** THE site header (logo, How it works, People, World, Guide, What's new, FAQ, Sign in, Get started), taken from the site's
    *  guide.html so hub-rendered pages match the static ones; current = the nav href to mark (e.g. "/world"). */
-  function siteHeader(current = ""): string {
+  function siteHeader(_current = ""): string { return HEADER_MARK; }
+  function oldSiteHeader(current = ""): string {
     let h = ""; try { const g = fs.readFileSync(path.join(opts.siteDir || "", "guide.html"), "utf8"); h = g.slice(g.indexOf('<header class="nav">'), g.indexOf("</header>") + 9); } catch { /* no site */ }
     if (!h.startsWith("<header")) h = `<header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/signin">Sign in</a></nav><a class="btn small" href="/#install">Get started</a></header>`;
     h = h.replace(/ aria-current="page"/g, "").replace(/href="\.\/"/g, 'href="/"').replace(/href="\.\/#/g, 'href="/#').replace(/href="#/g, 'href="/#');
@@ -712,7 +694,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
    *  ahead of the page's own (so the page keeps its look) and the script that turns "Sign in" into the account menu. */
   function navify(html: string, current = ""): string {
     const head = siteHeader(current);
-    if (/<header class="nav">[\s\S]*?<\/header>/.test(html)) html = html.replace(/<header class="nav">[\s\S]*?<\/header>/, head);
+    if (/<header class="nav"[\s\S]*?<\/header>/.test(html)) html = html.replace(/<header class="nav"[\s\S]*?<\/header>/, head);
     else if (/<div class="top">[\s\S]*?<\/div>/.test(html)) html = html.replace(/<div class="top">[\s\S]*?<\/div>/, "").replace(/<body[^>]*>/i, b => b + head);
     else html = html.replace(/<body[^>]*>/i, b => b + head);
     if (!html.includes("/assets/site.css")) html = html.replace(/<head>/i, `<head><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">`);
@@ -1159,6 +1141,35 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const rows = alerts.forOwner(owner, alertKind(owner), 20), upTo = rows.reduce((m, a) => a.ts > m ? a.ts : m, "");
     return bellHtml(PUB(), rows, upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(owner, upTo))}` : "");
   }
+  /** Extra signed-in header controls (e.g. Messages), registered by other modules. */
+  const headerItems: HeaderItem[] = [];
+  const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+    return mn < 1 ? "just now" : mn < 60 ? `${mn}m ago` : mn < 2880 ? `${Math.floor(mn / 60)}h ago` : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+  function headerViewer(id: string | null): HeaderViewer | null {
+    const pr = id ? profile(id) : null; if (!pr?.handle) return null;
+    const av = body(pr).photos?.avatar, rows = alerts.forOwner(pr.id, alertKind(pr.id), 20), upTo = rows.reduce((m, a) => a.ts > m ? a.ts : m, "");
+    const cn = connectionsFor(pr.id);
+    return { handle: pr.handle, name: pr.name || "", avatar: av ? `${PUB()}/@${pr.handle}/${String(av).replace(/^\.?\//, "")}` : undefined,
+      conn: cn ? { github: cn.github.on, obsidian: cn.obsidian.on } : undefined, unread: rows.filter(a => !a.read).length,
+      alerts: rows.map(a => ({ title: a.title, when: ago(a.ts), read: !!a.read, pinned: !!a.pinned, href: `${PUB()}/alerts#a-${a.id}` })),
+      seenUrl: upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(pr.id, upTo))}` : undefined };
+  }
+  /** THE header for one request on the public site: who is looking, and whether this is their own profile or city. */
+  function headerFor(req: http.IncomingMessage, pathname: string): { header: string; signedIn: boolean } {
+    const me = memberOf(req), viewer = headerViewer(me);
+    const pm = pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/), h = pm ? pm[1] : "";
+    let own = null as any;
+    if (viewer && h && viewer.handle === h) {
+      const rel = ((pm![2] || "/").slice(1) || "index.html").replace(/\/$/, "/index.html"), nav = ownerBar(req, h, rel);
+      if (nav) { const pr = byHandle(h), hosted = pr ? hostedOf(pr.id) : false;
+        own = { view: "public", publicHref: nav.publicHref, privateHref: hosted ? undefined : nav.privateHref, privateExternal: nav.privateExternal, stale: nav.stale }; }
+    }
+    const items = me && viewer ? headerItems.map(f => { try { return f(me); } catch { return ""; } }).filter(Boolean) : [];
+    const header = appHeader({ hub: PUB(), current: currentFor(pathname), viewer, own, items,
+      signinHref: h && byHandle(h) ? `${PUB()}/signin?h=${encodeURIComponent(h)}` : `${PUB()}/signin`,
+      joinHref: h && byHandle(h) ? `${PUB()}/?invite=${encodeURIComponent(h)}#install` : `${PUB()}/#install` });
+    return { header, signedIn: !!viewer };
+  }
   /** The owner nav for `handle` (same switch + account menu on the public page and the private address), or null. */
   function navFor(pr: any, current: "public" | "private", rel = "index.html", stale?: number): OwnerNav {
     const h = pr.handle as string, sub = rel === "index.html" ? "" : rel, priv = privateFor(h), hosted = hostedOf(pr.id);
@@ -1385,23 +1396,41 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
 
   /** Every link that leaves Caldera opens in a new window: rewrite off-site <a href> in any HTML this hub sends. */
   const hostOf = (u?: string) => { try { return u ? new URL(u).host : ""; } catch { return ""; } };
-  function guardLinks(req: http.IncomingMessage, res: http.ServerResponse, extra: string[] = []) {
+  function guardLinks(req: http.IncomingMessage, res: http.ServerResponse, extra: string[] = [], hdr?: () => { header: string; signedIn: boolean }) {
     const hosts = [hostOf(opts.publicUrl), hostOf(opts.privateUrl), String(req.headers.host || ""), ...extra].filter(Boolean);
-    let html = false;
+    let html = false, held: any[] | null = null;
     const wh = res.writeHead.bind(res) as any;
+    const flush = () => { if (held) { const h = held; held = null; wh(...h); } };
     (res as any).writeHead = (status: number, ...rest: any[]) => {
       const hdrs = rest.find(x => x && typeof x === "object" && !Array.isArray(x));
       const ct = String((hdrs && (hdrs["content-type"] || hdrs["Content-Type"])) || res.getHeader("content-type") || "");
-      html = /text\/html/i.test(ct); return wh(status, ...rest);
+      html = /text\/html/i.test(ct);
+      if (html && hdr) { held = [status, ...rest]; return res; }   // held until end(): the header and cache policy depend on the viewer
+      return wh(status, ...rest);
     };
+    const write = res.write.bind(res) as any;
+    (res as any).write = (...a: any[]) => { flush(); return write(...a); };
     const end = res.end.bind(res) as any;
     (res as any).end = (chunk?: any, ...rest: any[]) => {
       if ((html || /text\/html/i.test(String(res.getHeader("content-type") || ""))) && chunk && (typeof chunk === "string" || Buffer.isBuffer(chunk))) {
-        try { chunk = C.externalLinksNewWindow(Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk, hosts); } catch { /* never break a page */ }
+        let out = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk as string;
+        if (hdr && (out.includes(HEADER_MARK) || out.includes('<header class="nav"'))) {
+          try {
+            const r = hdr(), swapped = swapHeader(out, r.header);
+            if (swapped !== null) { out = swapped;
+              const h0 = held ? held.find((x: any) => x && typeof x === "object" && !Array.isArray(x)) : null;
+              if (r.signedIn) { if (h0) { h0["cache-control"] = "private, no-store"; h0["vary"] = "Cookie"; } else { res.setHeader("cache-control", "private, no-store"); res.setHeader("vary", "Cookie"); } }
+              else if (h0) h0["vary"] = "Cookie"; else res.setHeader("vary", "Cookie"); }
+          } catch (err: any) { console.error("header", err?.message); }
+        }
+        try { out = C.externalLinksNewWindow(out, hosts); } catch { /* never break a page */ }
+        chunk = out;
       }
+      flush();
       return end(chunk, ...rest);
     };
   }
+
 
   FEED = feed({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, listed, modOf, areFriends, befriend: (a, b, kind, ts, why) => { befriend(a, b, kind, ts, why); worldCache = null; },
     memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags,
@@ -1418,7 +1447,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
 
   const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
-    guardLinks(req, res);
+    guardLinks(req, res, [], () => headerFor(req, (() => { try { return new URL(req.url || "/", "http://hub").pathname; } catch { return "/"; } })()));
     try {
       if (req.method === "HEAD") {   // link checkers (e.g. the Obsidian directory) probe with HEAD: answer like GET, without a body
         req.method = "GET"; const end = res.end.bind(res);
@@ -2042,7 +2071,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   // connecting tailnet user (clients can't reach this port directly, so they can't forge the header).
   const privateServer = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
-    guardLinks(req, res);
+    guardLinks(req, res, [], () => {   // the same header as the public site, on the private (Tailscale) address: the owner, Private selected
+      const u = new URL(req.url || "/", "http://private"), mine0 = owners[String(req.headers["tailscale-user-login"] || "").toLowerCase()];
+      const pr = mine0 ? byHandle(mine0) : null, viewer = headerViewer(pr?.id || null);
+      const mm = u.pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/), sub = mm && mm[2] && mm[2] !== "/" ? mm[2].slice(1).replace(/^index\.html$/, "") : "";
+      const own = pr ? { view: (u.searchParams.get("view") === "public" ? "public" : "private") as "public" | "private", publicHref: `${PUB()}/@${pr.handle}/${sub}`, privateHref: `${(privateFor(pr.handle) || "").replace(/\/$/, "")}/${sub}`.replace(/\/\/$/, "/") } : null;
+      return { header: appHeader({ hub: PUB(), current: "profile", viewer, own }), signedIn: true };
+    });
     res.setHeader("cache-control", "no-store"); res.setHeader("x-robots-tag", "noindex, nofollow");
     try {
       const url = new URL(req.url || "/", "http://private");
@@ -2092,7 +2127,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
   });
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, feedReady, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, feedReady, headerItems, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }

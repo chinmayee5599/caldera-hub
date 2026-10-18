@@ -167,7 +167,7 @@ test("onEvent: signup fires once per new profile, not on updates; delete fires",
 
 test("every hosted profile page gets the Caldera bar linking home with the owner's invite", async () => {
   const html = (await get("/@mike/")).body;
-  assert.ok(html.includes('id="caldera-bar"') && html.includes("/?invite=mike") && html.includes("Get your own page"));
+  assert.ok(html.includes('id="caldera-bar"') && html.includes("/?invite=mike") && html.includes("Get started"));
   assert.ok(html.indexOf('id="caldera-bar"') < html.indexOf("Mike again") || !html.includes("Mike again"));
   const css = await fetch(base + "/@mike/caldera.json").then(r => r.text());
   assert.ok(!css.includes("caldera-bar"), "only HTML pages are touched");
@@ -244,7 +244,7 @@ test("private owner address: tailnet login gates it, layer encrypted at rest, pu
   assert.equal((await pget("/@pia/", "stranger@example.com")).status, 403);
   assert.equal((await pget("/@quin/", "me@example.com")).status, 403, "only your own profile");
   const mine = await (await pget("/@pia/", "ME@example.com")).text();
-  assert.ok(mine.includes("SECRET-LAYER") && mine.includes("Private address"));
+  assert.ok(mine.includes("SECRET-LAYER") && /aria-current="page"[^>]*title="Your profile with the private sections only you see"/.test(mine), "Private is the selected view");
   assert.ok(!(await (await pget("/@pia/?view=public", "me@example.com")).text()).includes("SECRET-LAYER"));
   assert.equal((await pget("/", "me@example.com")).headers.get("location"), "/@pia/");
   await post(`/v1/owner/${pia.id}/private`, { html: SECRET, pages: { "city.html": "<html><body>PRIVATE-CITY</body></html>", "../evil.html": "x" } }, await login(pia));
