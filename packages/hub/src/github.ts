@@ -463,7 +463,8 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       redirect(res, "/me"); return true;
     }
     if (req.method === "POST" && p === "/me/upload") {
-      const acct = account(req); if (!acct || acct.claimed) { ctx.json(res, 401, { error: "Sign in with GitHub first." }); return true; }
+      const ownU = ctx.owner?.of(req), acct = account(req) || (ownU ? q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(ownU) as any : null);
+      if (!acct || acct.claimed) { ctx.json(res, 401, { error: "Sign in first." }); return true; }
       const origin = String(req.headers.origin || ""); if (origin && origin !== pub && !(origin === "null" && req.headers["sec-fetch-site"] === "same-origin")) { ctx.json(res, 403, { error: "wrong origin" }); return true; }
       const b = await ctx.readBody(req).catch(() => null) as any, kind = b?.kind === "banner" ? "banner" : b?.kind === "photo" ? "photo" : null;
       if (!kind || typeof b.data !== "string") { ctx.json(res, 400, { error: "Choose an image." }); return true; }
@@ -475,9 +476,11 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       ctx.json(res, 200, { ok: true }); return true;
     }
     if (p === "/me") {
-      const acct = account(req);
+      // a GitHub sign-up who signed in another way (email link, Obsidian pairing) holds the owner cookie, not a GitHub
+      // session: that cookie is proof of ownership, so their account page opens for it too
+      const ownId = ctx.owner?.of(req), acct = account(req) || (ownId ? q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(ownId) as any : null);
       if (!acct) {   // signed in as the owner of a profile made in Obsidian (GitHub-linked or otherwise): that page is home
-        const own = ctx.owner?.of(req), pr = own ? q("SELECT handle FROM profiles WHERE id=?").get(own) as any : null;
+        const pr = ownId ? q("SELECT handle FROM profiles WHERE id=?").get(ownId) as any : null;
         redirect(res, pr?.handle ? `/@${pr.handle}/` : "/auth/github"); return true;
       }
       if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
