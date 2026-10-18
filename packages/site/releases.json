@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.23.0",
+      "date": "2026-10-18",
+      "title": "Follow people; friends follow each other",
+      "items": [
+        "Follow anyone with + Follow on their page. When you follow each other, you're friends: share notes end-to-end encrypted and give each other gravity, as before.",
+        "Every page shows friends, followers and following counts under the name.",
+        "Following back is instant on caldera.social, whether you joined with GitHub or Obsidian. Tap Following twice to unfollow.",
+        "In Obsidian, the panel's Friend requests list is now Following you, with a Follow back button; notices and the daily email say new followers.",
+        "Private repos now show as padlocked buildings by default (sizes and activity, never names). Choose Anonymous or Hidden in settings if you want less."
+      ]
+    },
+    {
       "version": "0.22.0",
       "date": "2026-10-18",
       "title": "Your own sections: custom modules",

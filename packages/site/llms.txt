@@ -47,7 +47,7 @@ The full setup prompt (safe to paste again; it covers everything below and asks 
 - Private view on the web (only the owner sees it): fed by your private sections, pushed encrypted from Obsidian. Turn on Settings -> Caldera -> Private web view, then use the Public view | Private view switch when signed in.
 - Daily summary email (only the owner sees it): fed by your address (stored encrypted, double opt-in). Settings -> Caldera -> Daily summary email (or caldera.social/me), then click the confirm link.
 - Groups: fed by the groups you join. Settings -> Caldera -> Groups (or caldera.social/me); each group is a town of everyone's cities at caldera.social/g/<name>.
-- Friends, kudos and views: fed by other members. Nothing to set up: add friends and send kudos from anyone's page; shared GitHub repos connect people automatically.
+- Friends, kudos and views: fed by other members. Nothing to set up: follow people and send kudos from anyone's page (follow each other and you're friends); shared GitHub repos connect people automatically.
 
 ## Reference
 - [Guide: every feature, change your page, commands, keys](https://caldera.social/guide)
