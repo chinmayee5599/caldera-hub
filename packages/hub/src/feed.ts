@@ -495,7 +495,7 @@ export function feed(c: FeedCtx) {
 .fd-row2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0 4px}.fd-row2 .fd-hint{font-size:12.5px;color:var(--accent-text)}
 .fd-postbtn{min-height:38px;padding:0 18px;transition:transform .15s}.fd-postbtn:hover{transform:translateY(-1px)}
 .fd-burst{position:fixed;z-index:70;pointer-events:none;font-size:20px;animation:fdburst .9s ease-out forwards}@keyframes fdburst{to{transform:translate(var(--dx),var(--dy)) scale(1.2);opacity:0}}
-@media (max-width:420px){.fd-big button{font-size:15px;gap:8px;padding:0 10px}.fd-big button b{font-size:20px}}
+.fd-big button span{white-space:nowrap}@media (max-width:420px){.fd-big{gap:8px}.fd-big button{font-size:14px;gap:6px;padding:0 8px}.fd-big button b{font-size:18px}}
 @media (prefers-reduced-motion:reduce){.fd-big button,.fd-chips2 button,.fd-postbtn{transition:none}.fd-big button:hover,.fd-chips2 button:hover{transform:none}.fd-pop1{animation:none}}
 .fd-more{display:flex;justify-content:center;margin:16px 0}.fd-empty{color:var(--text-muted);text-align:center;padding:24px}
 .fd-dots{min-width:34px;justify-content:center;font-size:18px;line-height:1}.fd-own .fd-pop{min-width:180px;left:auto;right:0}.fd-own .fd-pop button{display:block;width:100%;text-align:left}.fd-confirm{display:block;padding:8px 10px;font-size:14px;color:var(--text)}.fd-confirm button{display:inline-flex!important;width:auto!important;margin:6px 6px 0 0;padding:5px 12px!important;border-radius:999px;border:1px solid var(--line)}.fd-confirm [data-yes]{background:#E5484D;border-color:#E5484D;color:#fff}
