@@ -784,6 +784,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   /** Hub-side live blocks on hosted pages: links from other gardens, the garden home, layout fixes for old builds. */
   function liveBlocks(handle: string, rel: string, html: string): string {
+    // the network Feed is the first tab on every page, before the person's own .md tabs
+    if (html.includes('<div class="tabs">') && !html.includes('class="tab tab-feed"')) html = html.replace('<div class="tabs">', `<div class="tabs"><a class="tab tab-feed" href="${(opts.publicUrl || "https://caldera.social").replace(/\/$/, "")}/feed" title="What's happening across Caldera">&#x1F4E1; Feed</a>`);
     // every page's nav gets World just above City (pages built before plugin 0.19.x don't have it): one click up to the map
     if (!html.includes("/world?focus=") && html.includes('class="tree-row toc-row page-row')) {
       const hubBase = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), w = `<a class="tree-row toc-row page-row" href="${hubBase}/world?focus=${encodeURIComponent(handle)}">World</a>`;
