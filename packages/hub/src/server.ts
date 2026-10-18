@@ -19,7 +19,8 @@ const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("h
 export interface HubOptions { dataDir: string; port?: number; publicUrl?: string; siteDir?: string; trustProxy?: boolean;
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
-  privatePort?: number; privateUrl?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
+  privatePort?: number; privateUrl?: string;
+  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number };
   /** daily summary emails: Resend key (production) or a send hook (tests); schedule starts the daily job */
   email?: { resendKey?: string; send?: (m: Mail) => Promise<void>; schedule?: boolean }; }
 
@@ -275,6 +276,10 @@ export function createHub(opts: HubOptions) {
         storeEnvelope(e, null);
         indexGarden(e.from, handle, b.garden);
         if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
+        if (!existing && opts.founder) {   // the founder is everyone's first friend; it can be removed like any other
+          const f = byHandle(opts.founder.toLowerCase());
+          if (f && f.id !== e.from) { const t = now(); q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(f.id, e.from, t); q("INSERT OR IGNORE INTO friends VALUES (?,?,?)").run(e.from, f.id, t); }
+        }
         if (!existing) emit({ type: "signup", handle, name: b.name || "", total: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
         return { status: 200, body: { ok: true, id: e.from, handle } };
       }
@@ -678,6 +683,7 @@ export function createHub(opts: HubOptions) {
 
   const GH = github({ q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
+    owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id) },
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe } } });
 
   // ---------------------------------------------------------------- the owner, signed in on their own browser
@@ -730,13 +736,26 @@ export function createHub(opts: HubOptions) {
 <body><header class="nav"><a class="brand" href="/">Caldera</a><nav><a href="/people">People</a><a href="/gardens">Gardens</a><a href="/guide">Guide</a></nav></header><main class="si">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   };
   const hostedOf = (owner: string) => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner);
+  /** The profile this browser is signed in as (owner cookie), if any. */
+  function ownerOf(req: http.IncomingMessage): string | null {
+    const t = reqCookies(req)[OWN_COOKIE]; if (!t) return null;
+    return (q("SELECT owner FROM owner_sessions WHERE token_hash=? AND expires > ?").get(hashToken(t), Date.now()) as any)?.owner || null;
+  }
+  /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
+  function signinGeneral(res: http.ServerResponse) {
+    signinPage(res, 200, "Sign in", `<h1>Sign in to Caldera</h1><p class="lede">Sign this browser in as the owner of your page. It stays signed in for a year.</p>
+<div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github">Sign in with GitHub</a></div>
+<div class="card"><h2>Made your page in Obsidian?</h2><p class="mut">Open your page and tap <b>Sign in</b> in the bar at the top for an email link or a code from Obsidian. Or in Obsidian, run <b>Caldera: Open my public page (as owner)</b>.</p></div>
+<p class="mut">No page yet? <a href="/#install">Get your own page</a>.</p>`);
+  }
   function signinHome(res: http.ServerResponse, pr: any, note = "") {
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
     const h = pr.handle as string, hosted = hostedOf(pr.id), hasEmail = mail.hasConfirmed(pr.id);
     const emailCard = `<div class="card"><h2>Email me a sign-in link</h2>${hasEmail
       ? `<p class="mut">Type the email your daily Caldera summary goes to. We'll send a link that works once, for 15 minutes.</p><form method="post" action="/signin/email"><input type="hidden" name="h" value="${e(h)}"><input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com"><button class="btn small" type="submit">Send the link</button></form>`
       : `<p class="mut">This page has no confirmed summary email yet, so there's nowhere to send a link. ${hosted ? "Sign in with GitHub instead, and add your email on your account page for next time." : "Pair this device from Obsidian below, then turn on the daily summary email in Caldera settings for next time."}</p>`}</div>`;
-    const ghCard = hosted ? `<div class="card"><h2>Sign in with GitHub</h2><p class="mut">This page was made with GitHub. Sign in with the same GitHub account.</p><a class="btn small" href="/auth/github">Sign in with GitHub</a></div>` : "";
+    const ghLogin = hosted ? "" : GH.ghLoginsOf(pr)[0] || "";   // a page made in Obsidian that lists its GitHub account
+    const ghCard = hosted || ghLogin ? `<div class="card"><h2>Sign in with GitHub</h2><p class="mut">${hosted ? "This page was made with GitHub. Sign in with the same GitHub account." : `Sign in as <b>${e(ghLogin)}</b>, the GitHub account linked on this page.`}</p><a class="btn" href="/auth/github?h=${encodeURIComponent(h)}">Sign in with GitHub</a></div>` : "";
     const pairCard = hosted ? "" : `<div class="card" id="pair"><h2>Pair from Obsidian</h2><p class="mut">On a computer with your vault: in Obsidian, open the command palette and run <b>Caldera: Sign in another device</b> (or the key button in the My profile tab), then type the code shown here.</p>
 <div id="pair-box"><button class="btn small" type="button" id="pair-go">Show a code</button></div></div>`;
     const js = hosted ? "" : `(function(){var b=document.getElementById('pair-go');if(!b)return;b.addEventListener('click',function(){b.disabled=true;
@@ -895,6 +914,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin) return json(res, 403, { error: "wrong origin" });
         const ip = ipOf(req);
         if (req.method === "GET" && p === "/signin") {
+          if (!url.searchParams.get("h")) { signinGeneral(res); return; }
           const pr = byHandle((url.searchParams.get("h") || "").toLowerCase()); if (!pr || modOf(pr.handle, pr.id)) { signinPage(res, 404, "Sign in", `<h1>No such page</h1><p><a href="/people">Find people</a></p>`); return; }
           signinHome(res, pr); return;
         }
@@ -1263,7 +1283,7 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
       .then(warn("email")).catch(err => console.error("email notify error", String(err)));
   } : undefined;
   const hub = createHub({ dataDir: process.env.CALDERA_DATA || "./data", port: Number(process.env.PORT || 8787), publicUrl: process.env.CALDERA_PUBLIC_URL || "",
-    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent,
+    siteDir: process.env.CALDERA_SITE || undefined, trustProxy: process.env.CALDERA_TRUST_PROXY === "1", onEvent, founder: process.env.CALDERA_FOUNDER || undefined,
     email: resend ? { resendKey: resend, schedule: true } : undefined,
     // CALDERA_TAILNET_OWNERS="you@example.com:handle,..."  (Tailscale login -> Caldera handle)
     privatePort: Number(process.env.CALDERA_PRIVATE_PORT) || undefined, privateUrl: process.env.CALDERA_PRIVATE_URL || undefined,

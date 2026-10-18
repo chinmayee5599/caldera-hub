@@ -27,6 +27,8 @@ export interface GhCtx {
   /** growth helpers from the hub: suggestions, open requests, referrals */
   social?: { suggest: (id: string, n?: number) => any[]; openRequests: (id: string) => { incoming: any[]; outgoing: any[] }; invitedCount: (id: string) => number;
     recordReferral: (invitee: string, inviterHandle: unknown, via: string) => string | null; email?: EmailHooks; pageState?: (id: string) => C.PageState | null };
+  /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
+  owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -43,11 +45,27 @@ export function github(ctx: GhCtx) {
   q(`CREATE TABLE IF NOT EXISTS gh_accounts (gh_id INTEGER PRIMARY KEY, login TEXT, profile_id TEXT, handle TEXT, key_sealed TEXT, token_sealed TEXT,
       installation TEXT, edits TEXT, cache TEXT, created TEXT, refreshed TEXT, claimed TEXT, claim_code TEXT, claim_expires INTEGER)`).run();
   q("CREATE TABLE IF NOT EXISTS gh_sessions (token TEXT PRIMARY KEY, gh_id INTEGER, expires INTEGER)").run();
+  // GitHub sign-in for profiles that already exist (made in Obsidian): a GitHub login is linked to the profile whose signed
+  // manifest lists https://github.com/<login>. No hosted profile is made for these; the link only grants the owner cookie.
+  q("CREATE TABLE IF NOT EXISTS gh_links (gh_id INTEGER PRIMARY KEY, login TEXT, profile_id TEXT, ts TEXT)").run();
   const appFile = path.join(ctx.dataDir, "github-app.json");
   const app = (): App | null => { try { return JSON.parse(fs.readFileSync(appFile, "utf8")); } catch { return null; } };
   const pub = ctx.publicUrl.replace(/\/$/, "") || "https://caldera.social";
   const secure = pub.startsWith("https:");
   const hashTok = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+  /** GitHub logins a profile's signed manifest links to (lowercase). */
+  const ghLoginsOf = (pr: any): string[] => { try { const links = JSON.parse(pr.manifest).body?.links;
+    return (Array.isArray(links) ? links : []).map((l: any) => String(Array.isArray(l) ? l[1] : "").match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9-]{1,39})\/?$/)?.[1]?.toLowerCase()).filter(Boolean) as string[]; } catch { return []; } };
+  /** The existing (non-hosted) profile that claims this GitHub login, most recently updated first. */
+  const claimedBy = (login: string): any => (q("SELECT id, handle, manifest, updated FROM profiles WHERE handle IS NOT NULL ORDER BY updated DESC").all() as any[])
+    .find(pr => !q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id) && (ctx.owner?.usable(pr) ?? true) && ghLoginsOf(pr).includes(login.toLowerCase())) || null;
+  const addCookie = (res: http.ServerResponse, raw: string) => { const prev = res.getHeader("set-cookie"); const list = Array.isArray(prev) ? prev : prev ? [String(prev)] : []; res.setHeader("set-cookie", [...list, raw]); };
+  const linkedProfile = (ghId: number, login: string): any => {
+    const ln = q("SELECT * FROM gh_links WHERE gh_id=?").get(ghId) as any; if (!ln) return null;
+    const pr = q("SELECT id, handle, manifest, updated FROM profiles WHERE id=?").get(ln.profile_id) as any;
+    if (pr && (ctx.owner?.usable(pr) ?? true) && ghLoginsOf(pr).includes(login.toLowerCase())) return pr;
+    q("DELETE FROM gh_links WHERE gh_id=?").run(ghId); return null;   // the owner took the GitHub link off their page: the link goes
+  };
 
   // ------------------------------------------------------------------ cookies + sessions
   const cookies = (req: http.IncomingMessage) => Object.fromEntries(String(req.headers.cookie || "").split(/;\s*/).filter(Boolean).map(c => { const i = c.indexOf("="); return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))]; }));
@@ -299,7 +317,8 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     if (req.method === "GET" && p === "/auth/github") {
       const a = app(); if (!a) { page(res, 503, "Coming soon", `<h1>Sign up with GitHub is almost ready</h1><p>Install the <a href="/#install">Obsidian plugin</a> in the meantime.</p>`); return true; }
       const inv = (url.searchParams.get("invite") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31), grp = groupsFrom(url.searchParams.get("group"))[0];
-      const signed = account(req);
+      const forH = (url.searchParams.get("h") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+      const signed = forH ? null : account(req);
       if (signed) {
         if (grp && !signed.claimed) {   // already here: join the group and republish
           const ed = JSON.parse(signed.edits || "{}"); ed.groups = [...new Set([...(ed.groups || []), grp])];
@@ -312,6 +331,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       if (inv) setCookie(res, "cal_inv", inv, 30 * 86400);
       if (grp) setCookie(res, "cal_grp", grp, 30 * 86400);
       const state = crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
+      setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(a.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
@@ -322,6 +342,17 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
         const tok = await exchange({ code: url.searchParams.get("code") || "", redirect_uri: pub + "/auth/github/callback" });
         const me = await gh(tok.access, "/user") as any;
         let acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id) as any;
+        const wantH = String(cookies(req).cal_h || "").toLowerCase(); setCookie(res, "cal_h", "", 0);
+        // an existing profile that lists this GitHub account (made in Obsidian): sign in as its owner, never make another
+        if (!acct || acct.claimed || (wantH && wantH !== acct.handle)) {
+          const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
+          if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
+            q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
+            addCookie(res, ctx.owner.start(pr.id)); redirect(res, `/@${pr.handle}/`); return true;
+          }
+          if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
+        }
+        if (acct && acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
         if (acct) {
           q("UPDATE gh_accounts SET token_sealed=?, login=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(tok)), me.login, me.id);
           startSession(res, me.id); redirect(res, "/me"); return true;
@@ -371,7 +402,10 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     if (p === "/me") {
       const acct = account(req);
-      if (!acct) { redirect(res, "/auth/github"); return true; }
+      if (!acct) {   // signed in as the owner of a profile made in Obsidian (GitHub-linked or otherwise): that page is home
+        const own = ctx.owner?.of(req), pr = own ? q("SELECT handle FROM profiles WHERE id=?").get(own) as any : null;
+        redirect(res, pr?.handle ? `/@${pr.handle}/` : "/auth/github"); return true;
+      }
       if (acct.claimed) { page(res, 200, "Moved to Obsidian", `<h1>This profile now lives in your vault</h1><p>Edit it from Caldera in Obsidian. <a href="${esc(pub)}/@${esc(acct.handle)}/">Your page</a></p>`); return true; }
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
         mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : ""); return true; }
@@ -447,5 +481,5 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     return false;
   }
-  return { route, privateRoute, build, account, configured: () => !!app() };
+  return { route, privateRoute, build, account, ghLoginsOf, configured: () => !!app() };
 }
