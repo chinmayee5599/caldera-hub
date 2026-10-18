@@ -68,3 +68,17 @@ test("several sign-ins from the same vault at once all succeed (each uses its ow
   assert.equal(again.status, 401, "a used challenge can't be replayed");
   h.server.close();
 });
+
+test("deleting a profile removes its email subscription and referral rows", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-erase-"));
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  const base = "http://127.0.0.1:" + await h.listen(0), id = C.newIdentity();
+  await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "profile.manifest", { handle: "goner", name: "G", boxKey: id.boxPublic })) });
+  h.db.prepare("INSERT INTO email_subs (owner, email, hash, confirmed, token, created) VALUES (?,?,?,?,?,?)").run(id.id, "sealed", "h", 1, "t", new Date().toISOString());
+  h.db.prepare("INSERT INTO referrals VALUES (?,?,?,?)").run(id.id, "cal:someone", new Date().toISOString(), "github");
+  const r = await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "profile.delete", {})) });
+  assert.equal(r.status, 200);
+  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM email_subs WHERE owner=?").get(id.id).n, 0, "no more emails to a deleted member");
+  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM referrals WHERE invitee=?").get(id.id).n, 0);
+  h.server.close();
+});
