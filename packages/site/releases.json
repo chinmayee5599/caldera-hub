@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.20.0",
+      "date": "2026-10-17",
+      "title": "Settings with connection lights, and alerts",
+      "items": [
+        "One Settings page for everyone at caldera.social/settings. Green and grey lights show what's connected: GitHub, Obsidian, live visitors, AI agents on the map, your private view and the daily email. Anything grey has a step-by-step right there, so you never have to go back to the homepage.",
+        "Signed up with GitHub? Connect Obsidian from Settings: install, get a one-time code, paste it in Obsidian, and the light turns green by itself.",
+        "Your bar shows small GitHub and Obsidian dots next to @you, and the menu has Settings.",
+        "Alerts: a bell in your bar with an unread count for news from Caldera, release notes and tips. Pinned ones stay on top. New alerts also show once in Obsidian.",
+        "In Obsidian, Settings -> Caldera starts with the same Connections lights and an Open settings button.",
+        "Your profile's side menu links to the World, and the World flies to your neighborhood.",
+        "The setup prompt (v3) covers every feature, and My view has an Unlock more card with a prompt for each: live visitors, agents on the map, AI usage, private view, timeline and projects."
+      ],
+      "howto": "Open caldera.social/settings (sign in with GitHub, or Caldera: Open my public page (as owner) in Obsidian)."
+    },
+    {
       "version": "0.19.5",
       "date": "2026-10-18",
       "title": "Your GitHub people",
