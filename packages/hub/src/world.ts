@@ -116,14 +116,14 @@ export function worldPage(w: World, o: { hub: string; nav: string }): string {
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="canonical" href="${esc(hub)}/world">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>${CITY_CSS}
-.w-main{max-width:none;margin:0;padding:10px 20px 32px}.w-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px;margin:2px 0 8px}@media (max-width:600px){.w-main{padding:8px 16px 28px}}
-.w-head h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(1.3rem,2.2vw,1.7rem);margin:0;color:var(--text-strong,#F7F7FA)}.w-head p{margin:0;color:var(--text-muted,#8A8A93);max-width:90ch;font-size:14px}
+.w-main{max-width:none;margin:0;padding:10px 20px 32px}.w-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:flex-start;gap:2px 14px;margin:2px 0 10px}@media (max-width:600px){.w-main{padding:8px 16px 28px}}
+.w-head h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(1.3rem,2.2vw,1.7rem);margin:0;color:var(--text-strong,#F7F7FA)}.w-head p{margin:0;color:var(--text-muted,#8A8A93);font-size:14px;flex:1 1 30ch;min-width:0}
 @media (max-width:600px){.w-main .c-tools{flex-wrap:wrap;justify-content:flex-end;left:8px;right:8px;gap:4px}.w-main .c-tools button{padding:5px 8px}}.w-main .c-stage{height:calc(100vh - 150px);height:calc(100svh - 150px);min-height:460px}@media (max-width:600px){.w-main .c-stage{height:calc(100svh - 190px);min-height:400px}}
 .w-foot{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;color:var(--text-muted,#8A8A93)}.w-foot a{color:var(--accent-text,#B9A6FF)}
 .w-legend i{display:inline-block;width:18px;height:4px;border-radius:2px;background:linear-gradient(90deg,#B98CFF,#FFC46B,#B98CFF);vertical-align:middle;margin-right:6px;box-shadow:0 0 6px rgba(200,160,255,.8)}</style></head><body>
 ${o.nav}
 <main class="w-main">
-<div class="w-head"><h1>The world</h1><p>Every member's city on one map: ${n} neighborhood${n === 1 ? "" : "s"}, ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"}. Friendships are rays of light between them. Click a name to fly there, click it again to walk in.</p></div>
+<div class="w-head"><h1>The world</h1><p>${n} neighborhood${n === 1 ? "" : "s"} &middot; ${b.toLocaleString("en-US")} building${b === 1 ? "" : "s"} &middot; rays of light are friendships &middot; click a name to fly there, again to walk in</p></div>
 <div class="c-stage" id="stage"><canvas id="city" aria-label="Isometric world map of ${n} member cities"></canvas>
 <div class="c-tools"><button id="t-labels" aria-pressed="true">Labels</button><button id="t-fr" aria-pressed="true" aria-label="Friendships" title="Friendships between neighborhoods, drawn as rays of light">&#x2727;<span class="t-txt"> Friendships</span></button><button id="t-sky">Auto</button><button id="t-wx" title="Weather">Weather</button><button id="t-snd" aria-pressed="false" title="Sound for arrivals (off)">&#x1F507;</button><button id="t-reset">Reset</button><button id="t-full" aria-label="Full screen">&#x26F6;<span class="t-txt"> Full screen</span></button></div>
 <div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
