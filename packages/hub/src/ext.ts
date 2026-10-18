@@ -63,6 +63,9 @@ export interface Ext {
   tagExtractor(d: TagDeps): TagJob;
   tagShared(a: Tag[], b: Tag[]): { t: string; w: number }[];
   tagRelevance(tags: Tag[], text: string, tag: string, term: string): number;
+  /** "Builds with a similar stack": how much two members' public dependency lists overlap. `df` = how many members use a
+   *  package, `n` = members with any. Score 0 = not similar enough to show; `shared` = the packages to name, most telling first. */
+  depOverlap(a: string[], b: string[], df: (dep: string) => number, n: number): { score: number; shared: string[] };
   /** the daily email: is today worth an email, its subject, the one setup tip */
   digestActive(d: DigestData): boolean;
   digestSubject(d: DigestData): string;
@@ -108,6 +111,12 @@ function tagShared(a: Tag[], b: Tag[]) {
   return b.filter(t => t.kind !== "stack" && A.has(t.t.toLowerCase())).map(t => ({ t: t.t, w: 1 })).sort((x, y) => x.t.localeCompare(y.t));
 }
 /** Public search: a tag must match exactly; a term matches tags, names or the headline. -1 = not a match. */
+/** public fallback: shared packages, minus everyday build tooling; 3 or more to count */
+const TOOLING = /^(typescript|tslib|ts-node|tsx|nodemon|rimraf|concurrently|cross-env|dotenv|husky|lint-staged|prettier|eslint.*|@eslint\/.*|@typescript-eslint\/.*|typescript-eslint|@types\/.*|jest|vitest|mocha|chai|@babel\/.*|babel-.*|setuptools|wheel|pip|pytest.*|black|flake8|mypy|ruff|isort)$/;
+function depOverlap(a: string[], b: string[]) {
+  const B = new Set(b), shared = [...new Set(a)].filter(d => B.has(d) && !TOOLING.test(d));
+  return { score: shared.length >= 3 ? shared.length : 0, shared: shared.slice(0, 8) };
+}
 function tagRelevance(tags: Tag[], text: string, tag: string, term: string) {
   if (tag && !tags.some(t => t.t.toLowerCase() === tag)) return -1;
   if (term && !tags.some(t => t.t.toLowerCase().includes(term)) && !text.toLowerCase().includes(term)) return -1;
@@ -127,7 +136,7 @@ function digestSetup(s: SetupState): SetupStep {
   return undefined;
 }
 
-export const fallbacks: Ext = { loaded: [], suggestScore, githubAccountOk, repoConnector, tagVocab, tagExtractor: basicTagExtractor, tagShared, tagRelevance,
+export const fallbacks: Ext = { loaded: [], suggestScore, githubAccountOk, repoConnector, tagVocab, tagExtractor: basicTagExtractor, tagShared, tagRelevance, depOverlap,
   digestActive, digestSubject, digestSetup, feedMatcher: () => publicMatcher };
 
 /** Load private overrides from a directory holding dist/index.cjs (or index.cjs). Missing or broken -> fallbacks. */

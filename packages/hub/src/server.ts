@@ -747,6 +747,9 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
         friends: fc.get(pr.handle) || 0, city, notes: C.gardenEnabled() ? (q("SELECT COUNT(*) n FROM garden_notes WHERE owner=?").get(pr.id) as any).n : 0, busy,
         tag: (() => { try { return B.problemOf(pr)[0]?.t; } catch { return undefined; } })() };
     });
+    // "same stack" lines: each member's top 2 similar-stack matches (a friendship between the two wins over it)
+    for (const pr of prs) for (const x of (() => { try { return B.similarStacks(pr, 2); } catch { return []; } })())
+      pairs.push([pr.handle, x.handle, "stack", x.shared.slice(0, 3).map(s => s.dep).join(", ")]);
     const w = buildWorld(members, pairs, opts.founder ? opts.founder.toLowerCase() : null, opts.publicUrl || "https://caldera.social");
     worldCache = { at: Date.now(), w }; return w;
   }
@@ -1642,7 +1645,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
-      if (/^\/(me\/building\/?|v1\/tags|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
+      if (/^\/(me\/building\/?|v1\/tags|v1\/people\/[a-z0-9-]+\/similar-stack$|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 
       if (req.method === "GET" && p === "/v1/weather") { const w = await WX.forIp(ipOf(req)); res.setHeader("cache-control", "no-store"); return json(res, 200, w || { c: null }); }   // the requester's own weather, never stored
       if (req.method === "GET" && p === "/v1/info") return json(res, 200, { name: "Caldera Hub", protocol: C.PROTOCOL_VERSION, profiles: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
@@ -1789,7 +1792,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             const build = prS ? B.CHIP_CSS + B.chips(PUB(), prS, !!own, viewer && meV ? { me: meV, token: viewer.token } : null) : "";
             // the profile's posts + activity card: visitors act with their member token, the owner with an owner token
             const card = rel === "index.html" && prS ? FEED!.profileCard(prS, { token: own ? actToken(prS.id, hd) : viewer?.token || null, owner: !!own }) : "";
-            html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card); }
+            // "Builds with a similar stack": people whose public repos share uncommon packages with this page's owner
+            const stack = rel === "index.html" && prS ? B.stackCard(PUB(), prS) : "";
+            html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card + stack); }
           // just claimed (from /settings?welcome=1): one short line on the city, nothing else competing with it
           const welcome = own && prS && rel === "city.html" && url.searchParams.get("welcome") ? welcomeBanner(m[1]) : "";
           const sum = welcome || (own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "");

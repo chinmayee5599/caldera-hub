@@ -40,7 +40,7 @@ export interface BuildingCtx {
   pause?: number;
   onChange?: () => void;           // tags changed (World cache etc.)
   /** open-core hooks: tag vocabulary, extraction, overlap and search relevance */
-  ext: Pick<Ext, "tagVocab" | "tagExtractor" | "tagShared" | "tagRelevance">;
+  ext: Pick<Ext, "tagVocab" | "tagExtractor" | "tagShared" | "tagRelevance" | "depOverlap">;
 }
 
 export function building(c: BuildingCtx) {
@@ -99,6 +99,57 @@ export function building(c: BuildingCtx) {
   }
   /** how well a member matches a search: a tag hit counts by its weight, plain text matches a little */
   function relevance(pr: any, tag: string, term: string): number { return c.ext.tagRelevance(tagsOf(pr), `${pr.handle} ${pr.name || ""} ${pr.headline || ""}`, tag, term); }
+
+  // ---------------------------------------------------------------- similar stacks (shared public dependencies)
+  /** a member's public dependencies: package names from the manifests the tag job already read (public repos only, names
+   *  only, no extra GitHub calls), with the repos each came from */
+  function depsOf(pr: any): Map<string, string[]> {
+    const out = new Map<string, string[]>();
+    for (const login of c.loginsOf(pr).slice(0, 2)) {
+      for (const r of q("SELECT repo, signals FROM tag_repo_cache WHERE lower(repo) LIKE ? ESCAPE '\\'").all(String(login).toLowerCase().replace(/[\\%_]/g, x => "\\" + x) + "/%") as any[]) {
+        let s: RepoSignals | null = null; try { s = JSON.parse(r.signals); } catch { /* skip */ }
+        for (const d of (s?.deps || []).slice(0, 200)) { const k = family(String(d).toLowerCase()); const l = out.get(k) || []; if (l.length < 3) l.push(s!.repo); out.set(k, l); }
+      }
+    }
+    return out;
+  }
+  /** a package family counts once: @radix-ui/react-dialog and @radix-ui/react-popover are both "@radix-ui/*" (the big
+   *  catch-all scopes keep their full names: sharing @google/genai says more than sharing "@google") */
+  const family = (d: string) => { const m = d.match(/^(@[a-z0-9._-]+)\/[^/]+$/); return m && !/^@(google|aws-sdk|azure|types|google-cloud|microsoft)$/.test(m[1]!) ? m[1] + "/*" : d; };
+  let stackMemo: { at: number; deps: Map<string, Map<string, string[]>>; df: Map<string, number>; n: number } | null = null;
+  /** everyone listed, their dependency sets, and how many members use each package (rebuilt at most every 10 minutes) */
+  function stackIndex() {
+    if (stackMemo && Date.now() - stackMemo.at < 10 * 60_000) return stackMemo;
+    const deps = new Map<string, Map<string, string[]>>(), df = new Map<string, number>();
+    for (const pr of (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(p => c.listed(p) && !c.modOf(p.handle, p.id))) {
+      const d = depsOf(pr); if (!d.size) continue; deps.set(pr.id, d); for (const k of d.keys()) df.set(k, (df.get(k) || 0) + 1);
+    }
+    return (stackMemo = { at: Date.now(), deps, df, n: deps.size });
+  }
+  /** members whose public code leans on the same uncommon packages, best first */
+  function similarStacks(pr: any, n = 4): { handle: string; name: string; score: number; shared: { dep: string; mine: string[]; theirs: string[] }[] }[] {
+    if (!pr) return [];
+    const ix = stackIndex(), mine = ix.deps.get(pr.id) || depsOf(pr); if (!mine.size) return [];
+    const out: any[] = [];
+    for (const [id, theirs] of ix.deps) {
+      if (id === pr.id) continue;
+      const o = c.ext.depOverlap([...mine.keys()], [...theirs.keys()], d => ix.df.get(d) || 1, Math.max(ix.n, 1)); if (!(o.score > 0)) continue;
+      const p = c.profile(id); if (!p?.handle) continue;
+      out.push({ handle: p.handle, name: p.name || p.handle, score: o.score, shared: o.shared.slice(0, 6).map(d => ({ dep: d, mine: mine.get(d) || [], theirs: theirs.get(d) || [] })) });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, n);
+  }
+  /** on a profile: "Builds with a similar stack", the people and the uncommon packages they share (nothing when no one does) */
+  function stackCard(hub: string, pr: any): string {
+    const list = similarStacks(pr); if (!list.length) return "";
+    const base = hub.replace(/\/$/, "");
+    return `<section class="cb-stack" aria-label="Builds with a similar stack"><div class="cb-stack-h"><b>Builds with a similar stack</b><span>People whose public repos use the same uncommon packages. From dependency files in public repos only.</span></div>`
+      + list.map(x => `<div class="cb-stack-row"><a class="cb-stack-who" href="${base}/@${esc(x.handle)}/">${esc(x.name)}</a><span class="cb-stack-deps">${x.shared.map(s => `<code title="${esc(`@${pr.handle}: ${s.mine.join(", ")} / @${x.handle}: ${s.theirs.join(", ")}`)}">${esc(s.dep)}</code>`).join("")}</span></div>`).join("")
+      + `</section><style>.cb-stack{margin:0 0 22px;padding:14px 16px;border:1px solid var(--line,#2A2A2E);border-radius:14px;font:14px/1.45 'IBM Plex Sans',Arial,sans-serif}
+.cb-stack-h{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}.cb-stack-h b{color:var(--text-strong,#F2F2F5);font-size:14.5px}.cb-stack-h span{color:var(--text-muted,#8A8A93);font-size:12.5px}
+.cb-stack-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 0;border-top:1px solid var(--line,#2A2A2E)}.cb-stack-who{color:var(--accent-text,#C9B8FF);font-weight:600;text-decoration:none;min-width:120px}
+.cb-stack-deps{display:flex;flex-wrap:wrap;gap:5px}.cb-stack-deps code{font:12px 'IBM Plex Mono',monospace;padding:2px 7px;border-radius:6px;background:var(--bg-raised,#1C1C21);border:1px solid var(--line,#2A2A2E);color:var(--text,#D6D6DC)}</style>`;
+  }
 
   // ---------------------------------------------------------------- intros
   const introState = (me: string, other: string): "none" | "sent" | "incoming" | "friends" => {
@@ -232,6 +283,9 @@ ${hiddenList.length ? `<p class="mut" style="margin-top:12px">Hidden: ${hiddenLi
       }
       ownerPage(res, me); return true;
     }
+    let ms = p.match(/^\/v1\/people\/([a-z0-9-]+)\/similar-stack$/);
+    if (req.method === "GET" && ms) { const pr = c.byHandle(ms[1]!); if (!pr || !c.listed(pr) || c.modOf(pr.handle, pr.id)) { c.json(res, 404, { error: "unknown profile" }); return true; }
+      c.json(res, 200, { handle: pr.handle, similar: similarStacks(pr, 8) }); return true; }
     if (req.method === "GET" && p === "/v1/tags") { c.json(res, 200, { tags: topTags(Number(url.searchParams.get("limit")) || 18), vocabulary: c.ext.tagVocab().problems }); return true; }
     // People cards: a signed-in member asks to meet someone (same-site page, member cookie)
     let m = p.match(/^\/v1\/intro\/([a-z0-9-]+)$/);
@@ -258,5 +312,5 @@ ${hiddenList.length ? `<p class="mut" style="margin-top:12px">Hidden: ${hiddenLi
     return false;
   }
 
-  return { tagsOf, problemOf, shared, topTags, relevance, introState, requestIntro, decide, pendingFor, chips, CHIP_CSS, route, job, tagSoon, schedule };
+  return { tagsOf, problemOf, shared, topTags, similarStacks, stackCard, invalidateStacks: () => { stackMemo = null; }, relevance, introState, requestIntro, decide, pendingFor, chips, CHIP_CSS, route, job, tagSoon, schedule };
 }
