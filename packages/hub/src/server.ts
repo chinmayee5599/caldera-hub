@@ -25,7 +25,8 @@ export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
-import { citySnapshot } from "../../../../caldera/packages/plugin/src/city";
+import { citySnapshot, applyPrivateMode, rewriteCityPage, type CityData } from "../../../../caldera/packages/plugin/src/city";
+import { privateModes, scrubPrivateLive } from "./privatemode";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
@@ -292,6 +293,8 @@ export function createHub(opts: HubOptions) {
   const privateFor = (handle: string) => opts.privateUrl && Object.values(owners).includes(handle) ? `${opts.privateUrl.replace(/\/$/, "")}/@${handle}/` : undefined;
   const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
+  // how each member's private repos show on their public city (privatemode.ts); enforced on every public page and feed below
+  const PM = privateModes(q as any, undefined, (opts as any).privateModeSince);
   const alerts = alertsStore(q, crypto.createHash("sha256").update(PRIV_KEY).update("alerts").digest());
   const now = () => new Date().toISOString();
 
@@ -617,7 +620,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   // ---------------------------------------------------------------- link previews + group towns
   const hubUrl = () => (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
-  const cityOf = (handle: string) => { try { return cityArt(fs.readFileSync(path.join(opts.dataDir, "profiles", handle, "index.html"), "utf8")); } catch { return null; } };
+  const cityOf = (handle: string) => { try {
+    const pr = byHandle(handle);
+    if (pr && PM.modeFor(pr) !== "show") { const c = publicCityOf(handle); return c && c.districts.some((d: any) => d.repos.length) ? cityArt(citySnapshot(c, { name: pr.name || handle })) : null; }
+    return cityArt(fs.readFileSync(path.join(opts.dataDir, "profiles", handle, "index.html"), "utf8")); } catch { return null; } };
   const cardDir = path.join(opts.dataDir, "cards");
   /** PNG card for link previews, cached until the profile is published again. */
   async function profileCard(pr: any): Promise<Buffer> {
@@ -640,7 +646,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const cardInflight = new Map<string, Promise<Buffer>>(); let cardsRendering = 0; const cardWaiters: (() => void)[] = [];
   function previewTags(handle: string, rel: string): string {
     const pr = byHandle(handle); if (!pr) return "";
-    const v = String(Date.parse(pr.updated) || 0).slice(-8), base = `${hubUrl()}/@${handle}/`;
+    const v = String(Date.parse(pr.updated) || 0).slice(-8) + ["show", "anonymous", "hidden"].indexOf(PM.modeFor(pr)), base = `${hubUrl()}/@${handle}/`;   // a new picture when the private-repos setting changes
     const city = rel === "city.html";
     return ogTags({ url: base + (city ? "city.html" : ""), image: `${base}card.png?v=${v}`,
       title: city ? `${pr.name || "@" + handle}'s city on Caldera` : `${pr.name || "@" + handle} on Caldera`,
@@ -656,10 +662,22 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   // Built from each member's PUBLIC city (their hosted city.html data), re-cleaned in world.ts; unlisted and moderated
   // profiles never appear. Cached for a minute; live activity is the public projection folded per member.
   let worldCache: { at: number; w: World } | null = null, worldPng: { at: number; png: Buffer } | null = null;
+  { const set = PM.set; PM.set = (owner: string, mode: unknown) => { const ok = set(owner, mode); if (ok) { worldCache = null; worldPng = null; const h = profile(owner)?.handle; if (h) fs.rmSync(path.join(opts.dataDir, "cards", h + ".png"), { force: true }); } return ok; }; }   // a privacy change shows on the World right away
   function publicCityOf(handle: string): any {
     try { const html = fs.readFileSync(path.join(opts.dataDir, "profiles", handle, "city.html"), "utf8");
       const m = html.match(/<script type="application\/json" id="city-data">([\s\S]{1,3000000}?)<\/script>/); const d = m ? JSON.parse(m[1]) : null;
-      return d && Array.isArray(d.districts) && d.private === false ? d : null; } catch { return null; }
+      if (!d || !Array.isArray(d.districts) || d.private !== false) return null;
+      return applyPrivateMode(d as CityData, PM.modeFor(byHandle(handle))); } catch { return null; }
+  }
+  /** a hosted index.html's city preview, redrawn from the projected city when private repos are anonymous or hidden */
+  function privatePage(pr: any, rel: string, html: string): string {
+    const mode = PM.modeFor(pr); if (mode === "show") return html;
+    if (rel === "city.html") return rewriteCityPage(html, mode);
+    if (rel === "index.html" && html.includes('class="city-peek"')) {
+      const c = publicCityOf(pr.handle), peek = /<style>\.city-peek\{[\s\S]*?<a class="city-peek"[\s\S]*?<\/a>/;
+      return html.replace(peek, () => c && c.districts.some((d: any) => d.repos.length) ? citySnapshot(c, { name: pr.name || pr.handle }) : "");
+    }
+    return html;
   }
   function worldNow(): World {
     if (worldCache && Date.now() - worldCache.at < 60_000) return worldCache.w;
@@ -681,7 +699,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function worldLive(since: string | null) {
     const per = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed)
       .filter(pr => sitesOf(pr.id).length || q("SELECT 1 FROM agents WHERE owner=? LIMIT 1").get(pr.id))
-      .map(pr => ({ handle: pr.handle as string, live: liveStats(pr.id, false, since) }));
+      .map(pr => ({ handle: pr.handle as string, live: scrubPrivateLive(liveStats(pr.id, false, since), PM.modeFor(pr)) }));
     return foldLive(per, now());
   }
   /** THE site header (logo, How it works, People, World, Guide, What's new, FAQ, Sign in, Get started), taken from the site's
@@ -720,7 +738,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id);
+    FEED?.erase(id); MSG?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -1024,7 +1042,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
-  const GH = github({ accountOk: ext.githubAccountOk, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
+  const GH = github({ accountOk: ext.githubAccountOk, privateMode: PM, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
@@ -1600,6 +1618,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, soc && (inPage || rel === "index.html" || rel === "city.html") ? { ...soc, inPage } : undefined,
             own && prS ? bellFor(prS.id) : viewer ? bellFor(memberOf(req)) : "");
           html = liveBlocks(m[1], rel, html);
+          if (prS) html = privatePage(prS, rel, html);   // private repos: anonymous or hidden, whatever version built the page
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
@@ -1949,7 +1968,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/live\/([a-z0-9-]+)$/);
       if (req.method === "GET" && m) {
         const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
-        return json(res, 200, liveStats(pr.id, false, url.searchParams.get("since")) || { at: now(), districts: {} });
+        return json(res, 200, scrubPrivateLive(liveStats(pr.id, false, url.searchParams.get("since")), PM.modeFor(pr)) || { at: now(), districts: {} });
       }
       // the pixel: GET /v1/t/KEY.gif?k=view|signup|buy (also POST, for sendBeacon)
       m = p.match(/^\/v1\/t\/([a-z0-9]{12,32})(?:\.gif)?$/);
@@ -2115,7 +2134,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
         if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
         res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
-        return res.end(JSON.stringify(liveStats(pr0.id, url.searchParams.get("view") !== "public", url.searchParams.get("since")) || { at: now(), districts: {} }));
+        const pubView = url.searchParams.get("view") === "public", ls = liveStats(pr0.id, !pubView, url.searchParams.get("since"));
+        return res.end(JSON.stringify((pubView ? scrubPrivateLive(ls, PM.modeFor(pr0)) : ls) || { at: now(), districts: {} }));
       }
       const dir = path.join(opts.dataDir, "profiles", mine);
       let rel = m[2].slice(1) || "index.html"; if (rel.endsWith("/")) rel += "index.html";
@@ -2131,6 +2151,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       const headers = { "content-type": own ? "text/html; charset=utf-8" : MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "content-security-policy": PROFILE_CSP };
       if (!own && path.extname(file).toLowerCase() !== ".html") { res.writeHead(200, headers); return fs.createReadStream(file).pipe(res); }
       let html = own || liveBlocks(mine, rel, fs.readFileSync(file, "utf8"));
+      if (pub && !own && pr) html = privatePage(pr, rel, html);   // "Public view" shows exactly what visitors get
       const ago = (iso: string) => { const mn = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.floor(mn / 60)} h ago` : `${Math.floor(mn / 1440)} days ago`; };
       // the same bar as the public page signed in as owner: [Public view | Private view] in the same place, account menu on the right
       const nav = pr ? navFor(pr, "private", rel) : null;
@@ -2144,7 +2165,20 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     } catch (err: any) { res.writeHead(500, { "content-type": "text/plain" }); res.end("error"); }
   });
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, digestFor, feedReady, headerItems, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  // members who joined before the private-repos setting existed keep padlocked buildings until they choose; each one with
+  // private work on their public city is asked once (a personal alert pointing at Settings > Privacy)
+  function promptPrivateChoice() {
+    for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created < ?").all(PM.since) as any[]) {
+      if (PM.chosen(pr) || modOf(pr.handle, pr.id)) continue;
+      const c = publicCityOf(pr.handle); if (!c || !c.districts.some((d: any) => (d.repos || []).some((r: any) => r.locked))) continue;
+      if (!PM.promptOnce(pr.id)) continue;
+      try { alerts.post({ title: "Choose how your private repos show", target: pr.id, key: "private-repos-choice", by: "privacy", ctaLabel: "Open Privacy settings", ctaUrl: "/settings#private-repos",
+        body: "Your public city shows private repos as padlocked buildings. Names stay hidden, but visitors can still tell roughly how big and how busy that work is, and which project it sits beside.\n\nYou can keep that, make private work **anonymous** (one separate padlocked district, no sizes or activity), or **hide** it completely. Your private view always shows everything." }); } catch { /* best effort */ }
+    }
+  }
+  setTimeout(() => { try { promptPrivateChoice(); } catch (e: any) { console.error("private repos prompt", e?.message); } }, 15_000).unref?.();
+
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }

@@ -41,6 +41,8 @@ export interface GhCtx {
     building?: (id: string) => { tags: { t: string; kind: string }[]; intros: number } };
   /** owner sign-in: start an owner session (returns the Set-Cookie value), read the signed-in owner, check a profile isn't taken down */
   owner?: { start: (profileId: string) => string; of: (req: http.IncomingMessage) => string | null; usable: (pr: any) => boolean; bar?: (profileId: string) => string };
+  /** how private repos show on a member's public city (privatemode.ts) */
+  privateMode?: { modeFor: (pr: any) => "show" | "anonymous" | "hidden"; chosen: (pr: any) => string | undefined; set: (owner: string, mode: unknown) => boolean; since: string };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -48,6 +50,17 @@ export interface GhCtx {
 export interface EmailHooks { status: (owner: string) => { email: string; confirmed: boolean } | null; subscribe: (owner: string, email: string) => Promise<string>; unsubscribe: (owner: string) => void;
   suggest?: (owner: string, email: string, verified: boolean, source: string) => void; promptFor?: (owner: string) => { suggestion: { email: string; verified: boolean } | null } | null; dismissPrompt?: (owner: string) => void }
 const GROUP = /^[a-z0-9][a-z0-9-]{1,29}$/;
+/** Settings > Privacy: how private repos show on the public city (one form, both kinds of member). */
+function privateReposForm(mode: string, chosen: boolean): string {
+  const opt = (v: string, t: string, d: string) => `<label class="pr-opt"><input type="radio" name="mode" value="${v}"${mode === v ? " checked" : ""}> <b>${t}</b><span class="mut">${d}</span></label>`;
+  return `<form method="post" class="card" id="private-repos"><input type="hidden" name="do" value="private-repos"><b>Private repos on my city</b>
+<p class="mut" style="margin:4px 0 10px">Your public city, the World and your share card. Your private view always shows everything.${chosen ? "" : " <b>You haven't chosen yet</b>, so Caldera's default applies."}</p>
+<style>.pr-opt{display:block;margin:8px 0}.pr-opt span{display:block;margin-left:24px;font-size:13px}</style>
+${opt("show", "Show as padlocked", "Nameless locked buildings in place. Visitors can still tell roughly how big and how busy private work is, and which project it sits beside.")}
+${opt("anonymous", "Anonymous", "One separate padlocked district with no sizes, activity or projects. Visitors only learn that you have private work.")}
+${opt("hidden", "Hidden", "No trace of private repos anywhere public, including totals.")}
+<button class="btn small" type="submit">Save</button></form>`;
+}
 const groupsFrom = (s: unknown) => [...new Set(String(s || "").toLowerCase().split(/[\s,]+/).map(g => g.replace(/^#/, "")).filter(g => GROUP.test(g)))].slice(0, 8);
 type App = { id: number; slug: string; client_id: string; client_secret: string; pem: string; html_url?: string; owner?: { login: string } };
 const DAY = 86_400_000;
@@ -186,9 +199,12 @@ export function github(ctx: GhCtx) {
     const daily: DailyEntry[] = [];
     for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * DAY).toISOString().slice(0, 10); daily.push({ date: d, counts: { meetings: 0, emails: 0, prompts: 0, commits: days[d] || 0, notes: 0, docs: 0 } as any }); }
     const city = cityData(cityRepos, () => ({ n: 0, paths: [] }), new Date().toISOString());
-    const pubCity = publicCity(city, city.districts.map(d => d.name));
-    const total = cityRepos.reduce((a, r) => a + r.commits, 0), langs = [...new Set(cityRepos.map(r => r.language).filter(l => l !== "Other"))].slice(0, 6);
-    const weekly = Array.from({ length: 12 }, (_, i) => cityRepos.reduce((a, r) => a + (r.weeks[i] || 0), 0));
+    // private repos: the member's setting decides what their public city and code numbers say about them
+    const prRow = q("SELECT * FROM profiles WHERE id=?").get(acct.profile_id) || { id: acct.profile_id, created: new Date().toISOString() };
+    const pmode = ctx.privateMode?.modeFor(prRow) || "show", counted = pmode === "show" ? cityRepos : cityRepos.filter(r => r.public);
+    const pubCity = publicCity(city, city.districts.map(d => d.name), pmode);
+    const total = counted.reduce((a, r) => a + r.commits, 0), langs = [...new Set(counted.map(r => r.language).filter(l => l !== "Other"))].slice(0, 6);
+    const weekly = Array.from({ length: 12 }, (_, i) => counted.reduce((a, r) => a + (r.weeks[i] || 0), 0));
     const handle = acct.handle as string, name = String(edits.name || me.name || me.login).slice(0, 80);
     const links: [string, string][] = [["GitHub", me.html_url]];
     if (me.blog) links.push(["Website", /^https?:\/\//.test(me.blog) ? me.blog : "https://" + me.blog]);
@@ -207,7 +223,7 @@ export function github(ctx: GhCtx) {
       sections: { journal: false, scoreboard: true, properties: true, numbers: false, topics: false, notes: false, asks: false, social: true, links: true, sidebar: true, rail: false, city: true },
       stats: { notes: 0, words: 0, links: 0, activeDays: daily.filter(d => (d.counts as any).commits).length }, topics: [], daily, publicNotes: [], asks: [], offers: [],
       updated: new Date().toISOString(), hub: pub, summary: edits.summary ? String(edits.summary).slice(0, 1200) : undefined,
-      code: { commits: total, repos: cityRepos.length, languages: langs, weekly, url: me.html_url },
+      code: { commits: total, repos: counted.length, languages: langs, weekly, url: me.html_url },
       projects: cityRepos.filter(r => r.public).sort((a, b) => b.commits - a.commits).slice(0, 6).map(r => ({ name: r.name, status: r.description || r.language, url: r.url || me.html_url, commits: r.commits })),
       city: pubCity, source: "GitHub",
     } as ProfileData;
@@ -322,6 +338,7 @@ ${sectionHead("privacy", "Privacy")}<form method="post" class="card" id="privacy
 <label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory and on the World map</label>
 <label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me automatically with people I know from GitHub (shared repos, mutual follows)</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save</button></div></form>
+${ctx.privateMode && pr ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}
 ${sectionHead("account", "Account")}<div class="card danger-zone"><div class="row" style="justify-content:space-between"><form method="post"><input type="hidden" name="do" value="logout"><button class="btn small ghost" type="submit">Sign out</button></form>
 <form method="post" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut" style="display:inline"><input type="checkbox" name="sure"> I'm sure</label> <button class="btn small ghost danger" type="submit">Delete my Caldera profile</button></form></div>
 <p class="mut" style="margin-top:8px">Deleting removes your page, city and data, and revokes Caldera's access to your GitHub.</p></div>`, ctx.owner?.bar?.(a.profile_id) || "");
@@ -352,7 +369,7 @@ ${sectionHead("page", "Your page", "Edited from Obsidian (<code>Caldera/profile.
 ${(() => { const t = C.editPrompt({ hubUrl: pub, handle }); return `<pre id="pr-edit" style="max-height:120px">${esc(t)}</pre><button class="btn small" type="button" data-copy-text="pr-edit">Copy prompt for my AI</button>`; })()}</div>
 ${sectionHead("people", "People")}${growthCards({ profile_id: owner, handle }, {})}
 ${sectionHead("notifications", "Notifications")}${emailCard({ profile_id: owner, handle }, {})}
-${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>
+${sectionHead("privacy", "Privacy", "Set in Obsidian: Settings &rarr; Caldera, or in <code>Caldera/profile.md</code>.")}<div class="card">${yes(b.listed !== false, "Listed in People and on the World map")}${yes(b.showViews !== false, "View count shown on your page")}${yes(b.autoConnectGithub !== false && b.autoConnectRepos !== false, "Connect automatically with people you know from GitHub")}</div>${ctx.privateMode ? privateReposForm(ctx.privateMode.modeFor(pr), !!ctx.privateMode.chosen(pr)) : ""}
 ${sectionHead("account", "Account")}<div class="card danger-zone"><a class="btn small ghost" href="/signout?h=${encodeURIComponent(handle)}">Sign out of this browser</a>
 <p class="mut" style="margin-top:10px">To delete your Caldera profile, run <b>Caldera: Delete my profile from the hub</b> in Obsidian. Your vault is never touched.</p></div>`, ctx.owner?.bar?.(owner) || "");
   }
@@ -611,6 +628,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           else { ctx.social.email.dismissPrompt?.(me); pre = "No daily summary. You can turn it on any time under Notifications."; }
         }
         if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(me); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
+        if (act === "private-repos" && ctx.privateMode) pre = ctx.privateMode.set(me, f.get("mode")) ? "Saved. Your public city follows it right away (your private view still shows everything)." : "Pick one of the three options.";
         vaultPage(res, q("SELECT * FROM profiles WHERE id=?").get(me), pre); return true;
       }
       const acct = who.acct;
@@ -632,6 +650,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), groups: groupsFrom(f.get("groups")) };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
+        if (act === "private-repos" && ctx.privateMode) ctx.privateMode.set(acct.profile_id, f.get("mode"));
         if (act === "privacy") { const prev = JSON.parse(acct.edits || "{}"); q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify({ ...prev, listed: f.get("listed") === "on", autoConnectRepos: f.get("autoConnectRepos") === "on" }), acct.gh_id); }
         if (act === "remove-banner") { for (const ext of ["jpg", "png", "webp"]) fs.rmSync(path.join(upDir(acct.gh_id), `banner.${ext}`), { force: true }); }
         let claimCode = "";
@@ -654,7 +673,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         }
         if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(acct.profile_id); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
         let note = pre || (act === "claim" ? `Here's your code: <code>${esc(claimCode)}</code>. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up). It works once, for 30 minutes.` : "");
-        if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
+        if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy" || act === "private-repos") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
       }
     }

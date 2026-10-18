@@ -21,7 +21,7 @@ const city = (pub, secret) => `<html><body><script type="application/json" id="c
 
 before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-world-"));
-  hub = createHub({ dataDir: dir, publicUrl: "https://hub.test", founder: "mike", limits: { newProfilesPerDay: 100 } });
+  hub = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir, publicUrl: "https://hub.test", founder: "mike", limits: { newProfilesPerDay: 100 } });
   base = "http://127.0.0.1:" + await hub.listen(0);
   const pages = { mike: city("open-thing", "secret-mike"), ana: city("ana-lib", "secret-ana"), hid: city("hid-lib", "secret-hid") };
   for (const who of ["mike", "ana", "hid"])

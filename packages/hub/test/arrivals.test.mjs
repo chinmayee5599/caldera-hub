@@ -28,12 +28,18 @@ test("arrivals: owner feed flags a visitor's first view in 30 min; public gets c
   assert.equal(shopViews.filter(e => e.n).length, 2, "two new arrivals, the returning visitor isn't one");
   assert.ok(priv.events.some(e => e.d === "Secret Lab" && e.k === "view" && e.n));
   assert.ok(priv.events.every(e => !("v" in e) && !("visitor" in e)), "no visitor ids leave the hub");
+  h.privateModes.set(rae.id, "show");   // padlocked: private sites still count, merged into "Private" (new members default to anonymous)
   const first = await (await fetch(`${base}/v1/live/rae`)).json();
   assert.equal(first.arrivals, undefined, "first poll: no backlog");
   const pub = await (await fetch(`${base}/v1/live/rae?since=${encodeURIComponent(since)}`)).json();
   assert.deepEqual(pub.arrivals.Shop, { v: 2, s: 1, b: 0 });
   assert.deepEqual(pub.arrivals.Private, { v: 1, s: 0, b: 1 });
   assert.ok(!JSON.stringify(pub).includes("Secret Lab"), "private project names never reach the public feed");
+  h.privateModes.set(rae.id, "anonymous");
+  const anon = await (await fetch(`${base}/v1/live/rae?since=${encodeURIComponent(since)}`)).json();
+  assert.equal(anon.arrivals.Private, undefined, "anonymous: private work leaves no trace in the live feed");
+  assert.deepEqual(anon.arrivals.Shop, { v: 2, s: 1, b: 0 });
+  h.privateModes.set(rae.id, "show");
   const old = await (await fetch(`${base}/v1/live/rae?since=2001-01-01T00:00:00Z`)).json();
   assert.ok(old.arrivals.Shop.v <= 2, "since is clamped to 2 minutes");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });

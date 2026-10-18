@@ -21,7 +21,7 @@ function fakeWeather(code = 61, cloud = 90) {
 test("weather: the viewer's own conditions, mapped to the sky the city draws; lookups cached; no IP kept anywhere", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-wx-"));
   const { f, calls } = fakeWeather(61, 90);
-  const h = createHub({ dataDir: d, trustProxy: true, weatherFetch: f, publicUrl: "https://caldera.test" });
+  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, trustProxy: true, weatherFetch: f, publicUrl: "https://caldera.test" });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const get = (ip) => fetch(base + "/v1/weather", { headers: { "x-real-ip": ip } }).then(r => r.json());
   const w1 = await get("203.0.113.7");
@@ -46,7 +46,7 @@ test("weather: WMO codes map to the city's skies", async () => {
 
 test("day stats: today's shape and departures; public gets coarse counts only, never visitor ids", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-day-"));
-  const h = createHub({ dataDir: d, weatherFetch: fakeWeather().f });
+  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, weatherFetch: fakeWeather().f });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const login = async id => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -73,7 +73,7 @@ test("day stats: today's shape and departures; public gets coarse counts only, n
 
 test("owner setup: the 'turn on live visitors' row and its keys reach the owner only", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-setup-"));
-  const h = createHub({ dataDir: d, weatherFetch: fakeWeather().f, publicUrl: "https://caldera.test" });
+  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, weatherFetch: fakeWeather().f, publicUrl: "https://caldera.test" });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const login = async id => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
