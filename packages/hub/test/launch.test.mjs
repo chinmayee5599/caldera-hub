@@ -55,3 +55,16 @@ test("sign-out and sign-in forms work from pages that send Origin: null (no-refe
   assert.equal(await post({ origin: "https://evil.example" }), 403);
   h.server.close();
 });
+
+test("several sign-ins from the same vault at once all succeed (each uses its own challenge)", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-auth-"));
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  const base = "http://127.0.0.1:" + await h.listen(0), id = C.newIdentity();
+  const one = async () => { const { nonce } = await (await fetch(base + "/v1/auth/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id.id }) })).json(); return nonce; };
+  const nonces = await Promise.all([one(), one(), one(), one()]);
+  const codes = await Promise.all(nonces.map(n => fetch(base + "/v1/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "message", { nonce: n })) }).then(r => r.status)));
+  assert.deepEqual(codes, [200, 200, 200, 200]);
+  const again = await fetch(base + "/v1/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "message", { nonce: nonces[0] })) });
+  assert.equal(again.status, 401, "a used challenge can't be replayed");
+  h.server.close();
+});

@@ -1606,7 +1606,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (!C.verify(env)) return json(res, 401, { error: "bad signature" });
         const ch = q("SELECT * FROM challenges WHERE id=? AND nonce=? AND expires > ?").get(env.from, env.body?.nonce, Date.now());
         if (!ch) return json(res, 401, { error: "unknown or expired challenge" });
-        q("DELETE FROM challenges WHERE id=?").run(env.from);
+        q("DELETE FROM challenges WHERE (id=? AND nonce=?) OR expires < ?").run(env.from, env.body?.nonce, Date.now());   // only the used one: the plugin signs in from several requests at once
         const token = crypto.randomBytes(24).toString("hex");
         q("INSERT INTO tokens VALUES (?,?,?)").run(hashToken(token), env.from, Date.now() + 3600_000);  // only the hash is stored
         return json(res, 200, { token, expires_in: 3600 });
