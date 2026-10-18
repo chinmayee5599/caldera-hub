@@ -54,6 +54,7 @@ export function messages(c: MsgCtx) {
   q(`CREATE TABLE IF NOT EXISTS msg_bans (member TEXT PRIMARY KEY, reason TEXT, ts TEXT)`).run();
   const hub = c.hub.replace(/\/$/, "");
   const pair = (x: string, y: string): [string, string] => x < y ? [x, y] : [y, x];
+  const sentenceOf = (row: any): string => { try { const f = JSON.parse(row.fields || "{}"); return String(f.text || f.what || f.name || f.topic || "").trim(); } catch { return ""; } };
   const threadOf = (x: string, y: string) => { const [a, b] = pair(x, y); return q("SELECT * FROM msg_threads WHERE a=? AND b=?").get(a, b) as Thread | undefined; };
   const threadById = (id: string) => q("SELECT * FROM msg_threads WHERE id=?").get(id) as Thread | undefined;
   const other = (t: Thread, me: string) => t.a === me ? t.b : t.a;
@@ -253,7 +254,12 @@ export function messages(c: MsgCtx) {
       if (!usable(them)) { page(res, 404, shell("Messages", listHtml(me, null, tab) + `<section class="ms-thread"><div class="ms-empty"><b>@${esc(h)} isn't on Caldera</b><span>The account may have been deleted.</span></div></section>`, "is-thread")); return true; }
       if (them.id === me) { res.writeHead(302, { location: "/messages" }); res.end(); return true; }
       const th = thread(me, h)!;
-      page(res, 200, shell(`Messages with @${h}`, listHtml(me, h, tab) + threadHtml(me, th), "is-thread")); return true;
+      // "Message" on a feed post: start the reply with a quote of the post, so the author knows what it's about
+      let draft = ""; const about = url.searchParams.get("about") || "";
+      if (/^[A-Za-z0-9_-]{4,40}$/.test(about)) { try { const row = q("SELECT fields, detail FROM posts WHERE id=? AND author=?").get(about, them.id) as any;
+        if (row) { const said = String(row.detail || "").trim() || sentenceOf(row); if (said) draft = `About your post "${said.length > 140 ? said.slice(0, 139) + "\u2026" : said}": `; } } catch { /* no posts table yet */ } }
+      let html = threadHtml(me, th); if (draft) html = html.replace('placeholder="Write', `data-draft="${esc(draft)}" placeholder="Write`);
+      page(res, 200, shell(`Messages with @${h}`, listHtml(me, h, tab) + html + (draft ? `<script>(function(){var t=document.getElementById("ms-text");if(t&&!t.value){t.value=t.getAttribute("data-draft")||"";t.focus();t.setSelectionRange(t.value.length,t.value.length)}})()</script>` : ""), "is-thread")); return true;
     }
     if (req.method === "GET" && p === "/v1/messages/inbox") { if (!me) { c.json(res, 401, { error: "sign in" }); return true; } c.json(res, 200, { conversations: inbox(me), unread: unreadFor(me) }); return true; }
     if (req.method === "GET" && p === "/v1/messages/unread") { res.setHeader("cache-control", "no-store"); c.json(res, 200, { unread: me ? unreadFor(me) : 0 }); return true; }

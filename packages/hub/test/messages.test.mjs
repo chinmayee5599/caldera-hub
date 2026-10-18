@@ -138,3 +138,19 @@ test("daily email gets an unread-messages section with a short preview, and memb
     const sess = await (await S.get("ana", "/v1/session")).json(); assert.equal(sess.messages.unread, 1);
   } finally { S.hub.server.close(); }
 });
+
+test("Message on a feed post opens the author's thread with the post quoted; only the author's own posts are quoted", async () => {
+  const { hub, ids, get, post, as } = await setup();
+  const r = await post("/v1/posts", { type: "someone", text: "a designer for my social app" }, as("ana"));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.id || r.body.post?.id; assert.ok(id, "post id");
+  const feed = await (await get("bo", "/feed")).text();
+  assert.match(feed, new RegExp(`/messages/@ana\\?about=${id}`), "the feed shows Message on someone else's post");
+  const mine = await (await get("ana", "/feed")).text();
+  assert.doesNotMatch(mine, new RegExp(`/messages/@ana\\?about=${id}`), "no Message on your own post");
+  const page = await (await get("bo", `/messages/@ana?about=${id}`)).text();
+  assert.match(page, /data-draft="About your post &quot;a designer for my social app&quot;: "/, "the reply starts quoting the post");
+  const other = await (await get("bo", `/messages/@cy?about=${id}`)).text();
+  assert.doesNotMatch(other, /data-draft=/, "someone else's post is never quoted into a thread with a different person");
+  hub.server.close();
+});
