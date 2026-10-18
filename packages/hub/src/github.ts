@@ -464,7 +464,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
     }
     if (req.method === "POST" && p === "/me/upload") {
       const acct = account(req); if (!acct || acct.claimed) { ctx.json(res, 401, { error: "Sign in with GitHub first." }); return true; }
-      const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { ctx.json(res, 403, { error: "wrong origin" }); return true; }
+      const origin = String(req.headers.origin || ""); if (origin && origin !== pub && !(origin === "null" && req.headers["sec-fetch-site"] === "same-origin")) { ctx.json(res, 403, { error: "wrong origin" }); return true; }
       const b = await ctx.readBody(req).catch(() => null) as any, kind = b?.kind === "banner" ? "banner" : b?.kind === "photo" ? "photo" : null;
       if (!kind || typeof b.data !== "string") { ctx.json(res, 400, { error: "Choose an image." }); return true; }
       const img = cleanImage(Buffer.from(b.data, "base64")); if (!img.ok) { ctx.json(res, 400, { error: img.error }); return true; }
@@ -484,7 +484,7 @@ ${em?.confirmed ? `<p>Sending to <b>${esc(em.email)}</b>.</p>${btn("email-off", 
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
         mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
       if (req.method === "POST") {
-        const origin = String(req.headers.origin || ""); if (origin && origin !== pub) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
+        const origin = String(req.headers.origin || ""); if (origin && origin !== pub && !(origin === "null" && req.headers["sec-fetch-site"] === "same-origin")) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
         const f = new URLSearchParams(Buffer.concat(chunks).toString("utf8").slice(0, 20_000));
         const act = f.get("do");

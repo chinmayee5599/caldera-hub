@@ -43,3 +43,15 @@ test("new profiles from one address: a room can sign up together; a burst over 2
   const r = await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   h.server.close();
 });
+
+test("sign-out and sign-in forms work from pages that send Origin: null (no-referrer), but not from other sites", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-signout-"));
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const post = (headers) => fetch(base + "/signout", { method: "POST", headers, redirect: "manual" }).then(r => r.status);
+  assert.equal(await post({ origin: "null", "sec-fetch-site": "same-origin" }), 303, "the sign-out button on our own page works");
+  assert.equal(await post({ origin: "http://hub.test" }), 303);
+  assert.equal(await post({ origin: "null", "sec-fetch-site": "cross-site" }), 403, "a sandboxed or cross-site page can't sign people out");
+  assert.equal(await post({ origin: "https://evil.example" }), 403);
+  h.server.close();
+});

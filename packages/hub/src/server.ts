@@ -1181,7 +1181,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     });
   }
 
+  // Pages served with Referrer-Policy: no-referrer (sign-in, sign-out, kudos) make browsers send "Origin: null" on their
+  // own form posts; the browser's Sec-Fetch-Site still says same-origin, which a cross-site page cannot fake.
   const sameOrigin = (req: http.IncomingMessage) => { const o = String(req.headers.origin || ""); if (!o) return false;
+    if (o === "null") return String(req.headers["sec-fetch-site"] || "") === "same-origin";
     return o === (originOf(opts.publicUrl) || `http://${req.headers.host}`); };
   /** The kudos window: tap an emoji to send (members), or sign in / get a page (everyone else). Also "Add friend". */
   function kudosPage(res: http.ServerResponse, pr: any, me: string | null) {
@@ -1529,7 +1532,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (p === "/signin" || p.startsWith("/signin/")) {
         const form = async () => { const chunks: Buffer[] = []; let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 8192) break; chunks.push(c as Buffer); } return new URLSearchParams(Buffer.concat(chunks).toString("utf8")); };
         const origin = String(req.headers.origin || ""), pubOrigin = originOf(opts.publicUrl);
-        if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin) return json(res, 403, { error: "wrong origin" });
+        if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin && !sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
         const ip = ipOf(req);
         if (req.method === "GET" && p === "/signin") {
           if (!url.searchParams.get("h")) { signinGeneral(res); return; }
