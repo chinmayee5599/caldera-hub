@@ -154,3 +154,35 @@ test("Message on a feed post opens the author's thread with the post quoted; onl
   assert.doesNotMatch(other, /data-draft=/, "someone else's post is never quoted into a thread with a different person");
   hub.server.close();
 });
+
+test("a new message emails the recipient once (summary or GitHub-verified address), not again within 30 minutes, and one click turns it off", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-msgmail-")); const sent = [];
+  const hub = createHub({ dataDir: d, publicUrl: "http://hub.test", limits: { newProfilesPerDay: 100 }, email: { send: async m => { sent.push(m); } } });
+  const base = "http://127.0.0.1:" + await hub.listen(0);
+  try {
+    const post = (p, body, h = {}) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+    const ids = { ana: C.newIdentity(), bo: C.newIdentity() };
+    for (const [h, id] of Object.entries(ids)) await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: h.toUpperCase(), handle: h, boxKey: id.boxPublic }), files: { "index.html": Buffer.from(`<html><head></head><body><h1 class="title">${h}</h1></body></html>`).toString("base64") } });
+    hub.db.prepare("UPDATE profiles SET created=?").run("2026-01-01T00:00:00.000Z");
+    const A = ids.ana.id, B = ids.bo.id;
+    for (const [x, y] of [[A, B], [B, A]]) hub.db.prepare("INSERT OR IGNORE INTO friends (a, b, ts) VALUES (?,?,?)").run(x, y, new Date().toISOString());
+    hub.mail.suggest(A, "ana@realmail.dev", true, "github");   // GitHub-verified, never subscribed to the summary
+    const r = hub.messages.send(B, "ana", "Want to pair on the city renderer?"); assert.equal(r.status, 200);
+    hub.messages.send(B, "ana", "Also: loved your post");
+    assert.equal(await hub.messages.sweepAlerts(0), 1);
+    assert.equal(sent.length, 1); assert.equal(sent[0].to, "ana@realmail.dev");
+    assert.match(sent[0].subject, /BO \(@bo\) sent you 2 messages on Caldera/);
+    assert.match(sent[0].text, /loved your post/); assert.match(sent[0].text, /http:\/\/hub\.test\/messages\/@bo/);
+    hub.messages.send(B, "ana", "one more");
+    assert.equal(await hub.messages.sweepAlerts(0), 0, "no second email inside 30 minutes");
+    assert.equal(sent.filter(m => m.to === "bo@x").length, 0);
+    // no address on file: nothing sent, nothing breaks
+    hub.messages.send(A, "bo", "hi"); assert.equal(await hub.messages.sweepAlerts(0), 0);
+    // one-click off from the email
+    const off = sent[0].headers["List-Unsubscribe"].slice(1, -1).replace("http://hub.test", base);
+    assert.equal((await fetch(off.replace(/s=[0-9a-f]+/, "s=" + "0".repeat(32)), { method: "POST" })).status, 400, "forged link refused");
+    assert.equal((await fetch(off, { method: "POST" })).status, 200);
+    hub.db.prepare("DELETE FROM msg_emailed").run(); hub.messages.send(B, "ana", "after off");
+    assert.equal(await hub.messages.sweepAlerts(0), 0, "turned off");
+  } finally { hub.server.close(); }
+});

@@ -292,5 +292,20 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     q("INSERT OR REPLACE INTO email_suppress VALUES (?,?,?)").run(r.hash, "invite-unsubscribed", new Date().toISOString()); return true;
   }
 
-  return { subscribe, confirm, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, isActive: (d: DigestData) => rank.active(d), hashOf, suggest, suggestion, promptFor, dismissPrompt, matches, hasConfirmed, sendSignin, sendInvite, inviteBlock, inviteUnsub, invitesToday: (inviter: string) => (q("SELECT COUNT(*) n FROM invites_sent WHERE inviter=? AND ts > ?").get(inviter, new Date(Date.now() - DAY).toISOString()) as any).n as number, inviteCap: INVITES_PER_DAY };
+  /** A new direct message: one short email to the member's summary address, or their GitHub-verified address if they
+   *  haven't set one. The conversation itself stays on Caldera; `off` turns these emails off in one click. */
+  async function messageAlert(owner: string, a: { handle: string; name: string; preview: string; count: number; request: boolean; url: string; off: string }): Promise<boolean> {
+    const r = row(owner); let to = r && r.confirmed ? addr(r) : "";
+    if (!to) { const s = suggestion(owner); if (s?.verified) to = s.email; }
+    if (!to || suppressed(to)) return false;
+    const who = a.name && a.name !== a.handle ? `${a.name} (@${a.handle})` : `@${a.handle}`;
+    const what = a.request ? `${who} wants to message you` : a.count > 1 ? `${who} sent you ${a.count} messages` : `${who} sent you a message`;
+    await send({ to, subject: ascii(`${what} on Caldera`),
+      html: shell(esc(what), `<p style="margin:0 0 14px;padding:12px 14px;border-left:3px solid #6E4FE0;background:#F7F5FC;color:#24222B">${esc(a.preview)}</p>${a.request ? `<p style="margin:0 0 12px;color:#55525E">Accept to reply, or ignore it. They won't be told which.</p>` : ""}<p style="margin:18px 0"><a href="${esc(a.url)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${a.request ? "See the request" : "Reply on Caldera"}</a></p><p style="color:#8A8794;font-size:12.5px;margin:0">Replying to this email doesn't reach @${esc(a.handle)}. <a href="${esc(a.off)}" style="color:#8A8794">Stop emails about messages</a> (one click).</p>`),
+      text: ascii(`${what} on Caldera:\n\n"${a.preview}"\n\n${a.request ? "See the request" : "Reply"}: ${a.url}\n\nReplying to this email doesn't reach @${a.handle}.\n--\nStop emails about messages: ${a.off}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`),
+      headers: { "List-Unsubscribe": `<${a.off}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
+    return true;
+  }
+
+  return { subscribe, confirm, messageAlert, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, isActive: (d: DigestData) => rank.active(d), hashOf, suggest, suggestion, promptFor, dismissPrompt, matches, hasConfirmed, sendSignin, sendInvite, inviteBlock, inviteUnsub, invitesToday: (inviter: string) => (q("SELECT COUNT(*) n FROM invites_sent WHERE inviter=? AND ts > ?").get(inviter, new Date(Date.now() - DAY).toISOString()) as any).n as number, inviteCap: INVITES_PER_DAY };
 }

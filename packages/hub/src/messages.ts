@@ -39,6 +39,9 @@ export interface MsgCtx {
   canRequest?: (pr: any) => boolean;
   /** a personal alert in the member's bell (message requests only; ordinary messages use the Messages badge) */
   notify?: (memberId: string, a: { title: string; body: string; ctaLabel?: string; ctaUrl?: string; key?: string }) => void;
+  /** email a member about new messages (false: no address on file); `sign` makes the one-click "stop these emails" link */
+  mailAlert?: (owner: string, a: { handle: string; name: string; preview: string; count: number; request: boolean; url: string; off: string }) => Promise<boolean>;
+  sign?: (s: string) => string;
 }
 
 interface Thread { id: string; a: string; b: string; status: "open" | "request" | "ignored"; requested_by: string | null; created: string; updated: string; ignored_at: string | null }
@@ -52,6 +55,7 @@ export function messages(c: MsgCtx) {
   q(`CREATE TABLE IF NOT EXISTS msg_reports (id TEXT PRIMARY KEY, thread TEXT, reporter TEXT, reported TEXT, reason TEXT, excerpt TEXT, ts TEXT, status TEXT)`).run();
   q(`CREATE TABLE IF NOT EXISTS msg_prefs (owner TEXT PRIMARY KEY, email_off INTEGER)`).run();
   q(`CREATE TABLE IF NOT EXISTS msg_bans (member TEXT PRIMARY KEY, reason TEXT, ts TEXT)`).run();
+  q(`CREATE TABLE IF NOT EXISTS msg_emailed (owner TEXT, sender TEXT, ts TEXT, PRIMARY KEY (owner, sender))`).run();
   const hub = c.hub.replace(/\/$/, "");
   const pair = (x: string, y: string): [string, string] => x < y ? [x, y] : [y, x];
   const sentenceOf = (row: any): string => { try { const f = JSON.parse(row.fields || "{}"); return String(f.text || f.what || f.name || f.topic || "").trim(); } catch { return ""; } };
@@ -173,8 +177,43 @@ export function messages(c: MsgCtx) {
   const emailOff = (me: string) => !!(q("SELECT email_off FROM msg_prefs WHERE owner=?").get(me) as any)?.email_off;
   function setEmail(me: string, on: boolean) { q("INSERT INTO msg_prefs VALUES (?,?) ON CONFLICT(owner) DO UPDATE SET email_off=excluded.email_off").run(me, on ? 0 : 1); }
 
+  // ---------------------------------------------------------------- email alerts for new messages
+  // A minute after a message lands, if it's still unread, the recipient gets one email per sender; more from the same
+  // person within 30 minutes wait for the next round (and still only if unread). Off with the Messages-page checkbox.
+  const offSig = (id: string) => (c.sign ? c.sign("msg-email-off:" + id) : "").slice(0, 32);
+  const offUrl = (id: string) => `${hub}/v1/messages/email-off?o=${encodeURIComponent(id)}&s=${offSig(id)}`;
+  let sweeping = false;
+  async function sweepAlerts(delayMs = 60_000): Promise<number> {
+    if (!c.mailAlert || sweeping) return 0; sweeping = true; let sent = 0;
+    try {
+      const nowMs = Date.now(), upto = new Date(nowMs - delayMs).toISOString(), from = new Date(nowMs - DAY).toISOString(), gap = new Date(nowMs - 30 * 60_000).toISOString();
+      const rows = q(`SELECT t.a, t.b, t.status, m.sender, m.body, m.ts FROM msg_messages m JOIN msg_threads t ON t.id=m.thread
+        WHERE m.read_at IS NULL AND m.ts > ? AND m.ts <= ? ORDER BY m.ts`).all(from, upto) as any[];
+      const by = new Map<string, { owner: string; sender: string; request: boolean; n: number; last: any }>();
+      for (const r of rows) {
+        const owner = r.a === r.sender ? r.b : r.a, k = owner + " " + r.sender;
+        const x = by.get(k) || { owner, sender: r.sender, request: r.status === "request", n: 0, last: r };
+        x.n++; x.last = r; by.set(k, x);
+      }
+      for (const x of by.values()) {
+        if (x.last.status === "ignored" || emailOff(x.owner) || blocked(x.owner, x.sender)) continue;
+        const prev = (q("SELECT ts FROM msg_emailed WHERE owner=? AND sender=?").get(x.owner, x.sender) as any)?.ts;
+        if (prev && (prev > gap || prev >= x.last.ts)) continue;
+        const fresh = prev ? (q("SELECT COUNT(*) n FROM msg_messages m JOIN msg_threads t ON t.id=m.thread WHERE (t.a=? OR t.b=?) AND m.sender=? AND m.read_at IS NULL AND m.ts > ?").get(x.owner, x.owner, x.sender, prev) as any).n : x.n;
+        const pr = c.profile(x.sender), mine = c.profile(x.owner); if (!usable(pr) || !usable(mine)) continue;
+        q("INSERT OR REPLACE INTO msg_emailed VALUES (?,?,?)").run(x.owner, x.sender, new Date().toISOString());   // before sending: a failure never repeats every minute
+        const text = open(x.last.body).replace(/\s+/g, " ").trim();
+        try { if (await c.mailAlert(x.owner, { handle: pr.handle, name: pr.name || pr.handle, preview: text.length > 200 ? text.slice(0, 199) + "\u2026" : text, count: fresh || 1, request: x.request, url: `${hub}/messages/@${pr.handle}`, off: offUrl(x.owner) })) sent++; }
+        catch (e: any) { console.error("message email", e?.message); }
+      }
+    } finally { sweeping = false; }
+    return sent;
+  }
+  if (c.mailAlert) { const t = setInterval(() => { sweepAlerts().catch(e => console.error("message email", e?.message)); }, 30_000); t.unref?.(); }
+
   /** an account is deleted: its messages and blocks go; the other side keeps the thread, shown as "Deleted user" */
   function erase(id: string) {
+    q("DELETE FROM msg_emailed WHERE owner=? OR sender=?").run(id, id);
     q("DELETE FROM msg_messages WHERE sender=?").run(id);
     for (const t of q("SELECT id FROM msg_threads WHERE a=? OR b=?").all(id, id) as any[]) {
       if (!(q("SELECT 1 FROM msg_messages WHERE thread=? LIMIT 1").get(t.id))) q("DELETE FROM msg_threads WHERE id=?").run(t.id);
@@ -209,7 +248,7 @@ export function messages(c: MsgCtx) {
     return `<section class="ms-list" aria-label="Conversations"><div class="ms-list-h"><h1>Messages</h1>${unread ? `<span class="ms-mut">${unread} unread</span>` : ""}</div>`
       + `<div class="ms-tabs" role="tablist"><a role="tab" href="/messages${current ? "/@" + esc(current) : ""}" aria-selected="${tab !== "requests"}">All</a><a role="tab" href="/messages?tab=requests" aria-selected="${tab === "requests"}">Requests${reqs.length ? ` &middot; ${reqs.length}` : ""}</a></div>`
       + (items || `<div class="ms-empty"><b>${tab === "requests" ? "No requests" : "No messages yet"}</b><span>${tab === "requests" ? "When someone who isn't a friend writes to you, it waits here until you accept." : "Open someone's profile and tap Message. Friends get it right away; anyone else gets a request first."}</span>${tab === "requests" ? "" : '<a class="ms-btn ghost" href="/people">Find people</a>'}</div>`)
-      + `<label class="ms-pref"><input type="checkbox" id="ms-email"${emailOff(me) ? "" : " checked"}> Email me about unread messages</label></section>`;
+      + `<label class="ms-pref"><input type="checkbox" id="ms-email"${emailOff(me) ? "" : " checked"}> Email me when someone messages me</label></section>`;
   }
   function threadHtml(me: string, th: NonNullable<ReturnType<typeof thread>>) {
     const h = th.them.handle as string;
@@ -261,6 +300,13 @@ export function messages(c: MsgCtx) {
       let html = threadHtml(me, th); if (draft) html = html.replace('placeholder="Write', `data-draft="${esc(draft)}" placeholder="Write`);
       page(res, 200, shell(`Messages with @${h}`, listHtml(me, h, tab) + html + (draft ? `<script>(function(){var t=document.getElementById("ms-text");if(t&&!t.value){t.value=t.getAttribute("data-draft")||"";t.focus();t.setSelectionRange(t.value.length,t.value.length)}})()</script>` : ""), "is-thread")); return true;
     }
+    if (p === "/v1/messages/email-off" && (req.method === "GET" || req.method === "POST")) {
+      const o = url.searchParams.get("o") || "", sig = url.searchParams.get("s") || "", ok = !!c.sign && !!o && sig.length === 32 && sig === offSig(o);
+      const pg = (t: string, b: string) => { res.writeHead(ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${t} - Caldera</title><meta name="robots" content="noindex"><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"></head><body><main style="max-width:560px;margin:0 auto;padding:48px 16px"><h1 style="font-family:'Source Serif 4',Georgia,serif">${t}</h1>${b}<p><a href="/messages">Your messages</a></p></main></body></html>`); };
+      if (!ok) { pg("Link not valid", "<p>This link isn't valid. You can turn message emails off on the Messages page.</p>"); return true; }
+      if (req.method === "GET") { pg("Stop message emails", `<form method="post" action="/v1/messages/email-off?o=${encodeURIComponent(o)}&s=${sig}"><p>Stop emailing me when someone sends me a message on Caldera.</p><button class="btn" type="submit">Stop these emails</button></form>`); return true; }
+      setEmail(o, false); pg("Done", "<p>No more emails about messages. Turn them back on any time on the Messages page.</p>"); return true;
+    }
     if (req.method === "GET" && p === "/v1/messages/inbox") { if (!me) { c.json(res, 401, { error: "sign in" }); return true; } c.json(res, 200, { conversations: inbox(me), unread: unreadFor(me) }); return true; }
     if (req.method === "GET" && p === "/v1/messages/unread") { res.setHeader("cache-control", "no-store"); c.json(res, 200, { unread: me ? unreadFor(me) : 0 }); return true; }
     let m = p.match(/^\/v1\/messages\/thread\/@?([a-z0-9-]+)$/);
@@ -286,7 +332,7 @@ export function messages(c: MsgCtx) {
     if (header) return `<a class="ch-icon ch-msgs" href="${hub}/messages" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span class="ch-badge">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
     return `<a class="cb-msgs" href="${hub}/messages" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;border-radius:999px;color:#D6D6DC;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span style="position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:var(--danger,#F0716A);color:#fff;font:600 10.5px/16px 'IBM Plex Sans',Arial,sans-serif;text-align:center">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
   }
-  return { route, send, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail };
+  return { route, send, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail, sweepAlerts };
 }
 
 // ---------------------------------------------------------------------------------------------------- page styles + script
@@ -331,7 +377,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 const JS = `(function(){var T=document.querySelector('.ms-thread[data-h]');var box=document.getElementById('ms-msgs');
 function tip(m){var t=document.createElement('div');t.className='ms-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
 function post(u,o){return fetch(u,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera. Check your connection.'}}})}
-var pref=document.getElementById('ms-email');if(pref)pref.addEventListener('change',function(){post('/v1/messages/prefs',{email:pref.checked}).then(function(x){tip(x.ok?(pref.checked?'You\\'ll get an email about unread messages.':'No more emails about messages.'):'Could not save that.')})});
+var pref=document.getElementById('ms-email');if(pref)pref.addEventListener('change',function(){post('/v1/messages/prefs',{email:pref.checked}).then(function(x){tip(x.ok?(pref.checked?'You\\'ll get an email when someone messages you.':'No more emails about messages.'):'Could not save that.')})});
 if(!T)return;var h=T.getAttribute('data-h'),id=T.getAttribute('data-id');if(box)box.scrollTop=box.scrollHeight;
 var last=(function(){var b=box&&box.querySelectorAll('.ms-b[data-ts]');return b&&b.length?b[b.length-1].getAttribute('data-ts'):''})();
 var F=document.getElementById('ms-form'),ta=document.getElementById('ms-text');

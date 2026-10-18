@@ -1473,7 +1473,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   MSG = messages({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, modOf, areFriends, memberOf, sameOrigin, readBody, json, navify, tooMany, seal, unseal,
     // brand-new, empty accounts message friends only for their first two days (a public basic rule; abuse heuristics stay in the private extensions)
     canRequest: (pr: any) => Date.parse(pr.created) < Date.now() - 2 * DAY || !!cityOf(pr.handle)?.buildings,
-    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "messages" }); } });
+    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "messages" }); },
+    // a new message emails the recipient (summary address, else their GitHub-verified one) when email is set up on this hub
+    mailAlert: (opts.email?.send || opts.email?.resendKey) ? (to, a) => mail.messageAlert(to, a) : undefined,
+    sign: (s: string) => crypto.createHmac("sha256", PRIV_KEY).update(s).digest("hex") });
   headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge, left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
