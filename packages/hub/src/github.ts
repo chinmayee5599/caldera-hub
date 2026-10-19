@@ -393,7 +393,7 @@ ${finishCard(a)}
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
 ${sectionHead("people", "People")}${growth}
 ${sectionHead("notifications", "Notifications")}${emailCard(a, edits)}
-${sectionHead("privacy", "Privacy")}<form method="post" class="card" id="privacy-form"><input type="hidden" name="do" value="privacy">
+${sectionHead("privacy", "Privacy")}<div class="card"><b>&#128274; What Caldera can see on GitHub</b><p class="mut" style="margin:6px 0 0">Your public profile, your email address and your public repos: read-only. Not your code, not your private repos (unless you install the app for chosen repos, and then only names, sizes and commit counts). GitHub enforces this. <a href="/security">Details</a> &middot; Revoke any time at <a href="https://github.com/settings/applications" target="_blank" rel="noopener">github.com/settings/applications</a>, or delete your page below.</p></div><form method="post" class="card" id="privacy-form"><input type="hidden" name="do" value="privacy">
 <label><input type="checkbox" name="listed" ${edits.listed === false ? "" : "checked"}> Show me in the <a href="/people">People</a> directory and on the World map</label>
 <label><input type="checkbox" name="autoConnectRepos" ${edits.autoConnectRepos === false ? "" : "checked"}> Connect me automatically with people I know from GitHub (shared repos, mutual follows)</label>
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save</button></div></form>
@@ -715,7 +715,10 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         const act = f.get("do");
         if (act === "logout") { redirect(res, "/signout"); return true; }
         if (act === "delete" && f.get("sure")) {
-          const a = app(); try { if (a) { const t = JSON.parse(ctx.unseal(acct.token_sealed)).access; await F(`https://api.github.com/applications/${a.client_id}/grant`, { method: "DELETE", headers: { authorization: "Basic " + Buffer.from(a.client_id + ":" + a.client_secret).toString("base64"), accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "caldera-hub" }, body: JSON.stringify({ access_token: t }) }); } } catch { /* revoke is best effort */ }
+          // revoke Caldera's access on GitHub, with whichever app issued their sign-in (the sign-in app, or the older GitHub App)
+          try { const t = JSON.parse(ctx.unseal(acct.token_sealed)).access; for (const who of [signin(), app()]) { if (!who || !t) continue;
+            const r = await F(`https://api.github.com/applications/${who.client_id}/grant`, { method: "DELETE", headers: { authorization: "Basic " + Buffer.from(who.client_id + ":" + who.client_secret).toString("base64"), accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "caldera-hub" }, body: JSON.stringify({ access_token: t }) });
+            if (r.status === 204) break; } } catch { /* revoke is best effort */ }
           ctx.erase(acct.profile_id); fs.rmSync(upDir(acct.gh_id), { recursive: true, force: true }); q("DELETE FROM gh_sessions WHERE gh_id=?").run(acct.gh_id); q("DELETE FROM gh_accounts WHERE gh_id=?").run(acct.gh_id);
           setCookie(res, "cal_s", "", 0); page(res, 200, "Deleted", "<h1>Your Caldera profile is deleted</h1><p>Your page, city and data are gone, and Caldera's access to your GitHub account is revoked.</p>"); return true;
         }

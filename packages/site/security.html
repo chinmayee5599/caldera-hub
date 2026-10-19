@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security - Caldera</title>
+<meta name="description" content="What Caldera can and cannot access when you sign in with GitHub, how private repos stay private, how your data is stored, and how to revoke access.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="stylesheet" href="assets/theme.css"><link rel="stylesheet" href="assets/site.css">
+
+<link rel="canonical" href="https://caldera.social/security">
+</head>
+<body>
+<header class="nav"><a class="brand" href="./">Caldera</a><nav><a href="./#how">How it works</a><a href="/people">People</a><a href="/feed">Feed</a><a href="/world">World</a><a href="/guide">Guide</a><a href="/changelog">What's new</a><a href="./#faq">FAQ</a><a href="/signin">Sign in</a></nav></header>
+<main class="legal">
+<h1>Security</h1>
+<p class="fine">What Caldera can and can't see, who enforces it, and how to switch it off. Plain answers, no fine print.</p>
+
+<div class="legal-summary" style="border:1px solid var(--line-strong);border-radius:var(--radius-md,10px);background:var(--bg-raised);padding:14px 18px;margin:18px 0 8px">
+<b>The short version</b>
+<ul>
+  <li>Signing in with GitHub gives Caldera <b>read-only access to your public profile and your email address</b>. Nothing else.</li>
+  <li>Caldera <b>cannot read your private repos or any code</b>, and cannot change anything on GitHub. <b>GitHub enforces this</b>, not just our software: the permission you approve has no repository access, so GitHub refuses those requests.</li>
+  <li>Private repos are a <b>separate, opt-in step</b> where you pick specific repos, and even then Caldera sees only names, sizes and commit counts, never code.</li>
+  <li>You can <b>revoke access any time</b> on GitHub, and deleting your Caldera page revokes it automatically.</li>
+</ul>
+</div>
+
+<h2>When you sign in with GitHub</h2>
+<p>GitHub shows you exactly what Caldera asks for before you approve: <b>"Personal user data: Email addresses (read-only)"</b>. With that, Caldera can read:</p>
+<ul>
+  <li>Your public GitHub profile: name, username, avatar, bio, location, company and links.</li>
+  <li>Your email address, so we can tell you when someone messages you and, if you want it, send a daily summary.</li>
+  <li>Your <b>public</b> repositories, the same things anyone on the internet can see: names, descriptions, languages, topics, star counts, commit counts, the start of each README, and the <i>names</i> of the packages in public dependency files (package.json and similar).</li>
+</ul>
+<p>That access can't read private repositories, can't read code in private repositories, can't see secrets, tokens or environment variables, and can't write anything: no commits, issues, comments or settings.</p>
+
+<h2>Is "private" enforced by GitHub, or by Caldera?</h2>
+<p><b>By GitHub.</b> Access on GitHub is granted by permission. The permission you approve at sign-in doesn't include repositories, so if Caldera (or anyone who got hold of Caldera's servers) asked GitHub for a private repo with your sign-in, GitHub would refuse. Our software being careful is the second lock, not the first.</p>
+
+<h2>Showing private work (optional)</h2>
+<p>If you want your private work on your city, you install the <b>Caldera GitHub app</b> and choose which repositories it can see. That app has one repository permission, <b>"Metadata: read-only"</b>: repository names, sizes and commit activity. It cannot read code, files, issues, pull requests, secrets or settings, again enforced by GitHub.</p>
+<p>You then decide what the public sees. Private repos show as padlocked buildings (size only), or anonymously (no names, no sizes, no project), or not at all. Uninstall the app on GitHub and Caldera loses that access immediately.</p>
+
+<h2>How we look after what we do see</h2>
+<ul>
+  <li><b>Encrypted at rest.</b> GitHub access tokens and email addresses are encrypted (AES-256-GCM) in our database. They are never shown on any page and never sent to anyone else.</li>
+  <li><b>Used only for the above.</b> Tokens are used only to read the public information listed above to build and refresh your page.</li>
+  <li><b>No third-party connectors.</b> Caldera doesn't pass your GitHub access to other services, plugins or AI tools.</li>
+  <li><b>Open source.</b> The Caldera hub and plugin code are public, so you can check exactly what is read: <a href="https://github.com/schoettle-cmd/caldera-hub" rel="noopener noreferrer" target="_blank">caldera-hub</a> and <a href="https://github.com/schoettle-cmd/caldera" rel="noopener noreferrer" target="_blank">caldera</a>.</li>
+</ul>
+
+<h2>Revoke access</h2>
+<ul>
+  <li>On GitHub: <b>Settings &rarr; Applications &rarr; Authorized OAuth Apps &rarr; Caldera &rarr; Revoke</b> (<a href="https://github.com/settings/applications" rel="noopener noreferrer" target="_blank">github.com/settings/applications</a>). For the optional private-repo app: <b>Installed GitHub Apps &rarr; Caldera Social &rarr; Uninstall</b>.</li>
+  <li>On Caldera: <b>Settings &rarr; Account &rarr; Delete</b> removes your page, city and data, and revokes Caldera's GitHub access for you.</li>
+</ul>
+
+<h2>Obsidian, AI agents and email sign-up</h2>
+<ul>
+  <li><b>Obsidian:</b> your vault never leaves your computer. The plugin publishes only what you choose, after a privacy filter, and your identity is a key that stays in your vault.</li>
+  <li><b>AI agents:</b> the optional agent hook sends only the repo name and a short task title, so a drone can fly over the right building. Never your prompts, code or files.</li>
+  <li><b>Email sign-up:</b> we store your email address (encrypted) and the profile text you paste. Nothing else is connected.</li>
+</ul>
+
+<h2>Report a problem</h2>
+<p>Found a security issue? Email <a href="mailto:hello@caldera.social">hello@caldera.social</a> with "Security" in the subject and we'll respond quickly. Please don't post it publicly until it's fixed.</p>
+<p class="fine">See also the <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>
+</main>
+<footer class="footer footer-big"><div class="fgrid"><div class="fcol"><b>Caldera</b><a href="/">Home</a><a href="/feed">Feed</a><a href="/people">People</a><a href="/world">World map</a><a href="/gh">See any GitHub as a city</a><a href="/guide">Guide</a><a href="/learn">Learn</a><a href="/changelog">What's new</a></div><div class="fcol"><b>GitHub</b><a href="/github-profile-city">Turn your GitHub into a living city</a><a href="/github-city">GitHub city: your repos as a living city</a><a href="/visualize-github-activity">Visualize your GitHub activity</a><a href="/github-contribution-graph-alternative">An alternative to the GitHub contribution graph</a><a href="/github-skyline-alternative">A GitHub Skyline alternative that stays live</a><a href="/github-readme-badge">Add a GitHub city badge to your README</a><a href="/github-profile-readme-ideas">GitHub profile README ideas</a><a href="/github-stats-for-portfolio">Show your GitHub stats on a portfolio</a><a href="/developer-portfolio-from-github">Build a developer portfolio from your GitHub</a><a href="/show-private-github-activity-safely">Show private GitHub activity safely</a></div><div class="fcol"><b>AI builders</b><a href="/track-ai-token-usage">Track your AI token usage by day and by model</a><a href="/linkedin-alternative-for-ai-builders">A LinkedIn alternative for AI builders</a><a href="/find-ai-engineers">Find AI engineers by what they build</a><a href="/ai-developer-community">An AI developer community built on real work</a><a href="/claude-code-activity-tracker">Track your Claude Code activity</a><a href="/visualize-ai-coding-agents">Visualize your AI coding agents</a><a href="/vibe-coding-portfolio">A vibe coding portfolio</a><a href="/show-ai-token-usage">Show your AI token usage on your profile</a><a href="/ai-builder-profile">Create an AI builder profile</a></div><div class="fcol"><b>Developers</b><a href="/what-is-caldera">What is Caldera</a><a href="/linkedin-for-developers">A LinkedIn for developers</a><a href="/developer-social-network">A social network for developers</a><a href="/find-a-technical-cofounder">Find a technical cofounder</a><a href="/follow-developers">Follow developers and see what they build</a><a href="/build-in-public">Build in public without the busywork</a><a href="/add-live-visitors-to-website-map">Show your website visitors live</a><a href="/developer-direct-messages">Message developers directly</a></div><div class="fcol"><b>Obsidian</b><a href="/obsidian-public-profile">Make a public profile from your Obsidian vault</a><a href="/share-obsidian-notes-privately">Share Obsidian notes privately with friends</a><a href="/obsidian-social-network">Is there a social network for Obsidian users</a><a href="/obsidian-publish-alternatives">Free alternatives to Obsidian Publish</a><a href="/obsidian-ai-agent-setup">Using Claude Code, Codex or Cursor with Obsidian</a><a href="/obsidian-daily-journal-ai">An automatic daily journal in Obsidian, written by AI</a><a href="/obsidian-activity-tracker">Activity heatmap, streaks and a leaderboard for Obsidian</a><a href="/obsidian-portfolio">Make a portfolio from your Obsidian vault</a><a href="/obsidian-github-integration">Connect Obsidian and GitHub on one profile</a><a href="/obsidian-plugin-for-developers">An Obsidian plugin for developers</a><a href="/obsidian-profile-modules">Custom profile sections from Obsidian notes</a><a href="/share-obsidian-vault-with-friends">Share Obsidian notes with friends</a></div></div><div class="fbase"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/security">Security</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="mailto:hello@caldera.social">hello@caldera.social</a></span></div></footer>
+</body>
+</html>
