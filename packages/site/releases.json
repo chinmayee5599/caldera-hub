@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.25.8",
+      "date": "2026-10-19",
+      "title": "Your headline is back",
+      "items": [
+        "Same fix as 0.25.7, released again so the Obsidian community directory can pick it up."
+      ]
+    },
+    {
       "version": "0.25.7",
       "date": "2026-10-19",
       "title": "Your headline is back",
