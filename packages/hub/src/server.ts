@@ -2407,7 +2407,7 @@ export function makeAlertBatcher(send: (subject: string, text: string) => void, 
       if (sent < perDay) {
         sent++;
         if (ev.type === "signup") send(`New Caldera profile: ${who(ev.handle)} (${ev.total} total)`, `New Caldera profile: ${who(ev.handle)}${ev.name ? ` (${ev.name})` : ""}\nTotal profiles: ${ev.total}\n${site}/@${ev.handle || ""}/\n\nAll profiles: ${site}/people` + (sent === perDay ? `\n\nThat's ${perDay} today: further sign-ups today arrive as one email an hour.` : ""));
-        else send(`Caldera profile deleted: ${who(ev.handle)} (${ev.total} total)`, `Caldera profile deleted: ${who(ev.handle)}. Total profiles: ${ev.total}`);
+        else send(`Caldera profile deleted: ${who(ev.handle)} (${ev.total} total)`, `Caldera profile deleted: ${who(ev.handle)}. Total profiles: ${ev.total}\n\nAll profiles: ${site}/people?sort=new`);
         return;
       }
       queue.push(ev);

@@ -192,3 +192,23 @@ test("email text part keeps its line breaks", async () => {
   const m = hub.mail.compose({ handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [] }, "http://hub.test/u", false);
   assert.ok(m.text.split("\n").length > 3 && m.text.startsWith("YOUR PAGE\n"));
 });
+
+test("every digest section links back to the page it's about (HTML and plain text)", async () => {
+  const p = (h) => ({ handle: h, name: h.toUpperCase() });
+  const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, viewsAll: 40, links: 2, credits: 0, stale: 0,
+    vault: { journal: 1, notes: 2 }, cityCommits: 3,
+    messages: { unread: 1, from: [{ ...p("ma"), count: 1, preview: "hi", request: false }], url: "x" },
+    kudos: [{ ...p("ku"), emoji: "*" }], postKudos: [{ ...p("pk"), emoji: "*", url: "http://hub.test/feed/p1" }],
+    requests: [{ ...p("rq"), note: "" }], intros: [{ ...p("in"), tag: "ai" }],
+    postWaiting: [{ ...p("pw"), text: "t", kind: "help", url: "http://hub.test/feed/p2" }], suggestions: [{ ...p("su"), why: "w" }],
+    lookingFor: [{ ...p("lf"), sentence: "s", why: "w", url: "http://hub.test/feed/p3" }], recommends: [{ ...p("rc"), sentence: "s", why: "w", link: "", url: "http://hub.test/feed/p4" }],
+    friends: [{ ...p("fr"), kind: "repo", why: "x/y" }, { ...p("fj"), joined: true }], invited: [{ handle: "iv" }], gravity: [{ handle: "gr", reason: "helped" }], newMembers: [] };
+  const m = hub.mail.compose(d, "http://hub.test/u", false);
+  const sections = m.html.split(/<h2[^>]*>/).slice(1);
+  assert.ok(sections.length >= 12, "all sections rendered: " + sections.length);
+  for (const s of sections) assert.match(s, /href="https?:\/\//, "HTML section without a link: " + s.slice(0, 60));
+  for (const s of m.text.split("\n\n").filter(x => /^[A-Z][A-Z ]+(:|\n)/.test(x))) assert.match(s, /https?:\/\//, "text section without a link: " + s.slice(0, 60));
+  // the stale-page note links to the page too, not only to obsidian://
+  const st = hub.mail.compose({ ...d, stale: 5 }, "http://hub.test/u", false);
+  assert.match(st.html, /Open Obsidian<\/a> &middot; <a href="[^"]*\/@mike\/"/);
+});
