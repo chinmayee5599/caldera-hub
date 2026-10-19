@@ -99,9 +99,17 @@ export function github(ctx: GhCtx) {
   /** GitHub logins a profile's signed manifest links to (lowercase). */
   const ghLoginsOf = (pr: any): string[] => { try { const links = JSON.parse(pr.manifest).body?.links;
     return (Array.isArray(links) ? links : []).map((l: any) => String(Array.isArray(l) ? l[1] : "").match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9-]{1,39})\/?$/)?.[1]?.toLowerCase()).filter(Boolean) as string[]; } catch { return []; } };
-  /** The existing (non-hosted) profile that claims this GitHub login, most recently updated first. */
-  const claimedBy = (login: string): any => (q("SELECT id, handle, manifest, updated FROM profiles WHERE handle IS NOT NULL ORDER BY updated DESC").all() as any[])
-    .find(pr => !q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id) && (ctx.owner?.usable(pr) ?? true) && ghLoginsOf(pr).includes(login.toLowerCase())) || null;
+  /** Existing (non-hosted) profiles whose page lists this GitHub login. A listing alone proves nothing (anyone can type
+   *  any link), so these are only candidates: linking needs proof (see `provenOwner`). */
+  const claimants = (login: string): any[] => (q("SELECT id, handle, manifest, updated FROM profiles WHERE handle IS NOT NULL ORDER BY updated DESC").all() as any[])
+    .filter(pr => !q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id) && (ctx.owner?.usable(pr) ?? true) && ghLoginsOf(pr).includes(login.toLowerCase()));
+  /** Proof that the GitHub account and the Caldera page belong to the same person: this browser already owns the page
+   *  (signed in from Obsidian), or the GitHub profile itself links back to the page (website or bio). */
+  const provenOwner = (req: http.IncomingMessage, pr: any, me: any): boolean => {
+    if (ctx.owner?.of?.(req) === pr.id) return true;
+    const back = `caldera.social/@${String(pr.handle).toLowerCase()}`;
+    return [me?.blog, me?.bio].some((v: unknown) => String(v || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "").includes(back));
+  };
   const addCookie = (res: http.ServerResponse, raw: string) => { const prev = res.getHeader("set-cookie"); const list = Array.isArray(prev) ? prev : prev ? [String(prev)] : []; res.setHeader("set-cookie", [...list, raw]); };
   const linkedProfile = (ghId: number, login: string): any => {
     const ln = q("SELECT * FROM gh_links WHERE gh_id=?").get(ghId) as any; if (!ln) return null;
@@ -554,7 +562,8 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       // request replays the first one's outcome (same cookies, same redirect) instead of failing with "code expired"
       const code = url.searchParams.get("code") || "", st = url.searchParams.get("state") || "";
       const prior = cbResults.get(code);
-      if (code && prior && prior.state === st && Date.now() - prior.at < 120_000) {
+      // only the same browser (its pending-sign-in cookie matches) gets the replay: a copied callback URL gets nothing
+      if (code && prior && prior.state === st && Date.now() - prior.at < 120_000 && String(cookies(req).cal_oauth || "") === st) {
         const r = await prior.p;
         if (r) { if (r.cookies.length) res.setHeader("set-cookie", r.cookies); redirect(res, r.loc); return true; }
       }
@@ -576,7 +585,12 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         const backTo = safeBack(cookies(req).cal_back); if (backTo) setCookie(res, "cal_back", "", 0);
         // an existing profile that lists this GitHub account (made in Obsidian): sign in as its owner, never make another
         if (!acct || acct.claimed || (wantH && wantH !== acct.handle)) {
-          const pr = linkedProfile(me.id, me.login) || claimedBy(me.login);
+          // an existing link, or a first link with proof; never on a bare claim (anyone can put your GitHub on their page)
+          let pr = linkedProfile(me.id, me.login);
+          if (!pr) { const cands = claimants(me.login).filter(x => !wantH || x.handle === wantH), proven = cands.filter(x => provenOwner(req, x, me));
+            if (proven.length === 1) pr = proven[0];
+            else if (cands.length) { ctx.track?.(req, "fail", "GitHub link needs proof");
+              page(res, 403, "Link your GitHub", `<h1>One step to link your GitHub</h1><p>To keep GitHub accounts safe, Caldera links a GitHub account to a page only with proof that both are yours. Either:</p><ul><li>Open your page as its owner first: in Obsidian run <b>Caldera: Open my public page (as owner)</b>, then sign in with GitHub again, or</li><li>Put your Caldera page (<code>caldera.social/@your-handle</code>) in your GitHub profile's website or bio, then sign in with GitHub again.</li></ul><p><a class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; } }
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
             ctx.track?.(req, "signin", "linked page"); addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;

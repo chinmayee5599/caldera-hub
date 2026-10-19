@@ -51,6 +51,9 @@ test("a duplicated GitHub callback (same code twice, concurrently and right afte
     assert.ok((r.headers.getSetCookie?.() || []).some(c => c.startsWith("cal_s=") && !c.startsWith("cal_s=;")), "every copy gets the session cookie");
   }
   assert.equal(h.db.prepare("SELECT COUNT(*) n FROM gh_accounts").get().n, 1, "one account, not two");
+  // someone who only saw the callback URL (logs, a shared screen) and doesn't have this browser's cookie gets no session
+  const stolen = await fetch(base + `/auth/github/callback?code=newbie&state=${state}`, { redirect: "manual" });
+  assert.ok(!(stolen.headers.getSetCookie?.() || []).some(c => c.startsWith("cal_s=") && !c.startsWith("cal_s=;")), "no session for a copied URL");
   const other = await fetch(base + `/auth/github/callback?code=newbie&state=wrong`, { headers: { cookie: jar.join("; ") }, redirect: "manual" });
   assert.notEqual(other.headers.get("location") || "", "/me?welcome=1", "a replay with a different state never signs in");
   assert.equal(other.headers.get("location"), "/auth/github", "it starts a fresh sign-in instead (GitHub remembers the approval)");

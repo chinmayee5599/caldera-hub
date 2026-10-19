@@ -61,6 +61,7 @@ test("/gh/<login> of a member goes to their real city; member badges; fresh buil
     await S.post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: "Ann", handle: "ann", boxKey: id.boxPublic, links: [["GitHub", "https://github.com/ann-gh"]] }),
       files: { "index.html": Buffer.from("<html><head></head><body>ann</body></html>").toString("base64"),
         "city.html": Buffer.from(`<html><body><script type="application/json" id="city-data">${JSON.stringify({ private: false, districts: [{ name: "Web", notes: 0, repos: [{ name: "site", project: "Web", public: true, language: "HTML", commits: 30, weeks: [], week: 1, today: 0 }] }] })}</script></body></html>`).toString("base64") } });
+    S.hub.db.prepare("INSERT INTO gh_links VALUES (?,?,?,?)").run(77, "ann-gh", id.id, new Date().toISOString());   // a verified link (a bare listing doesn't count)
     const r = await S.get("/gh/ann-gh"); assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/@ann/city.html");
     const mb = await S.get("/@ann/badge.svg"); assert.equal(mb.status, 200); assert.match(await mb.text(), /1 repo · 30 commits\/yr/);
     assert.match(await (await S.get("/gh/ann-gh/badge.svg")).text(), /@ann/, "a member's login badge shows their real city");

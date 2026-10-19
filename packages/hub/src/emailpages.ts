@@ -251,8 +251,15 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       c.page(res, 200, "Check your email", `${STYLE}<main class="ep"><h1>Check your email</h1><p class="lede">We sent a link to <b>${esc(email)}</b>. Open it and your page goes live.</p><p class="mut">Nothing there in a minute? Check spam, or <a href="/start">try again</a>.</p></main>`);
       return true;
     }
+    // opening the link only shows a button (mail scanners open links; they never press buttons); the button does the work
     if (p === "/start/confirm" && req.method === "GET") {
-      const t = String(url.searchParams.get("t") || ""), row = t ? q("SELECT * FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
+      const t = String(url.searchParams.get("t") || ""), row0 = t ? q("SELECT expires FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
+      if (!row0 || row0.expires < Date.now()) { c.page(res, 400, "Link expired", `${STYLE}<main class="ep"><h1>That link expired or was already used</h1><p><a class="btn" href="/start">Start again</a> &middot; <a href="/signin">Sign in</a></p></main>`); return true; }
+      c.page(res, 200, "Confirm", `${STYLE}<main class="ep"><h1>One click to finish</h1><form method="post" action="/start/confirm"><input type="hidden" name="t" value="${esc(t)}"><button class="btn" type="submit">Publish my page and sign in</button></form></main>`); return true;
+    }
+    if (p === "/start/confirm" && req.method === "POST") {
+      if (!c.sameOrigin(req)) { c.page(res, 403, "No", `${STYLE}<main class="ep"><h1>Wrong origin</h1></main>`); return true; }
+      const t = String((await form(req)).get("t") || ""), row = t ? q("SELECT * FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
       if (!row || row.expires < Date.now()) { c.page(res, 400, "Link expired", `${STYLE}<main class="ep"><h1>That link expired or was already used</h1><p><a class="btn" href="/start">Start again</a> &middot; <a href="/signin">Sign in</a></p></main>`); return true; }
       q("DELETE FROM email_pending WHERE token_hash=?").run(hash(t));
       const email = c.unseal(row.email_sealed), pr = JSON.parse(row.content || "{}") as Profile;

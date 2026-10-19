@@ -68,7 +68,7 @@ export function alertsStore(q: (sql: string) => any, key: Buffer) {
       // a new member starts at zero: news posted before they joined is there to read, but not counted as unread (the pinned welcome still is)
       const joined = String((q("SELECT created FROM profiles WHERE id=?").get(owner) as any)?.created || "");
       return (q("SELECT * FROM alerts WHERE target IS NULL OR target=? ORDER BY pinned DESC, ts DESC LIMIT 200").all(owner) as AlertRow[]).filter(a => visible(a.audience, kind)).slice(0, limit)
-        .map(a => ({ ...a, read: read.has(a.id) || (!a.target && !a.pinned && !!joined && a.ts < joined) }));
+        .map(a => ({ ...a, read: read.has(a.id) || (!(a as any).target && !a.pinned && !!joined && a.ts < joined) }));
     },
     unread(owner: string, kind: "github" | "obsidian"): number { return store.forOwner(owner, kind, 200).filter(a => !a.read).length; },
     markRead(owner: string, ids: string[]) { const t = new Date().toISOString(); for (const id of ids.slice(0, 200)) q("INSERT OR IGNORE INTO alert_reads VALUES (?,?,?)").run(owner, id, t); },

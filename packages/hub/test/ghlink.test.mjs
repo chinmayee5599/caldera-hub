@@ -44,6 +44,12 @@ test("GitHub sign-in finds the Obsidian profile that lists the login: owner cook
   await publish(mk, { name: "Mike", handle: "mike", links: [["GitHub / octo", "https://github.com/octo"], ["Site", "https://x.test"]] });
   await publish(other, { name: "Other", handle: "other", links: [] });
   const before = count(h, "SELECT COUNT(*) n FROM profiles");
+  // a page merely LISTING a GitHub account proves nothing: no link, no owner cookie, no email taken
+  const bare = await signIn("octo");
+  assert.equal(bare.cb.status, 403); assert.match(bare.body, /One step to link your GitHub/); assert.equal(bare.own, undefined);
+  assert.equal(count(h, "SELECT COUNT(*) n FROM gh_links"), 0);
+  // proof: the GitHub profile links back to the page (website or bio)
+  USERS.octo.blog = "https://caldera.social/@mike";
   const r = await signIn("octo");
   assert.equal(r.cb.status, 302); assert.equal(r.cb.headers.get("location"), "/@mike/"); assert.ok(r.own, "owner cookie set");
   assert.equal(count(h, "SELECT COUNT(*) n FROM profiles"), before, "no hosted profile made");

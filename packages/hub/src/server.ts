@@ -1133,7 +1133,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     fetch: opts.githubFetch || fetch, pause: opts.githubFetch ? 0 : 250, log: (...a) => console.error(...a),
     token: () => GH.anyToken(),
     members: () => (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(pr => !modOf(pr.handle, pr.id)).map(pr => {
-      const logins = new Set<string>(GH.ghLoginsOf(pr));
+      // verified GitHub accounts only (signed up with it, or linked with proof): a link typed on a page proves nothing
+      const logins = new Set<string>();
       for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
       for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
       return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: autoOff(pr) };
@@ -1148,7 +1149,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       q("DELETE FROM gh_circle WHERE seen < ?").run(new Date(Date.now() - 90 * DAY).toISOString());   // forget circles not seen for 90 days (members who stopped being scanned)
     },
   });
-  const loginsOf = (pr: any): string[] => { const s = new Set<string>(GH.ghLoginsOf(pr));
+  /** a member's VERIFIED GitHub logins (their sign-up account, or one linked with proof), never one merely typed on their page */
+  const loginsOf = (pr: any): string[] => { const s = new Set<string>();
     for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) s.add(String(r.login).toLowerCase());
     for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) s.add(String(r.login).toLowerCase());
     return [...s].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)); };

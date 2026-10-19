@@ -10,7 +10,8 @@ import { createHub } from "../dist/server.js";
 
 const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
 const RAW = (s) => new Response(s, { status: 200, headers: { "content-type": "text/plain" } });
-const USERS = { octo: { id: 7, login: "octo" }, newbie: { id: 8, login: "newbie" }, third: { id: 9, login: "third" } };
+// octo and third prove they own their Caldera pages by linking back to them from GitHub (the link check)
+const USERS = { octo: { id: 7, login: "octo", blog: "https://caldera.social/@mike" }, newbie: { id: 8, login: "newbie" }, third: { id: 9, login: "third", blog: "caldera.social/@third" } };
 const repo = (owner, name, x = {}) => ({ name, full_name: `${owner}/${name}`, private: false, fork: false, archived: false, size: 10, pushed_at: "2026-10-01T00:00:00Z", language: "TypeScript", description: "", topics: [], ...x });
 const REPOS = {
   octo: [repo("octo", "caldera-social", { description: "The social network for GitHub and Obsidian", topics: ["social", "obsidian"] }),

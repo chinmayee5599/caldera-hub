@@ -24,6 +24,7 @@ before(async () => {
   for (const w of who) {
     const m = C.sign(ids[w], "profile.manifest", { name: w.toUpperCase(), handle: w, boxKey: ids[w].boxPublic, headline: "builder", links: [["GitHub", `https://github.com/${w}-gh`]] });
     await post(`/v1/profiles/${ids[w].id}/bundle`, { manifest: m, files: { "index.html": Buffer.from(`<html><head></head><body><h1 class="title">${w}</h1><p class="lede">builder</p></body></html>`).toString("base64") } });
+    hub.db.prepare("INSERT INTO gh_links VALUES (?,?,?,?)").run(who.indexOf(w) + 100, `${w}-gh`, ids[w].id, new Date().toISOString());   // verified GitHub link
     hub.db.prepare("INSERT OR REPLACE INTO tag_repo_cache VALUES (?,?,?,?)").run(`${w}-gh/app`, "2026-10-01", JSON.stringify({ repo: "app", desc: "", topics: [], lang: "TypeScript", readme: "", deps: DEPS[w] }), "2026-10-01");
   }
 });
