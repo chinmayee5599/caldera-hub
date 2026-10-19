@@ -982,6 +982,23 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     return null;
   }
   const liveScript = (cfg: object) => `<script>window.CALDERA_LIVE=${JSON.stringify(cfg).replace(/</g, "\\u003c")}</script>`;
+  /** Which build of a member's city a page is showing: when their city was last published (plugin publish or GitHub
+   *  rebuild), plus, on the private address, when the private layer was last pushed. */
+  const buildOf = (handle: string, privBuilt?: string | null) => {
+    let t = 0; try { t = Math.round(fs.statSync(path.join(opts.dataDir, "profiles", handle, "city.html")).mtimeMs); } catch { /* not built yet */ }
+    return `${t}${privBuilt ? "|" + privBuilt : ""}`;
+  };
+  /** Open city pages (the watch window, a pop-out, a tab left open) check every minute whether a newer build exists and
+   *  reload themselves, when visible and nobody has touched the page for 20 s, so new repos appear without a manual
+   *  reload. Injected by the hub, so it works for every member whatever plugin version built the page. */
+  const injectBuildWatch = (html: string, url: string, build: string) => {
+    const js = `<script>(function(){var B=${JSON.stringify(build)},U=${JSON.stringify(url)},last=Date.now(),due=false;
+['pointerdown','wheel','keydown','touchstart'].forEach(function(e){addEventListener(e,function(){last=Date.now()},{passive:true})});
+function go(){if(due&&document.visibilityState==='visible'&&Date.now()-last>20000)location.reload()}
+function check(){fetch(U,{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.build&&j.build!==B){due=true;go()}}).catch(function(){})}
+setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibilitychange',go)})();</script>`;
+    return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, js + "</body>") : html + js;
+  };
   const injectLive = (html: string, cfg: object) => /<\/head>/i.test(html) ? html.replace(/<\/head>/i, liveScript(cfg) + "</head>") : liveScript(cfg) + html;
   const liveToken = (handle: string, day = new Date().toISOString().slice(0, 10)) => crypto.createHmac("sha256", PRIV_KEY).update("live:" + handle + ":" + day).digest("hex").slice(0, 24);
 
@@ -1830,6 +1847,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }
+          if (rel === "city.html") html = injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1]));
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;
@@ -2179,6 +2197,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
         return json(res, 200, liveStats(m[1], true) || { at: now(), private: true, districts: {}, events: [] });
       }
+      // which build of a member's public city is current: open city pages reload when it changes (injectBuildWatch)
+      m = p.match(/^\/v1\/build\/([a-z0-9-]+)$/);
+      if (req.method === "GET" && m) { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store", "access-control-allow-origin": "*" }); return res.end(JSON.stringify({ build: buildOf(m[1]) })); }
       m = p.match(/^\/v1\/live\/([a-z0-9-]+)$/);
       if (req.method === "GET" && m) {
         const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
@@ -2344,6 +2365,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (!m) { res.writeHead(302, { location: `/@${mine}/` }); return res.end(); }
       if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }
       if (!m[2]) { res.writeHead(301, { location: `/@${mine}/${url.search}` }); return res.end(); }
+      if (m[2] === "/build.json") {   // open private city pages poll this to reload when a newer build or private push exists
+        const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
+        if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
+        const r0 = url.searchParams.get("view") === "public" ? null : q("SELECT built FROM owner_private WHERE owner=?").get(pr0.id) as any;
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify({ build: buildOf(mine, r0?.built) }));
+      }
       if (m[2] === "/live.json") {   // the private city polls this; the token in the page stops other sites reading it through your browser
         const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
         if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
@@ -2373,6 +2400,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       const bar = nav ? calderaBar(opts.publicUrl || "https://caldera.social", mine, nav, undefined, bellFor(byHandle(mine)?.id)) : "";
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
       if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" });
+      if (rel === "city.html") html = injectBuildWatch(html, `build.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, buildOf(mine, pub ? null : row?.built));
       if (rel === "city.html" && pr) { html = cityExtras(html, pub ? null : pr.id); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl), originOf(opts.publicUrl)); }
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);

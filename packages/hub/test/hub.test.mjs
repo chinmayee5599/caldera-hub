@@ -476,6 +476,11 @@ test("a new GitHub repo is on the map by the next page load (hosted members)", a
   await fetch(base + `/auth/github/callback?code=42&state=${state}`, { headers: { cookie: oauth, "user-agent": "Mozilla/5.0" }, redirect: "manual" });
   const city = () => fetch(base + "/@octo-cat/city.html").then(r => r.text());
   assert.ok((await city()).includes('"name":"tool"'));
+  // open city pages carry a build watcher that reloads them when a newer build exists
+  const page0 = await city(), b0 = (await (await fetch(base + "/v1/build/octo-cat")).json()).build;
+  const watcher = page0.match(/<script>\(function\(\)\{var B=("[^"]*"),U="\/v1\/build\/octo-cat"[\s\S]*?<\/script>/);
+  assert.ok(watcher, "build watcher injected"); assert.equal(JSON.parse(watcher[1]), b0, "page knows which build it shows");
+  new Function(watcher[0].replace(/^<script>|<\/script>$/g, ""));   // parses
   await new Promise(r => setTimeout(r, 300));
   const before = builds;
   assert.equal(builds, before, "first view of a fresh build: no rebuild");
@@ -483,6 +488,7 @@ test("a new GitHub repo is on the map by the next page load (hosted members)", a
   await city();                       // this view notices it and rebuilds in the background
   for (let i = 0; i < 50 && !(await city()).includes('"name":"tradecraft"'); i++) await new Promise(r => setTimeout(r, 100));
   assert.ok((await city()).includes('"name":"tradecraft"'), "the new repo is on the map");
+  assert.notEqual((await (await fetch(base + "/v1/build/octo-cat")).json()).build, b0, "open pages see a newer build and reload");
   const after = builds; await city(); await new Promise(r => setTimeout(r, 300));
   assert.equal(builds, after, "nothing changed on GitHub: no further rebuilds");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
