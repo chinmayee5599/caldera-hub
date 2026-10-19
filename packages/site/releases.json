@@ -1,11 +1,12 @@
 {
   "releases": [
     {
-      "version": "0.25.9",
+      "version": "0.25.10",
       "date": "2026-10-19",
       "title": "Your headline is back",
       "items": [
-        "Same fix as 0.25.7, released again so the Obsidian community directory can pick it up."
+        "Your page publishes the headline and theme you set again (0.25.5 and 0.25.6 left them off).",
+        "Releases are now built and signed by GitHub, so anyone can check a download came from the public source."
       ]
     },
     {
