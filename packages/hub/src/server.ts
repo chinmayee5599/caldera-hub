@@ -1456,7 +1456,7 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
       const bars = fs.readFileSync(f, "utf8").match(/<div class="sb-bars"[^>]*>([\s\S]*?)<\/div>/)?.[1];
       if (bars) { pts = 0;
         const today = new Date(); today.setUTCHours(0, 0, 0, 0); const from = new Date(today.getTime() - 7 * DAY).toISOString().slice(0, 10), to = today.toISOString().slice(0, 10);
-        for (const x of bars.matchAll(/title="(\d{4}-\d{2}-\d{2}): (\d+)"/g)) if (x[1] >= from && x[1] < to) pts += Number(x[2]); }
+        for (const x of bars.matchAll(/title="(\d{4}-\d{2}-\d{2}): (\d+)[",]/g)) if (x[1] >= from && x[1] < to) pts += Number(x[2]); }
       pointsCache.set(handle, { mt, pts });
     }
     return pts;
