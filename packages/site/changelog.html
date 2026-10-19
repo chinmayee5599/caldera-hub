@@ -23,8 +23,13 @@
   <h1>What's new</h1>
   <p class="lead-in">Every Caldera release. When something ships, Caldera also shows its owner a short alert inside Obsidian. Follow along with the <a href="releases.xml">RSS feed</a>.</p>
   <!-- RELEASES_START -->
+  <article class="release" id="v0.25.6">
+    <div class="release-meta"><span class="tag">0.25.6</span><time datetime="2026-10-18">2026-10-18</time><span>latest</span></div>
+    <h2>Locked down</h2>
+    <ul><li>Notes friends share with you can only ever land in your Caldera inbox folder, whatever name they come with.</li><li>Keys Caldera hands your plugin are checked before they go into a setup prompt or a website snippet.</li><li>Your photo and banner must be image files, so a mistyped path can't publish anything else.</li><li>Live-visitor snippets now load a frozen script with an integrity hash: your browser refuses anything that isn't the published file. Old snippets keep working; copy the new line when you next touch your site.</li><li>The agent setup prompt checks the hook file's fingerprint before installing it, and you can add "tasks": false to send no task titles at all.</li><li>The setup prompt now installs Caldera straight from the official GitHub release.</li></ul>
+  </article>
   <article class="release" id="v0.25.5">
-    <div class="release-meta"><span class="tag">0.25.5</span><time datetime="2026-10-18">2026-10-18</time><span>latest</span></div>
+    <div class="release-meta"><span class="tag">0.25.5</span><time datetime="2026-10-18">2026-10-18</time></div>
     <h2>Your name, never 'Untitled'</h2>
     <ul><li>A page without a name shows your @handle until you add one, and Caldera tells you where: the name: line in Caldera/profile.md, or Settings &gt; Caldera.</li><li>Moving a GitHub sign-up into Obsidian keeps the name your page already had.</li></ul>
   </article>

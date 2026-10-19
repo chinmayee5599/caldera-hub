@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.25.6",
+      "date": "2026-10-18",
+      "title": "Locked down",
+      "items": [
+        "Notes friends share with you can only ever land in your Caldera inbox folder, whatever name they come with.",
+        "Keys Caldera hands your plugin are checked before they go into a setup prompt or a website snippet.",
+        "Your photo and banner must be image files, so a mistyped path can't publish anything else.",
+        "Live-visitor snippets now load a frozen script with an integrity hash: your browser refuses anything that isn't the published file. Old snippets keep working; copy the new line when you next touch your site.",
+        "The agent setup prompt checks the hook file's fingerprint before installing it, and you can add \"tasks\": false to send no task titles at all.",
+        "The setup prompt now installs Caldera straight from the official GitHub release."
+      ]
+    },
+    {
       "version": "0.25.5",
       "date": "2026-10-18",
       "title": "Your name, never 'Untitled'",
