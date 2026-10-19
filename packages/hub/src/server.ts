@@ -1134,7 +1134,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
   const FUNNEL = funnel({ q, ipOf, botUa: BOT_UA });
   const GH = github({ track: (req, step, detail) => FUNNEL.track(req, step, detail), accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
-    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch,
+    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch, freshenMs: opts.githubFetch ? 0 : undefined,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, alerts: { forOwner: (id: string) => alerts.forOwner(id, alertKind(id), 50), markRead: (id: string, ids: string[]) => alerts.markRead(id, ids) }, connections: connectionsFor, friendAct: (me: string, to: string) => friendAct(me, profile(to)), email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe, suggest: mail.suggest, promptFor: mail.promptFor, dismissPrompt: mail.dismissPrompt },
@@ -1826,6 +1826,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           if (prS && rel === "index.html") html = realLeaderboard(html, prS, !!own);
           if (rel === "index.html") html = dropHelpExchange(html);
+          if (prS && (rel === "index.html" || rel === "city.html")) void GH.freshen(prS.id);   // new GitHub repos: rebuilt in the background, on the map by the next load
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }

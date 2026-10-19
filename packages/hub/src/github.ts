@@ -23,6 +23,8 @@ import { alertItem, ALERT_CSS, ALERT_JS, type AlertRow } from "./alerts";
 
 export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
+  /** how often a page view may check GitHub for new repos, per member (default 10 minutes; tests use 0) */
+  freshenMs?: number;
   /** sign-up gate for new GitHub accounts (an open-core hook) */
   accountOk?: (me: { created_at?: string; public_repos?: number; followers?: number }) => boolean;
   /** sign-up funnel counting (click, back from GitHub, created / signed in, failures) */
@@ -310,7 +312,7 @@ export function github(ctx: GhCtx) {
     const rmap = Object.fromEntries(cityRepos.map(r => [crypto.createHash("sha256").update(r.name.toLowerCase()).digest("hex").slice(0, 16), r.project]));
     if (q("SELECT 1 FROM agent_keys WHERE owner=?").get(id.id)) q("UPDATE agent_keys SET repos=? WHERE owner=?").run(JSON.stringify(rmap), id.id);
     else q("INSERT INTO agent_keys VALUES (?,?,?,?,?)").run(crypto.randomBytes(9).toString("hex"), id.id, crypto.randomBytes(18).toString("hex"), JSON.stringify(rmap), new Date().toISOString());
-    q("UPDATE gh_accounts SET cache=?, refreshed=?, login=? WHERE gh_id=?").run(JSON.stringify({ stats }), new Date().toISOString(), me.login, acct.gh_id);
+    q("UPDATE gh_accounts SET cache=?, refreshed=?, login=? WHERE gh_id=?").run(JSON.stringify({ stats, sig: cache.sig }), new Date().toISOString(), me.login, acct.gh_id);
     return `${pub}/@${handle}/`;
   }
 
@@ -331,6 +333,30 @@ export function github(ctx: GhCtx) {
     for (const a of due) { try { await queuedBuild(a); } catch (e: any) { q("UPDATE gh_accounts SET refreshed=? WHERE gh_id=?").run(new Date().toISOString(), a.gh_id); console.error("github refresh", a.login, e.message); } }
   };
   const timer = setInterval(refreshDue, 10 * 60_000); timer.unref?.();
+
+  // a page view checks GitHub for new or removed repos (2 cheap calls, at most every 10 minutes per member) and rebuilds
+  // in the background when they changed: a repo created a minute ago is on the map by the next load, not in 6 hours
+  const lastCheck = new Map<number, number>();
+  async function freshen(profileId: string): Promise<boolean> {
+    if (!app()) return false;
+    const acct = q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL AND token_sealed<>''").get(profileId) as any; if (!acct) return false;
+    const now = Date.now(), every = ctx.freshenMs ?? 10 * 60_000; if (every && (lastCheck.get(acct.gh_id) || 0) > now - every) return false;
+    lastCheck.set(acct.gh_id, now); if (lastCheck.size > 20_000) lastCheck.clear();
+    try {
+      const token = await tokenFor(acct), login = encodeURIComponent(acct.login);
+      const [u, newest] = await Promise.all([gh(token, `/users/${login}`) as Promise<any>, gh(token, `/users/${login}/repos?type=owner&sort=created&direction=desc&per_page=1`) as Promise<any[]>]);
+      let sig = `${u?.public_repos ?? "?"}|${Array.isArray(newest) ? newest[0]?.full_name || "" : ""}`;
+      if (acct.installation) try { const pr = await installationRepos(acct.installation); sig += `|${pr.filter(r => r.private).length}`; } catch { /* uninstalled */ }
+      const cache = JSON.parse(acct.cache || "{}"), first = cache.sig === undefined, changed = !first && cache.sig !== sig;
+      if (cache.sig !== sig) { cache.sig = sig; q("UPDATE gh_accounts SET cache=? WHERE gh_id=?").run(JSON.stringify(cache), acct.gh_id); }
+      // first check: only rebuild if the last build is older than 30 minutes (it may predate a new repo)
+      if (changed || (first && (!acct.refreshed || Date.parse(acct.refreshed) < now - 30 * 60_000))) {
+        void queuedBuild({ ...acct, cache: JSON.stringify(cache) }).catch((e: any) => console.error("github freshen", acct.login, e.message));
+        return true;
+      }
+    } catch (e: any) { console.error("github freshen check", acct.login, e.message); }
+    return false;
+  }
   const firstPass = setTimeout(refreshDue, 30_000); firstPass.unref?.();
 
   // ------------------------------------------------------------------ the /me page
@@ -827,5 +853,5 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
     const acct = q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL AND token_sealed<>''").get(profileId) as any;
     if (!acct) return null; try { return await tokenFor(acct); } catch { return null; }
   }
-  return { route, privateRoute, build, account, ghLoginsOf, signOut, anyToken, tokenOf, configured: () => !!app() };
+  return { route, privateRoute, build, freshen, account, ghLoginsOf, signOut, anyToken, tokenOf, configured: () => !!app() };
 }

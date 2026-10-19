@@ -446,3 +446,44 @@ test("friend requests: the hub lists open requests both ways until accepted", as
   assert.equal((await get(`/v1/requests/${eve.id}`, te)).body.outgoing.length, 0);
   assert.equal((await get(`/v1/friends/${eve.id}`)).body.friends[0].handle, "ana");
 });
+
+test("a new GitHub repo is on the map by the next page load (hosted members)", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  fs.writeFileSync(path.join(d, "github-app.json"), JSON.stringify({ id: 1, slug: "caldera-test", client_id: "cid", client_secret: "csec", pem: privateKey.export({ type: "pkcs1", format: "pem" }) }));
+  const now = new Date().toISOString();
+  const repo = (name) => ({ name, full_name: "octo-cat/" + name, language: "TypeScript", private: false, fork: false, html_url: "https://github.com/octo-cat/" + name, pushed_at: now, created_at: now, size: 10, description: "" });
+  const repos = [repo("web"), repo("tool")];
+  const me = () => ({ id: 42, login: "octo-cat", name: "Octo Cat", created_at: "2019-01-01T00:00:00Z", public_repos: repos.length, followers: 3, html_url: "https://github.com/octo-cat", avatar_url: "https://avatars.githubusercontent.com/u/42" });
+  let builds = 0;
+  const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
+  const fake = async (u) => {
+    u = String(u);
+    if (u === "https://github.com/login/oauth/access_token") return J({ access_token: "tok42", expires_in: 28800, refresh_token: "r" });
+    if (u.endsWith("/user")) return J(me());
+    if (u.endsWith("/users/octo-cat")) return J(me());
+    if (u.includes("/repos?type=owner&sort=created")) return J([...repos].reverse().slice(0, 1));
+    if (u.includes("/repos?type=owner")) { builds++; return J(repos); }
+    if (u.includes("/stats/commit_activity")) return J([]);
+    if (u.includes("/events")) return J([]);
+    if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
+    return J({ message: "not mocked " + u }, 404);
+  };
+  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" } });
+  const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];
+  await fetch(base + `/auth/github/callback?code=42&state=${state}`, { headers: { cookie: oauth, "user-agent": "Mozilla/5.0" }, redirect: "manual" });
+  const city = () => fetch(base + "/@octo-cat/city.html").then(r => r.text());
+  assert.ok((await city()).includes('"name":"tool"'));
+  await new Promise(r => setTimeout(r, 300));
+  const before = builds;
+  assert.equal(builds, before, "first view of a fresh build: no rebuild");
+  repos.push(repo("tradecraft"));   // created on GitHub just now
+  await city();                       // this view notices it and rebuilds in the background
+  for (let i = 0; i < 50 && !(await city()).includes('"name":"tradecraft"'); i++) await new Promise(r => setTimeout(r, 100));
+  assert.ok((await city()).includes('"name":"tradecraft"'), "the new repo is on the map");
+  const after = builds; await city(); await new Promise(r => setTimeout(r, 300));
+  assert.equal(builds, after, "nothing changed on GitHub: no further rebuilds");
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});
