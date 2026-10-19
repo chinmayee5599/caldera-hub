@@ -127,7 +127,7 @@ test("follow model: one-way follows count as followers/following, following back
     await S.act(t, "friend");   // ana follows bo (Obsidian member: counts at once, signed later)
     let bo = await (await S.page("bo", anaC)).text();
     assert.match(bo, /data-state="queued"[^>]*>Following</);
-    assert.match(bo, /class="cb-counts"[\s\S]*?<b[^>]*>0<\/b> friends &middot; <b[^>]*>1<\/b> follower &middot; <b[^>]*>0<\/b> following/);
+    assert.match(bo, /class="cb-stats"[\s\S]*?<b>0<\/b> friends<\/span><i[^>]*>&middot;<\/i><span><b>1<\/b> follower<\/span><i[^>]*>&middot;<\/i><span><b>0<\/b> following/);
     const alerts = S.hub.db.prepare("SELECT title FROM alerts WHERE target=?").all(S.ids.bo.id).map(r => r.title);
     assert.ok(alerts.includes("@ana followed you"), "bo gets one alert");
     // unfollow, then follow again
@@ -138,7 +138,7 @@ test("follow model: one-way follows count as followers/following, following back
     const bt = S.tokenIn(await (await S.page("ana", boC)).text());
     assert.match(await (await S.page("ana", boC)).text(), />Follow back</);
     assert.equal((await S.act(bt, "accept")).body.state, "friends");
-    assert.match(await (await S.page("ana", boC)).text(), /<b[^>]*>1<\/b> friend &middot; <b[^>]*>0<\/b> followers &middot; <b[^>]*>0<\/b> following/);
+    assert.match(await (await S.page("ana", boC)).text(), /<b>1<\/b> friend<\/span><i[^>]*>&middot;<\/i><span><b>0<\/b> followers<\/span><i[^>]*>&middot;<\/i><span><b>0<\/b> following/);
     // a plugin-signed follow from someone you already follow makes friends too (mutual = friends)
     const cyC = await S.ownerCookie(S.ids.cy);
     const ct = S.tokenIn(await (await S.page("ana", cyC)).text());

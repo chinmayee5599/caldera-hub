@@ -203,19 +203,26 @@ if(x.ok){b.textContent=x.j.state==='friends'?'Friends \u2713':'Intro requested';
       }
     }
     if (!tags.length && !owner && !intro) return "";
-    const list = tags.map(t => `<a class="cb-tag cb-tag-${t.kind === "stack" ? "stack" : "prob"}" href="${base}/people?tag=${encodeURIComponent(t.t)}"${t.repo && t.repo !== "topics" ? ` title="From ${esc(t.repo)}"` : ""}>${esc(t.t)}</a>`).join("");
-    return `<div class="cb-build">${tags.length || owner ? `<span class="cb-build-l">Building</span>` : ""}${list || (owner ? `<span class="cb-build-none">No tags yet</span>` : "")}${owner ? `<a class="cb-tag-edit" href="${base}/me/building">${tags.length ? "Edit tags" : "Add tags"}</a>` : ""}${intro}</div>`;
+    // what they work on and what they write it in are different things: one labelled line each
+    const tag = (t: any) => `<a class="cb-tag cb-tag-${t.kind === "stack" ? "stack" : "prob"}" href="${base}/people?tag=${encodeURIComponent(t.t)}"${t.repo && t.repo !== "topics" ? ` title="From ${esc(t.repo)}"` : ""}>${esc(t.t)}</a>`;
+    const prob = tags.filter(t => t.kind !== "stack"), stack = tags.filter(t => t.kind === "stack");
+    const edit = owner ? `<a class="cb-tag-edit" href="${base}/me/building">${tags.length ? "Edit tags" : "Add tags"}</a>` : "";
+    const line = (label: string, items: string) => `<span class="cb-build-l">${label}</span><span class="cb-build-v">${items}</span>`;
+    const rows = (prob.length || (owner && !stack.length) ? line("Building", prob.map(tag).join("") || `<span class="cb-build-none">No tags yet</span>`) : "")
+      + (stack.length ? line("Stack", stack.map(tag).join("")) : "");
+    return `<div class="cb-build">${rows ? `<div class="cb-build-g">${rows}</div>` : ""}${edit || intro ? `<div class="cb-build-a">${intro}${edit}</div>` : ""}</div>`;
   }
-  const CHIP_CSS = `<style>.cb-build{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-6px 0 18px;font:500 12.5px/1.2 'IBM Plex Sans',Arial,sans-serif}
-.cb-build-l{color:var(--text-muted,#8A8A93);text-transform:uppercase;letter-spacing:.06em;font-size:11px;margin-right:2px}
+  const CHIP_CSS = `<style>.cb-build{display:flex;flex-direction:column;gap:12px;margin:0 0 22px;padding-top:16px;border-top:1px solid var(--line,#2A2A2E);font:500 12.5px/1.2 'IBM Plex Sans',Arial,sans-serif}
+.cb-build-g{display:grid;grid-template-columns:max-content 1fr;align-items:center;gap:8px 14px}.cb-build-v{display:flex;flex-wrap:wrap;gap:6px}.cb-build-a{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.cb-build-l{color:var(--text-muted,#8A8A93);text-transform:uppercase;letter-spacing:.06em;font-size:11px}
 .cb-tag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;text-decoration:none;transition:border-color .15s,background .15s}
 .cb-tag-prob{background:var(--accent-soft,rgba(139,108,246,.10));color:var(--accent-text,#C9B8FF);border:1px solid transparent}
 .cb-tag-stack{background:transparent;color:var(--text,#D6D6DC);border:1px solid var(--line,#2A2A2E)}
 .cb-tag:hover{border-color:var(--accent,#8B6CF6);text-decoration:none}.cb-tag:focus-visible,.cb-tag-edit:focus-visible{outline:2px solid var(--accent,#8B6CF6);outline-offset:2px}
-.cb-tag-edit{color:var(--text-muted,#8A8A93);font-size:12px;margin-left:4px;text-decoration:underline;text-underline-offset:2px}.cb-build-none{color:var(--text-muted,#8A8A93)}
-.cb-intro{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:28px;padding:0 12px;margin-left:auto;border-radius:999px;background:var(--accent,#8B6CF6);color:#fff;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap;transition:filter .15s}
+.cb-tag-edit{color:var(--text-muted,#8A8A93);font-size:12px;text-decoration:underline;text-underline-offset:2px}.cb-build-none{color:var(--text-muted,#8A8A93)}
+.cb-intro{all:unset;cursor:pointer;display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:var(--accent,#8B6CF6);color:#fff;font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap;transition:filter .15s}
 .cb-intro:hover:not(:disabled){filter:brightness(1.08)}.cb-intro:disabled{cursor:default;background:transparent;color:var(--text-muted,#9A9AA6);border:1px solid var(--line,#2A2A2E)}.cb-intro:focus-visible{outline:2px solid var(--accent,#8B6CF6);outline-offset:2px}
-@media (max-width:620px){.cb-tag,.cb-intro{min-height:34px}.cb-intro{margin-left:0}}</style>`;
+@media (max-width:620px){.cb-tag,.cb-intro{min-height:34px}.cb-build-g{grid-template-columns:1fr;gap:6px}.cb-build-l:not(:first-child){margin-top:6px}}</style>`;
 
   /** /me/building: the signed-in member's tags (hide, add, auto on/off) and the introductions waiting for them */
   function ownerPage(res: http.ServerResponse, meId: string, note = "") {
