@@ -175,6 +175,24 @@ export function github(ctx: GhCtx) {
     q("UPDATE gh_accounts SET token_sealed=? WHERE gh_id=?").run(ctx.seal(JSON.stringify(n)), acct.gh_id);
     return n.access;
   }
+  /** Private repos this member can see through the Caldera app, on every installation they have access to: their own
+   *  account and each organization that installed it. Asked of GitHub with the member's own token on every refresh, so
+   *  an install shows up even when GitHub never sent them back to Caldera, and only repos this member can access count
+   *  (an organization's other private repos never land on their city). Records the installation ids it found. */
+  async function memberPrivateRepos(acct: any, token: string): Promise<any[]> {
+    const insts: string[] = [], out: any[] = [];
+    const r = await gh(token, "/user/installations?per_page=100") as any;
+    for (const i of (r?.installations || []).slice(0, 20)) {
+      insts.push(String(i.id));
+      for (let pg = 1; pg <= 3; pg++) {
+        const page = await gh(token, `/user/installations/${i.id}/repositories?per_page=100&page=${pg}`) as any;
+        out.push(...(page?.repositories || [])); if ((page?.repositories || []).length < 100) break;
+      }
+    }
+    const ids = insts.join(",") || null;
+    if ((acct.installation || null) !== ids) { q("UPDATE gh_accounts SET installation=? WHERE gh_id=?").run(ids, acct.gh_id); acct.installation = ids; }
+    const seen = new Set<string>(); return out.filter(x => x.private && !seen.has(x.full_name) && seen.add(x.full_name));
+  }
   // app-level JWT (for listing an installation's repos)
   const appJwt = () => { const a = app()!, now = Math.floor(Date.now() / 1000), b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
     const head = b64({ alg: "RS256", typ: "JWT" }), body = b64({ iat: now - 60, exp: now + 540, iss: a.id });
@@ -245,7 +263,7 @@ export function github(ctx: GhCtx) {
     const own: any[] = [];
     for (let pg = 1; pg <= 3; pg++) { const r = await gh(token, `/users/${encodeURIComponent(me.login)}/repos?type=owner&sort=pushed&per_page=100&page=${pg}`) as any[]; own.push(...r); if (r.length < 100) break; }
     let priv: any[] = [];
-    if (acct.installation) try { priv = (await installationRepos(acct.installation)).filter(r => r.private); } catch { /* uninstalled: public repos only */ }
+    try { priv = await memberPrivateRepos(acct, token); } catch (e: any) { console.error("private repos", acct.login, e.message); }   // none installed: public repos only
     const repos = [...own.filter(r => !r.fork && !r.private), ...priv].slice(0, 120);
     const stats: Record<string, { weeks: number[]; commits: number; week: number }> = cache.stats || {};
     // commit activity for the 40 most recently pushed, 8 at a time so a first sign-up waits seconds, not a minute (GitHub
@@ -346,7 +364,7 @@ export function github(ctx: GhCtx) {
       const token = await tokenFor(acct), login = encodeURIComponent(acct.login);
       const [u, newest] = await Promise.all([gh(token, `/users/${login}`) as Promise<any>, gh(token, `/users/${login}/repos?type=owner&sort=created&direction=desc&per_page=1`) as Promise<any[]>]);
       let sig = `${u?.public_repos ?? "?"}|${Array.isArray(newest) ? newest[0]?.full_name || "" : ""}`;
-      if (acct.installation) try { const pr = await installationRepos(acct.installation); sig += `|${pr.filter(r => r.private).length}`; } catch { /* uninstalled */ }
+      try { const pr = await memberPrivateRepos(acct, token); sig += `|${pr.length}|${pr.map(r => r.id).sort().join(".").slice(-60)}`; } catch { /* none installed */ }
       const cache = JSON.parse(acct.cache || "{}"), first = cache.sig === undefined, changed = !first && cache.sig !== sig;
       if (cache.sig !== sig) { cache.sig = sig; q("UPDATE gh_accounts SET cache=? WHERE gh_id=?").run(JSON.stringify(cache), acct.gh_id); }
       // first check: only rebuild if the last build is older than 30 minutes (it may predate a new repo)

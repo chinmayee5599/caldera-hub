@@ -487,3 +487,40 @@ test("a new GitHub repo is on the map by the next page load (hosted members)", a
   assert.equal(builds, after, "nothing changed on GitHub: no further rebuilds");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
+
+test("private repos from an organization's install show as padlocks (no redirect back from GitHub needed)", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  fs.writeFileSync(path.join(d, "github-app.json"), JSON.stringify({ id: 1, slug: "caldera-test", client_id: "cid", client_secret: "csec", pem: privateKey.export({ type: "pkcs1", format: "pem" }) }));
+  const now = new Date().toISOString();
+  const repo = (owner, name, priv) => ({ id: name.length * 1000 + owner.length, name, full_name: owner + "/" + name, language: "TypeScript", private: priv, fork: false, html_url: "https://github.com/" + owner + "/" + name, pushed_at: now, created_at: now, size: 50, description: priv ? "secret plans" : "my public tool" });
+  const me = { id: 77, login: "lewis", name: "Lewis", created_at: "2019-01-01T00:00:00Z", public_repos: 1, followers: 1, html_url: "https://github.com/lewis", avatar_url: "https://avatars.githubusercontent.com/u/77" };
+  let installs = [];
+  const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
+  const fake = async (u) => {
+    u = String(u);
+    if (u === "https://github.com/login/oauth/access_token") return J({ access_token: "tok77", expires_in: 28800, refresh_token: "r" });
+    if (u.endsWith("/user") || u.endsWith("/users/lewis")) return J(me);
+    if (u.includes("/users/lewis/repos")) return J([repo("lewis", "fleet", false)]);
+    if (u.includes("/user/installations?")) return J({ total_count: installs.length, installations: installs.map(id => ({ id })) });
+    if (u.includes("/user/installations/900/repositories")) return J({ total_count: 2, repositories: [repo("acme-org", "billing", true), repo("acme-org", "mobile-app", true)] });
+    if (u.includes("/stats/commit_activity") || u.includes("/events")) return J([]);
+    if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
+    return J({ message: "not mocked " + u }, 404);
+  };
+  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
+  const base = "http://127.0.0.1:" + await h.listen(0);
+  const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" } });
+  const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];
+  await fetch(base + `/auth/github/callback?code=77&state=${state}`, { headers: { cookie: oauth, "user-agent": "Mozilla/5.0" }, redirect: "manual" });
+  const city = () => fetch(base + "/@lewis/city.html").then(r => r.text());
+  const padlocks = (html) => (html.match(/"public":false/g) || []).length;
+  assert.equal(padlocks(await city()), 0, "nothing installed yet: public repos only");
+  installs = [900];   // the organization installs the Caldera app; GitHub never sends him back to Caldera
+  await city();
+  let html = ""; for (let i = 0; i < 50; i++) { html = await city(); if (padlocks(html) === 2) break; await new Promise(r => setTimeout(r, 100)); }
+  assert.equal(padlocks(html), 2, "both org repos are padlocked buildings");
+  for (const w of ["acme-org", "secret plans", "\"billing\"", "mobile-app"]) assert.ok(!html.includes(w), "private names, owners and descriptions never appear: " + w + " @ " + html.slice(Math.max(0, html.indexOf(w) - 80), html.indexOf(w) + 40));
+  assert.ok(h.db.prepare("SELECT installation FROM gh_accounts WHERE login='lewis'").get().installation === "900", "the install was recorded");
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});
