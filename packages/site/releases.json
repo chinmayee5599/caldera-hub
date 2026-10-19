@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.11",
+      "date": "2026-10-19",
+      "title": "New repos show up within minutes",
+      "items": [
+        "Create a repo on GitHub and it's on your city within about 10 minutes while Obsidian is open, instead of at the next 6-hour refresh.",
+        "GitHub sign-ups get the same: a new repo is on the map by the next time the page loads."
+      ]
+    },
+    {
       "version": "0.25.10",
       "date": "2026-10-19",
       "title": "Your headline is back",
@@ -207,8 +216,8 @@
       "date": "2026-10-17",
       "title": "Kudos and Add friend, right on the page",
       "items": [
-        "Kudos happen on the page now: tap ❤️ 👍 🔥 or ✨ in the bar at the top of anyone's page and it lands right there, with the count going up. No more pop-up window.",
-        "Add friend works on the page too, and shows where you stand: Friends ✓, Friend request sent, or Accept. If you signed up with GitHub it sends at once; if your page comes from Obsidian, it's queued and Obsidian signs and sends it the next time it's open (your key never leaves your vault).",
+        "Kudos happen on the page now: tap \u2764\ufe0f \ud83d\udc4d \ud83d\udd25 or \u2728 in the bar at the top of anyone's page and it lands right there, with the count going up. No more pop-up window.",
+        "Add friend works on the page too, and shows where you stand: Friends \u2713, Friend request sent, or Accept. If you signed up with GitHub it sends at once; if your page comes from Obsidian, it's queued and Obsidian signs and sends it the next time it's open (your key never leaves your vault).",
         "If you're not signed in, tapping kudos or Add friend shows a small sign-in prompt (GitHub first).",
         "Every link that leaves caldera.social now opens in a new window, on every page."
       ]
@@ -243,7 +252,7 @@
       "title": "Views and kudos",
       "items": [
         "Every page now shows its view count (one per visitor per day; your own visits never count). Prefer to keep it to yourself? Settings > Show my view count. You still see it, in the bar when you're signed in and in your private view.",
-        "Kudos: tap + Kudos on anyone's page or city and pick ❤️ 👍 🔥 or ✨. Kudos come from Caldera members, one per person per day, and the tally shows on their page. You see who sent you kudos in your private view, in your daily email, as a notice in Obsidian, and as a little burst over your private city.",
+        "Kudos: tap + Kudos on anyone's page or city and pick \u2764\ufe0f \ud83d\udc4d \ud83d\udd25 or \u2728. Kudos come from Caldera members, one per person per day, and the tally shows on their page. You see who sent you kudos in your private view, in your daily email, as a notice in Obsidian, and as a little burst over your private city.",
         "In Obsidian, Kudos buttons sit next to your friends and the people you might know in the Caldera panel.",
         "One bar everywhere: when you're signed in, the top of your page shows the same [Public view | Private view] switch on your public page, your private address and your account page, with @you and Sign out on the right. The site's menu shows @you too.",
         "In Obsidian, the profile tab's switch now reads Public view | Private view, in the same order as the web.",
