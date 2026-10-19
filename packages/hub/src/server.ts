@@ -995,12 +995,15 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const js = `<script>(function(){var B=${JSON.stringify(build)},U=${JSON.stringify(url)},last=Date.now(),due=false;
 ['pointerdown','wheel','keydown','touchstart'].forEach(function(e){addEventListener(e,function(){last=Date.now()},{passive:true})});
 function go(){if(due&&document.visibilityState==='visible'&&Date.now()-last>20000)location.reload()}
-function check(){fetch(U,{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.build&&j.build!==B){due=true;go()}}).catch(function(){})}
+function check(){fetch(U,{cache:'no-store',credentials:'same-origin'}).then(function(r){if(r.status===403){due=true;go();return null}return r.ok?r.json():null}).then(function(j){if(j&&j.build&&j.build!==B){due=true;go()}}).catch(function(){})}
 setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibilitychange',go)})();</script>`;
     return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, js + "</body>") : html + js;
   };
   const injectLive = (html: string, cfg: object) => /<\/head>/i.test(html) ? html.replace(/<\/head>/i, liveScript(cfg) + "</head>") : liveScript(cfg) + html;
   const liveToken = (handle: string, day = new Date().toISOString().slice(0, 10)) => crypto.createHmac("sha256", PRIV_KEY).update("live:" + handle + ":" + day).digest("hex").slice(0, 24);
+  /** A private city page's token, valid for 30 days: a watch window or pop-out left open for days keeps receiving live
+   *  drones and visitors (the address itself is already limited to the owner's Tailscale login). */
+  const liveTokenOk = (handle: string, t: string) => { if (!t) return false; for (let i = 0; i < 30; i++) if (t === liveToken(handle, new Date(Date.now() - i * DAY).toISOString().slice(0, 10))) return true; return false; };
 
   // ---------------------------------------------------------------- auth (signed nonce, no passwords)
   function authed(req: http.IncomingMessage): string | null {
@@ -2366,14 +2369,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (m[1] !== mine) { res.writeHead(403, { "content-type": "text/plain" }); return res.end("This private address only shows your own profile."); }
       if (!m[2]) { res.writeHead(301, { location: `/@${mine}/${url.search}` }); return res.end(); }
       if (m[2] === "/build.json") {   // open private city pages poll this to reload when a newer build or private push exists
-        const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
-        if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
+        const t = url.searchParams.get("t") || "", pr0 = byHandle(mine);
+        if (!pr0 || !liveTokenOk(mine, t)) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
         const r0 = url.searchParams.get("view") === "public" ? null : q("SELECT built FROM owner_private WHERE owner=?").get(pr0.id) as any;
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify({ build: buildOf(mine, r0?.built) }));
       }
       if (m[2] === "/live.json") {   // the private city polls this; the token in the page stops other sites reading it through your browser
-        const t = url.searchParams.get("t") || "", y = new Date(Date.now() - DAY).toISOString().slice(0, 10), pr0 = byHandle(mine);
-        if (!pr0 || (t !== liveToken(mine) && t !== liveToken(mine, y))) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
+        const t = url.searchParams.get("t") || "", pr0 = byHandle(mine);
+        if (!pr0 || !liveTokenOk(mine, t)) { res.writeHead(403, { "content-type": "application/json" }); return res.end("{}"); }
         res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
         const pubView = url.searchParams.get("view") === "public", ls = liveStats(pr0.id, !pubView, url.searchParams.get("since"));
         return res.end(JSON.stringify((pubView ? scrubPrivateLive(ls, PM.modeFor(pr0)) : ls) || { at: now(), districts: {} }));
