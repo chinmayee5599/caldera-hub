@@ -843,12 +843,23 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   };
 
   // ---------------------------------------------------------------- scores for leaderboards
+  /** Points this week: the 7 full days before the member's "today", summed from the daily scores in their signed manifest
+   *  (the same numbers their scoreboard draws). "Today" is the newest day they published if it's current (their own
+   *  time zone), otherwise the hub's; so a page left unpublished doesn't keep last week's points. Every leaderboard uses this. */
+  const weekCache = new Map<string, number>();
   function weekScore(manifestJson: string): number {
+    const key = new Date().toISOString().slice(0, 10) + "|" + crypto.createHash("sha1").update(String(manifestJson || "")).digest("base64");
+    const hit = weekCache.get(key); if (hit !== undefined) return hit;
+    let pts = 0;
     try {
-      const m = JSON.parse(manifestJson).body;
-      const cutoff = new Date(Date.now() - 7 * DAY).toISOString().slice(0, 10);
-      return (m.daily || []).filter((d: any) => d.date >= cutoff).reduce((s: number, d: any) => s + (Number(d.score) || 0), 0);
-    } catch { return 0; }
+      const daily = ((JSON.parse(manifestJson).body?.daily || []) as any[]).filter(d => typeof d?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.date));
+      const hubToday = new Date().toISOString().slice(0, 10), newest = daily.reduce((m, d) => d.date > m ? d.date : m, "");
+      const day = (s: string, n: number) => new Date(Date.parse(s + "T00:00:00Z") + n * DAY).toISOString().slice(0, 10);
+      const today = newest && newest >= day(hubToday, -1) && newest <= day(hubToday, 1) ? newest : hubToday, from = day(today, -7);
+      pts = daily.filter(d => d.date >= from && d.date < today).reduce((s, d) => s + Math.max(0, Number(d.score) || 0), 0);
+    } catch { pts = 0; }
+    if (weekCache.size > 5000) weekCache.clear(); weekCache.set(key, pts);
+    return pts;
   }
 
   function leaderboard(ofId: string | null) {
@@ -1444,35 +1455,18 @@ document.getElementById('cb-sum-x').addEventListener('click',function(){post({ac
     return html.replace(/<a class="tree-row toc-row" href="#help-exchange">[^<]*<\/a>/, "")
       .replace(/<div class="stat-strip">(?:<div class="stat"><div class="v">[^<]*<\/div><div class="l">(?:friends|gravity|help credits)<\/div><\/div>){3}<\/div>/, "");
   }
-  /** Points this week from a member's own published scoreboard (the daily scores their page shows): the 7 full days
-   *  before today. Cached by file time; null when the page has no scoreboard. */
-  const pointsCache = new Map<string, { mt: number; pts: number | null }>();
-  function weekPoints(handle: string): number | null {
-    const f = path.join(opts.dataDir, "profiles", handle, "index.html");
-    let mt = 0; try { mt = fs.statSync(f).mtimeMs; } catch { return null; }
-    const hit = pointsCache.get(handle); let pts: number | null = null;
-    if (hit && hit.mt === mt) pts = hit.pts;
-    else {
-      const bars = fs.readFileSync(f, "utf8").match(/<div class="sb-bars"[^>]*>([\s\S]*?)<\/div>/)?.[1];
-      if (bars) { pts = 0;
-        const today = new Date(); today.setUTCHours(0, 0, 0, 0); const from = new Date(today.getTime() - 7 * DAY).toISOString().slice(0, 10), to = today.toISOString().slice(0, 10);
-        for (const x of bars.matchAll(/title="(\d{4}-\d{2}-\d{2}): (\d+)[",]/g)) if (x[1] >= from && x[1] < to) pts += Number(x[2]); }
-      pointsCache.set(handle, { mt, pts });
-    }
-    return pts;
-  }
-  /** The scoreboard's leaderboard, filled in on the hub: the page's owner and their friends, by points this week (from each
-   *  page's own scoreboard). Visitors see the owner's name, the owner sees "You"; empty slots keep the invite button. */
+  /** The scoreboard's leaderboard, filled in on the hub: the page's owner and their friends, by points this week (weekScore,
+   *  from each signed manifest). Visitors see the owner's name, the owner sees "You"; empty slots keep the invite button. */
   function realLeaderboard(html: string, pr: any, isOwner: boolean): string {
     const at = html.indexOf('<div class="lb-wrap">'); if (at < 0) return html;
     const end = html.indexOf('<div class="invite-pop"', at); const close = html.indexOf("</div></div>", at), stop = end > 0 ? end : close > 0 ? close + 6 : -1;
     if (stop < 0) return html;
     const block = html.slice(at, stop), empty = block.match(/<div class="lb-row empty">[\s\S]*?<\/div>/)?.[0] || "";
     const esc = (x: string) => x.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-    const mine = weekPoints(pr.handle) ?? 0;
+    const mine = weekScore(pr.manifest);
     const rows = [{ h: pr.handle as string, name: isOwner ? "You" : (pr.name || "@" + pr.handle), pts: mine, me: true }];
-    for (const f of q("SELECT p.handle, p.name FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=?").all(pr.id) as any[]) {
-      if (!f.handle || modOf(f.handle)) continue; const pts = weekPoints(f.handle); if (pts == null) continue;
+    for (const f of q("SELECT p.handle, p.name, p.manifest FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=?").all(pr.id) as any[]) {
+      if (!f.handle || modOf(f.handle)) continue; const pts = weekScore(f.manifest);
       rows.push({ h: f.handle, name: f.name || "@" + f.handle, pts, me: false });
     }
     rows.sort((a, b) => b.pts - a.pts || (a.me ? -1 : 1));

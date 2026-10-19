@@ -11,8 +11,8 @@ let hub, base, dir;
 const mike = C.newIdentity(), ana = C.newIdentity(), eve = C.newIdentity();
 const post = (p, body, token) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() }));
 const get = (p, token) => fetch(base + p, { headers: token ? { authorization: "Bearer " + token } : {} }).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
-const today = new Date().toISOString().slice(0, 10);
-const manifest = (id, handle, name, score) => C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: name + "'s vault", daily: [{ date: today, score }] });
+const today = new Date().toISOString().slice(0, 10), daysAgo = n => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+const manifest = (id, handle, name, score) => C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: name + "'s vault", daily: [{ date: daysAgo(8), score: 1000 }, { date: daysAgo(1), score }, { date: today, score: 5 }] });
 
 async function login(id) {
   const { body } = await post("/v1/auth/challenge", { id: id.id });
@@ -87,7 +87,7 @@ test("gravity: positive only, one per person per day, not to yourself", async ()
 test("leaderboard: friends scope ranks you against your friends by weekly score", async () => {
   const lb = (await get(`/v1/leaderboard?scope=friends&of=${encodeURIComponent(mike.id)}`)).body.rows;
   assert.deepEqual(lb.map(r => r.handle), ["mike", "ana"]);
-  assert.equal(lb[0].week, 370);
+  assert.equal(lb[0].week, 370, "this week = the 7 full days before today: today's partial and 8 days ago don't count");
 });
 
 test("security: reserved handles, sandboxed profile pages, rate limits", async () => {
