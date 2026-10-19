@@ -22,6 +22,7 @@ import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards
 import { feed } from "./feed";
 import { gifts } from "./gifts";
 import { funnel } from "./funnel";
+import { emailPages } from "./emailpages";
 import { messages } from "./messages";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -800,8 +801,9 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
   let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
+  let EMP: ReturnType<typeof emailPages> | null = null;   // pages made by email + an AI (no GitHub, no Obsidian)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id); GIFTS?.erase(id); PM.erase(id);
+    FEED?.erase(id); MSG?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -1412,7 +1414,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
    *  sandboxed, so it acts through /v1/act with an owner token, like inline kudos. */
   function welcomeBanner(handle: string): string {
     return `<div id="cb-wel" style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 40px 9px 16px;background:#1A1530;border-bottom:1px solid #3A2F5C;font:500 13.5px/1.35 'IBM Plex Sans',Arial,sans-serif;color:#E6E1F5">`
-      + `<span><b style="color:#fff">You're in. This is your city.</b> Each building is a repo, taller with more commits. Your page is already filled in from GitHub; change anything later in Settings.</span>`
+      + `<span><b style="color:#fff">You're in. This is your city.</b> Each building is a repo, taller with more commits. Your page is already filled in; change anything later in Settings.</span>`
       + `<span style="display:inline-flex;gap:12px"><a href="/@${handle}/" style="color:#C9B8FF">Your page</a><a href="/world" style="color:#C9B8FF">Fly over other cities</a><a href="/settings" style="color:#C9B8FF">Settings</a></span>`
       + `<button type="button" aria-label="Close" onclick="this.parentNode.remove()" style="all:unset;cursor:pointer;position:absolute;top:8px;right:10px;padding:2px 6px;color:#9A93B5;font-size:18px;line-height:1">&times;</button></div>`;
   }
@@ -1547,8 +1549,9 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
     const bq = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world|@[a-z0-9-]+\/)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     signinPage(res, 200, "Sign in", `<h1>Sign in to Caldera</h1><p class="lede">Sign this browser in as the owner of your page. It stays signed in for a year.</p>
 <div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
+<div class="card"><h2>Made your page with ChatGPT or Claude?</h2><p class="mut">Enter your email on the start page (leave the profile box empty) and we send you a sign-in link.</p><a class="btn ghost" href="/start">Email me a sign-in link</a></div>
 <div class="card"><h2>Made your page in Obsidian?</h2><p class="mut">Open your page and tap <b>Sign in</b> in the bar at the top for an email link or a code from Obsidian. Or in Obsidian, run <b>Caldera: Open my public page (as owner)</b>.</p></div>
-<p class="mut">No page yet? <a href="/#install">Get your own page</a>.</p>`);
+<p class="mut">No page yet? <a href="/#install">Sign up with GitHub</a>, or <a href="/start">make your page with ChatGPT or Claude</a>.</p>`);
   }
   function signinHome(res: http.ServerResponse, pr: any, note = "") {
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -1610,6 +1613,15 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   }
 
 
+  EMP = emailPages({ q, seal, unseal, accept, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", reserved: RESERVED, byHandle, profile,
+    startOwner, memberOf, sameOrigin, allowNewProfile, tooMany, note: (m) => mail.note(m),
+    page: (res, status, title, body) => { res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" });
+      res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} - Caldera</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap"></head><body>${body}</body></html>`)); },
+    hasFollower: (id) => !!q("SELECT 1 FROM friends WHERE a=? OR b=? LIMIT 1").get(id, id) || !!q("SELECT 1 FROM friend_intents WHERE target=? AND kind='add' LIMIT 1").get(id),
+    rememberEmail: (owner, email) => { try { mail.suggest(owner, email, true, "email-signup"); } catch { /* fine */ } },
+    eraseProfile: (id) => erase(id),
+    onPublished: () => { worldCache = null; } });
+  EMP.schedule();
   GIFTS = gifts({ q, now, profile, byHandle, listed, modOf, memberOf, sameOrigin, readBody, json, tooMany, founder: opts.founder ? opts.founder.toLowerCase() : null,
     publicRepos: (h) => ((publicCityOf(h)?.districts || []) as any[]).flatMap((d: any) => (d.repos || []).filter((r: any) => !r.locked && r.name).map((r: any) => String(r.name))),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "gifts" }); },
@@ -1666,6 +1678,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
+      if (/^\/(start(\/confirm)?|settings(\/page)?|me)$/.test(p) && await EMP!.route(req, res, url, p)) return;   // email pages (falls through for everyone else)
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
