@@ -4,6 +4,8 @@
 // Sends only: a session id, this machine's name, the repo name, a state, a short task title (your prompt's first line,
 // with keys / emails / long numbers stripped) and the last tool step. Never blocks: 1.5s timeout, always exits 0.
 // Config: ~/.caldera/agent.json  {"hub": "https://caldera.social", "key": "...", "secret": "...", "machine": "laptop"}
+// Add "tasks": false to send no task title or tool step at all (the drone still flies, just without words).
+// It never reads your code or sends file contents, and it gives Caldera no access to your repos or this computer.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { execFileSync } from "node:child_process";
 
 const DIR = path.join(os.homedir(), ".caldera"), STATE = path.join(DIR, "agent-state.json");
@@ -73,6 +75,7 @@ process.stdin.on("end", async () => {
     if (state === "gone") delete st[sid];
     for (const k of Object.keys(st)) if (now - (st[k].sent || 0) > 86400_000) delete st[k];
     fs.mkdirSync(DIR, { recursive: true }); fs.writeFileSync(STATE, JSON.stringify(st), { mode: 0o600 });
+    if (cfg.tasks === false) { me.task = ""; did = ""; }
     const machine = String(cfg.machine || os.hostname().split(".")[0]).slice(0, 40);
     await fetch(`${String(cfg.hub || "https://caldera.social").replace(/\/$/, "")}/v1/agents/${cfg.key}`, {
       method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + cfg.secret }, signal: AbortSignal.timeout(1500),

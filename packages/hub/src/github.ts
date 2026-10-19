@@ -10,6 +10,7 @@
  * - The page is rendered with the plugin's own renderer, so it looks like every other Caldera profile.
  */
 import type http from "node:http";
+import { hookCheck, hookTasksNote, trackTag } from "./hookpin.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -365,9 +366,10 @@ ${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your ve
     const agentPrompt = ak ? `Set up the Caldera agent hook on this computer, so my Caldera city shows what my AI agents are working on.
 
 1. Download ${pub}/agent-hook.mjs to ~/.caldera/agent-hook.mjs (create the folder). Read it first: it reads the hook event from stdin, works out the repo (git remote name) and a short task title, and posts only that to my Caldera hub, with a 1.5 second timeout.
+${hookCheck}
 2. Write ~/.caldera/agent.json (chmod 600): {"hub": "${pub}", "key": "${ak.key}", "secret": "${ak.secret}", "machine": "<a short name for this computer>"}
 3. In ~/.claude/settings.json, add hooks (keep existing ones) that run \`node ~/.caldera/agent-hook.mjs\` for UserPromptSubmit, PostToolUse, Stop, Notification and SessionEnd.
-4. Test: echo '{"hook_event_name":"UserPromptSubmit","session_id":"caldera-test-1","cwd":"'$PWD'","prompt":"Testing the Caldera agent hook"}' | node ~/.caldera/agent-hook.mjs, then send SessionEnd for the same session.` : "";
+4. Test: echo '{"hook_event_name":"UserPromptSubmit","session_id":"caldera-test-1","cwd":"'$PWD'","prompt":"Testing the Caldera agent hook"}' | node ~/.caldera/agent-hook.mjs, then send SessionEnd for the same session.${hookTasksNote}` : "";
     const claim = a.claim_code && a.claim_expires > Date.now() ? a.claim_code : "";
     const invite = `${pub}/?invite=${encodeURIComponent(a.handle)}`, msg = `I'm on Caldera, a social network for GitHub and Obsidian (my repos are a little city). Join me: ${invite}`;
     const ghp = people.length ? `<div class="card" id="github-people"><b>Your GitHub people</b><p class="mut">People you follow, who follow you, or who work on your repos, who aren't on Caldera yet. When they join, you'll start out connected.</p>
@@ -381,7 +383,7 @@ ${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your ve
     }
     const em = ctx.social?.email?.status(a.profile_id);
     const conn: Conn = ctx.social?.connections?.(a.profile_id) || { hosted: true, github: { on: true, login: a.login }, obsidian: { on: false }, live: false, agents: false, email: !!em?.confirmed };
-    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const snippets = sites.map(x => `- ${x.project}: ${trackTag(pub, x.key)}`).join("\n");
     const panel = connectionsPanel({ pub, handle: a.handle, conn, sites, app: ap ? { slug: ap.slug } : null, installation: !!a.installation, email: em?.email,
       livePrompt: C.featurePrompt("live", { hubUrl: pub, handle: a.handle, hosted: true }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
       agentPrompt: agentPrompt || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }) });
@@ -419,7 +421,7 @@ ${sectionHead("account", "Account")}<div class="card danger-zone"><div class="ro
     const em = ctx.social?.email?.status(owner);
     const conn: Conn = ctx.social?.connections?.(owner) || { hosted: false, github: { on: false }, obsidian: { on: true, updated: pr.updated }, live: false, agents: false, email: !!em?.confirmed };
     const sites = q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(owner) as any[];
-    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const snippets = sites.map(x => `- ${x.project}: ${trackTag(pub, x.key)}`).join("\n");
     const panel = connectionsPanel({ pub, handle, conn, sites, email: em?.email,
       livePrompt: C.featurePrompt("live", { hubUrl: pub, handle }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
       agentPrompt: C.featurePrompt("agents", { hubUrl: pub, handle }), privatePrompt: C.featurePrompt("private", { hubUrl: pub, handle }) });
@@ -480,7 +482,7 @@ if(j.ok){location.href='/me?uploaded='+inp.getAttribute('data-upload')+'#finish'
     const st = ctx.social?.pageState?.(a.profile_id), us = ctx.social?.unlockState?.(a.profile_id);
     if (!st || !us || C.pageChecklist(st).some(i => !i.done)) return "";
     const items = C.unlockChecklist(us), left = items.filter(i => !i.done); if (!left.length) return "";
-    const snippets = sites.map(x => `- ${x.project}: <script async src="${pub}/t.js" data-site="${x.key}"></script>`).join("\n");
+    const snippets = sites.map(x => `- ${x.project}: ${trackTag(pub, x.key)}`).join("\n");
     const prompts: Record<string, string> = {
       live: C.featurePrompt("live", { hubUrl: pub, handle: a.handle, hosted: true }) + (snippets ? `\n\nMy snippets, one per district (public site keys, fine in page HTML):\n${snippets}` : ""),
       agents: agentText || C.featurePrompt("agents", { hubUrl: pub, handle: a.handle, hosted: true }),

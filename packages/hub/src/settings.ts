@@ -4,6 +4,7 @@
  * daily email) and a step-by-step connect flow right in the page for anything that's off. Pure rendering: the hub
  * computes the state (connectionsFor in server.ts) and the GitHub module wires the routes.
  */
+import { trackTag } from "./hookpin.js";
 export interface Conn {
   hosted: boolean;                                       // a GitHub sign-up the hub builds (no vault yet)
   github: { on: boolean; login?: string; listed?: string };   // listed: the GitHub login the page's links name
@@ -86,7 +87,7 @@ export function connectionsPanel(o: PanelOpts): string {
 <li><b>Paste it in Obsidian:</b> Settings &rarr; Caldera &rarr; <b>Import a GitHub sign-up</b>. <span class="conn-wait" id="claim-wait" hidden><i></i>Waiting for Obsidian&hellip; this turns green by itself.</span></li></ol>`;
   const obStatus = conn.obsidian.on ? `Connected &middot; last updated from your vault ${esc(ago(conn.obsidian.updated))}` : "Not connected";
   // live visitors
-  const snippets = o.sites.map(s => `<div style="margin:6px 0"><span class="mut">${esc(s.project)}</span><pre id="sn-${esc(s.key)}">&lt;script async src="${esc(pub)}/t.js" data-site="${esc(s.key)}"&gt;&lt;/script&gt;</pre></div>`).join("");
+  const snippets = o.sites.map(s => `<div style="margin:6px 0"><span class="mut">${esc(s.project)}</span><pre id="sn-${esc(s.key)}">${esc(trackTag(pub, s.key))}</pre></div>`).join("");
   const live = `<p class="mut">Put a district's snippet in a site's shared layout and every visit arrives in your city live. Call <code>caldera('signup')</code> or <code>caldera('buy')</code> to celebrate conversions.</p>${snippets || `<p class="mut">${conn.hosted ? "Refresh from GitHub once to get your snippets." : "In Obsidian: Settings &rarr; Caldera &rarr; Live traffic on your city gives each district a snippet."}</p>`}
 <p style="margin:12px 0 4px"><b>Or let your AI do it</b></p>${copyBlock("pr-live", o.livePrompt)}`;
   const agents = `<p class="mut">Each AI coding agent you run becomes a drone over the repo it's working in. Paste this into Claude Code on each computer you use.</p>${copyBlock("pr-agents", o.agentPrompt, "Copy setup prompt")}`;

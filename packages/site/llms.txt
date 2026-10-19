@@ -71,7 +71,7 @@ The full setup prompt (safe to paste again; it covers everything below and asks 
 - Your own sections (modules): fed by one Markdown note per section in Caldera/modules/ (frontmatter: title, place main | side, order, publish). Write one yourself, or ask your AI: "add a Reading list module". Lists, tables, links and vault images all work.
 - Elsewhere (links): fed by "links" in Caldera/profile.md (Label | https://url). Your site, GitHub, socials.
 - Masthead and photo: fed by "banner" and "photo" in Caldera/profile.md (images inside the vault). Choose images in Private view, or copy the masthead prompt for your AI.
-- Live visitors on your city: fed by the Caldera snippet (t.js with your site key) on each of your websites. Copy each district's snippet from Settings -> Caldera -> Live traffic (or caldera.social/me) into that site's shared layout.
+- Live visitors on your city: fed by the Caldera snippet (t/1.js with your site key) on each of your websites. Copy each district's snippet from Settings -> Caldera -> Live traffic (or caldera.social/me) into that site's shared layout.
 - Your AI agents on the map: fed by the Caldera agent hook (agent-hook.mjs + Claude Code hooks) on each computer you code on. Copy the agent setup prompt from Settings -> Caldera -> AI agents on your city (or caldera.social/me) and paste it into Claude Code.
 - Time of day and weather: fed by the viewer's own clock and local weather. Automatic; anyone can override it with the sky buttons.
 - Private view on the web (only the owner sees it): fed by your private sections, pushed encrypted from Obsidian. Turn on Settings -> Caldera -> Private web view, then use the Public view | Private view switch when signed in.

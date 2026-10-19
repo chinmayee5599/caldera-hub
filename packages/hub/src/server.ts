@@ -5,6 +5,7 @@
  * Zero framework: node:http + node:sqlite (Node 22+).
  */
 import http from "node:http";
+import { TRACK_JS } from "./hookpin.js";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -54,12 +55,6 @@ const PROFILE_CSP = "sandbox allow-scripts allow-popups allow-popups-to-escape-s
 const cityCsp = (...origins: string[]) => PROFILE_CSP + `; connect-src 'self' ${origins.filter(Boolean).join(" ")}`.trimEnd();
 const originOf = (u?: string) => { try { return u ? new URL(u).origin : ""; } catch { return ""; } };
 const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
-// Live-traffic snippet for the owner's own sites: <script async src="https://caldera.social/t.js" data-site="KEY"></script>
-// Counts page views (and single-page navigations); caldera("signup") / caldera("buy") mark conversions. No cookies.
-const TRACK_JS = `(function(){var s=document.currentScript;if(!s)return;var k=s.getAttribute('data-site');if(!k)return;var base=s.src.replace(/\\/t\\.js.*$/,'');
-function send(kind){var u=base+'/v1/t/'+encodeURIComponent(k)+'.gif?k='+(kind||'view')+'&r='+Math.random().toString(36).slice(2);try{if(navigator.sendBeacon&&navigator.sendBeacon(u))return}catch(e){}var i=new Image();i.src=u}
-window.caldera=function(kind){send(kind==='signup'||kind==='buy'?kind:'view')};send('view');var last=location.pathname;
-function nav(){if(location.pathname!==last){last=location.pathname;send('view')}}var ps=history.pushState;history.pushState=function(){var r=ps.apply(this,arguments);nav();return r};addEventListener('popstate',nav)})();`;
 const DAY = 86_400_000;
 
 /** Platform bar injected at the top of every hosted profile: logo back to the hub + a sign-up call to action.
@@ -1726,8 +1721,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex", "content-security-policy": WATCH_CSP });
         return res.end(watchPage(pr.name || "@" + m0[1], `/@${m0[1]}/city.html${url.search}#mini`));
       }
-      if (req.method === "GET" && p === "/t.js") {
-        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
+      if (req.method === "GET" && (p === "/t.js" || p === "/t/1.js")) {
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": p === "/t.js" ? "public, max-age=3600" : "public, max-age=31536000, immutable", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
         return res.end(TRACK_JS);
       }
       if (req.method === "GET" && opts.siteDir && !p.startsWith("/v1/") && !p.startsWith("/@")) {

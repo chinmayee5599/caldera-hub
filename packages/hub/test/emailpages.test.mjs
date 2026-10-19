@@ -38,7 +38,7 @@ test("sign up with email + an AI: paste, confirm, page and city live, update gro
   assert.ok(!(await (await fetch(base + "/v1/directory")).json()).profiles.some(p => p.handle === "dana-lee"), "new email pages stay out of People for 3 days");
   // settings: the update prompt; an update logs work on a project and grows its building
   const set = await (await fetch(base + "/settings", { headers: { cookie } })).text();
-  assert.match(set, /What(&#39;|')s new\?/); assert.match(set, /t\.js/, "the website snippet is right there");
+  assert.match(set, /What(&#39;|')s new\?/); assert.match(set, /t\/1\.js(&quot;|")\s+integrity=(&quot;|")sha384-/, "the website snippet is right there, pinned");
   const u = await (await form("/settings/page", { do: "update", text: "now:\n- Launching MenuMind in 3 new cities\nworked_on:\n- MenuMind | Signed 4 new restaurants\n- Prep Pal | First prototype" }, cookie)).text();
   assert.match(u, /2 project updates added to your city/);
   const city1 = await (await fetch(base + "/@dana-lee/city.html")).text();

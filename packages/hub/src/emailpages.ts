@@ -12,6 +12,7 @@
  * New email pages stay out of People and the world map for 3 days, or until someone follows them (spam).
  */
 import type http from "node:http";
+import { trackTag } from "./hookpin.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -220,7 +221,7 @@ ${msg ? `<p class="${msg.startsWith("ok:") ? "ok" : "err"}" role="status">${esc(
 <form method="post" action="/settings/page" style="margin-top:12px"><input type="hidden" name="do" value="replace"><textarea name="text" maxlength="20000" required placeholder="name: ..."></textarea><div class="row"><button class="btn small" type="submit">Replace my page</button></div></form></section>
 <section class="card"><h2>Weekly reminder</h2><form method="post" action="/settings/page"><input type="hidden" name="do" value="nudge"><label><input type="checkbox" name="on" ${acct.nudge_off ? "" : "checked"} onchange="this.form.submit()"> Email me the update prompt when I haven't updated in a week</label></form></section>
 <section class="card"><h2>Make your city live</h2><p class="mut">Got a website? Put its line in your site's shared layout (or ask your AI to) and real visitors walk into that project's building as they arrive. Call <code>caldera('signup')</code> when someone signs up and the building lights up.</p>
-${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(acct.profile_id) as any[]).map(x => `<p class="mut" style="margin:10px 0 2px"><b>${esc(x.project)}</b></p><pre id="s-${esc(x.key)}">&lt;script async src="${esc(pub)}/t.js" data-site="${esc(x.key)}"&gt;&lt;/script&gt;</pre><button type="button" class="btn small ghost" data-copy="s-${esc(x.key)}">Copy</button>`).join("") || `<p class="mut">Add a project in an update and its snippet appears here.</p>`}
+${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(acct.profile_id) as any[]).map(x => `<p class="mut" style="margin:10px 0 2px"><b>${esc(x.project)}</b></p><pre id="s-${esc(x.key)}">${esc(trackTag(pub, x.key))}</pre><button type="button" class="btn small ghost" data-copy="s-${esc(x.key)}">Copy</button>`).join("") || `<p class="mut">Add a project in an update and its snippet appears here.</p>`}
 <p class="mut" style="margin-top:12px">Use GitHub or Obsidian? Connecting them later fills your city from your real work.</p></section>
 <section class="card"><h2>Delete my page</h2><form method="post" action="/settings/page" onsubmit="return this.querySelector('[name=sure]').checked"><input type="hidden" name="do" value="delete"><label class="mut"><input type="checkbox" name="sure"> I'm sure: delete my page, city, posts and messages, and forget my email</label> <button class="btn small ghost" type="submit">Delete</button></form></section>
 <p class="mut"><b>Showing as:</b> ${esc(pr.name || acct.handle)}${pr.headline ? ` &middot; ${esc(pr.headline)}` : ""}. <a href="/signout">Sign out</a></p></main>${copyJs}`);
