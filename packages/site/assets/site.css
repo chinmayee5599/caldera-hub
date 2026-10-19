@@ -251,7 +251,7 @@ section h2 { line-height: 1.12; }
 .invited-garden .all { margin-left: 2px; }
 
 /* New this week (2026-10-17) */
-.newcomers { margin: -32px 0 72px; }
+.newcomers { margin: 0 0 72px; }
 .newcomers[hidden] { display: none; }
 .nc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 14px; }
 .nc-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 600; color: var(--text-strong); margin: 0; }

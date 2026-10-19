@@ -78,7 +78,8 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
       if (p.avatar) { var im = document.createElement("img"); im.src = p.avatar; im.alt = ""; im.loading = "lazy"; a.appendChild(im); }
       else { var i = document.createElement("span"); i.className = "nc-i"; i.textContent = (p.name || p.handle).trim().charAt(0).toUpperCase(); a.appendChild(i); }
       var t = document.createElement("span"), b = document.createElement("b"), s = document.createElement("small");
-      b.textContent = p.name || "@" + p.handle; s.textContent = "@" + p.handle + (p.headline ? " \u00b7 " + p.headline : "");
+      b.textContent = p.name || "@" + p.handle; var hl = (p.headline || "").trim(); if (hl.replace(/^@/, "").toLowerCase() === p.handle.toLowerCase()) hl = "";   // a headline that's just the handle again
+      s.textContent = "@" + p.handle + (hl ? " \u00b7 " + hl : "");
       t.appendChild(b); t.appendChild(s); a.appendChild(t); list.appendChild(a);
     });
     document.getElementById("nc-count").textContent = fresh.length + (fresh.length === 1 ? " person joined" : " people joined");
