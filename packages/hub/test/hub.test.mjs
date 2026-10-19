@@ -387,6 +387,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   const welCity = await (await fetch(base + "/@octo-cat/city.html?welcome=1", { headers: { cookie } })).text();
   assert.match(welCity, /This is your city\./); assert.doesNotMatch(await (await fetch(base + "/@octo-cat/city.html?welcome=1")).text(), /This is your city\./, "only the owner sees it");
   const me = await (await fetch(base + "/settings", { headers: { cookie } })).text();
+  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM member_days d JOIN gh_accounts g ON g.profile_id=d.owner WHERE g.login='octo-cat'").get().n, 1, "a signed-in visit marks the member as seen today (once)");
   assert.ok(me.includes("/t.js") && me.includes("agent-hook.mjs"));
   assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/settings", "/me moved");
   assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin", "/settings needs a sign-in");

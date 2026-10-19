@@ -29,6 +29,10 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
   const salt = String((q("SELECT v FROM hub_meta WHERE k='funnel_salt'").get() as any)?.v || "");
   q(`CREATE TABLE IF NOT EXISTS funnel_events (day TEXT, vid TEXT, step TEXT, detail TEXT, ts TEXT, PRIMARY KEY (day, vid, step))`).run();
   q(`CREATE INDEX IF NOT EXISTS funnel_day ON funnel_events(day, step)`).run();
+  // which members we saw on which day (signed in on the site, on their own page, or their Obsidian plugin talking to us):
+  // "did yesterday's sign-ups come back today?"
+  q(`CREATE TABLE IF NOT EXISTS member_days (owner TEXT, day TEXT, via TEXT, PRIMARY KEY (owner, day))`).run();
+  const seenMemo = new Set<string>();
   const vidOf = (req: http.IncomingMessage, day: string) => crypto.createHash("sha256").update(salt + "|funnel|" + day + "|" + c.ipOf(req) + "|" + String(req.headers["user-agent"] || "")).digest("hex").slice(0, 16);
   /** count this visitor at this step today (once per day per step) */
   function track(req: http.IncomingMessage, step: Step, detail = "") {
@@ -38,6 +42,12 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
       q("INSERT OR IGNORE INTO funnel_events VALUES (?,?,?,?,?)").run(day, vidOf(req, day), step, String(detail).slice(0, 80), new Date().toISOString());
     } catch { /* counting never breaks a request */ }
   }
+  /** note that a member was here today (once per member per day; cheap to call on every request) */
+  function seen(owner: string | null | undefined, via: "site" | "obsidian") {
+    if (!owner) return; const day = funnelDay(), k = owner + "|" + day; if (seenMemo.has(k)) return;
+    if (seenMemo.size > 20_000) seenMemo.clear(); seenMemo.add(k);
+    try { q("INSERT OR IGNORE INTO member_days VALUES (?,?,?)").run(owner, day, via); } catch { /* counting never breaks a request */ }
+  }
   /** per day: unique visitors at each step, failure reasons, and the new accounts with their email status */
   function report(days = 7) {
     const out: any[] = [];
@@ -46,14 +56,17 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
       for (const r of q("SELECT step, COUNT(*) n FROM funnel_events WHERE day=? GROUP BY step").all(day) as any[]) counts[r.step] = r.n;
       const fails = q("SELECT detail, COUNT(*) n FROM funnel_events WHERE day=? AND step='fail' GROUP BY detail").all(day) as any[];
       // new members that day (GitHub sign-ups and Obsidian vaults), and whether we can reach them
-      const start = laMidnight(day), end = laMidnight(funnelDay(Date.parse(start) + DAY + 3600_000));
+      const start = laMidnight(day), end = laMidnight(funnelDay(Date.parse(start) + DAY + 3600_000)), next = funnelDay(Date.parse(end) + 3600_000);
+      const tracked = !!q("SELECT 1 FROM member_days WHERE day=? LIMIT 1").get(next);   // no data for days before tracking began
       const members = (q(`SELECT p.id, p.handle, p.created, (SELECT 1 FROM gh_accounts g WHERE g.profile_id=p.id) gh,
           (SELECT verified FROM email_suggest e WHERE e.owner=p.id) sug, (SELECT confirmed FROM email_subs s WHERE s.owner=p.id) sub
         FROM profiles p WHERE p.handle IS NOT NULL AND p.created >= ? AND p.created < ?`).all(start, end) as any[])
-        .map(m => ({ handle: m.handle, via: m.gh ? "GitHub" : "Obsidian", email: m.sub ? "subscribed" : m.sug === 1 ? "verified on file" : m.sug === 0 ? "unverified on file" : "none" }));
+        .map(m => ({ handle: m.handle, via: m.gh ? "GitHub" : "Obsidian", email: m.sub ? "subscribed" : m.sug === 1 ? "verified on file" : m.sug === 0 ? "unverified on file" : "none",
+          // came back the next day (null while that day hasn't happened yet)
+          back: next > funnelDay() || !tracked ? null : !!q("SELECT 1 FROM member_days WHERE owner=? AND day=?").get(m.id, next) }));
       out.push({ day, counts, fails, members });
     }
     return out;
   }
-  return { track, report };
+  return { track, seen, report };
 }

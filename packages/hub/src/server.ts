@@ -971,6 +971,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function authed(req: http.IncomingMessage): string | null {
     const t = String(req.headers.authorization || "").replace(/^Bearer /, "");
     const row = q("SELECT id FROM tokens WHERE token=? AND expires > ?").get(hashToken(t), Date.now()) as any;
+    if (row?.id) FUNNEL.seen(row.id, "obsidian");   // their vault's plugin talked to us: they had Obsidian open
     return row?.id || null;
   }
 
@@ -1284,6 +1285,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     let mine = !!t && !!q("SELECT 1 FROM owner_sessions WHERE token_hash=? AND owner=? AND expires > ?").get(hashToken(t), pr.id, Date.now());
     if (!mine) { const a = GH.account(req); if (a && !a.claimed && a.profile_id === pr.id) mine = true; }
     if (!mine) return null;
+    FUNNEL.seen(pr.id, "site");
     return navFor(pr, "public", rel, staleDays(pr.id) || undefined);
   }
 
@@ -1319,8 +1321,8 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   // ---------------------------------------------------------------- views and kudos
   /** The Caldera member signed in on this browser: an owner cookie (any page) or a GitHub sign-up's session. */
   function memberOf(req: http.IncomingMessage): string | null {
-    const o = ownerOf(req); if (o && profile(o)) return o;
-    const a = GH.account(req); return a && !a.claimed && a.profile_id && profile(a.profile_id) ? a.profile_id : null;
+    const o = ownerOf(req); if (o && profile(o)) { FUNNEL.seen(o, "site"); return o; }
+    const a = GH.account(req), id = a && !a.claimed && a.profile_id && profile(a.profile_id) ? a.profile_id : null; if (id) FUNNEL.seen(id, "site"); return id;
   }
   /** Views as people count them: one per visitor per day, bots and the owner's own visits never recorded. */
   const viewsOf = (handle: string, since = "") => (q("SELECT COUNT(DISTINCT visitor || substr(ts,1,10)) n FROM page_views WHERE handle=? AND ts > ?").get(handle, since) as any).n as number;
