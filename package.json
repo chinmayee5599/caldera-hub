@@ -2,12 +2,19 @@
   "name": "caldera-hub",
   "private": true,
   "description": "Caldera Hub and caldera.social: the reference hub (AGPL), the website, and the caldera CLI. The Obsidian plugin and protocol live in schoettle-cmd/caldera, checked out next to this repo as ../caldera.",
-  "workspaces": ["packages/hub", "packages/cli"],
+  "workspaces": [
+    "packages/hub",
+    "packages/cli"
+  ],
   "scripts": {
     "build": "npm run build -w packages/hub && npm run build -w packages/cli",
     "test": "npm test -w packages/hub",
     "site": "node scripts/build-site.mjs && node scripts/build-seo.mjs && node scripts/new-window-links.mjs"
   },
-  "devDependencies": { "esbuild": "^0.24.0", "typescript": "^5.6.0", "@types/node": "^22.0.0" },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.6.0"
+  },
   "author": "mjonesone, LLC"
 }
