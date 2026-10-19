@@ -425,10 +425,13 @@ export function createHub(opts: HubOptions) {
         if (owner && owner.id !== e.from) return { status: 409, body: { error: "handle taken" } };
         const existing = profile(e.from);
         if (!existing) q("INSERT INTO ledger VALUES (?,?,?,?,?)").run(e.from, C.STARTING_CREDITS, "welcome", "", now());
+        // never call someone "Untitled": a blank or placeholder name keeps the name we already had, else their handle
+        const realName = (v: unknown) => { const x = String(v ?? "").trim(); return x && !/^untitled$/i.test(x) ? x : ""; };
+        const nameNow = realName(b.name) || realName(existing?.name) || handle;
         q(`INSERT INTO profiles (id, handle, box_key, name, headline, manifest, updated, created) VALUES (?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET handle=excluded.handle, box_key=excluded.box_key, name=excluded.name,
            headline=excluded.headline, manifest=excluded.manifest, updated=excluded.updated`)
-          .run(e.from, handle || null, b.boxKey || "", b.name || "", b.headline || "", JSON.stringify(e), e.ts, existing?.created || now());
+          .run(e.from, handle || null, b.boxKey || "", nameNow, b.headline || "", JSON.stringify(e), e.ts, existing?.created || now());
         storeEnvelope(e, null);
         if (C.gardenEnabled()) indexGarden(e.from, handle, b.garden);   // paused: the garden index is left exactly as it was
         if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
@@ -441,7 +444,7 @@ export function createHub(opts: HubOptions) {
           const f = byHandle(opts.founder.toLowerCase());
           if (f && f.id !== e.from) befriend(f.id, e.from, "founder", now());
         }
-        if (!existing) emit({ type: "signup", handle, name: b.name || "", total: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
+        if (!existing) emit({ type: "signup", handle, name: nameNow, total: (q("SELECT COUNT(*) c FROM profiles").get() as any).c });
         return { status: 200, body: { ok: true, id: e.from, handle } };
       }
       case "profile.delete": {
@@ -1796,6 +1799,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           // signed-in members (not the owner) get inline kudos + Add friend, with an action token for this page's owner only
           const prS = byHandle(m[1]), viewer = !own && prS ? viewerFor(memberOf(req), prS) : null;
           let html = fs.readFileSync(file, "utf8");
+          // pages published with the placeholder name (older plugins): show the member's real name instead of "Untitled"
+          if (prS?.name && !/^untitled$/i.test(prS.name) && /Untitled/.test(html)) { const nm = String(prS.name).replace(/[&<>"']/g, (c: string) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as any)[c]);
+            html = html.replace(/<title>Untitled/g, `<title>${nm}`).replace(/>Untitled</g, `>${nm}<`).replace(/Untitled\.md/g, `${nm}.md`).replace(/Untitled's/g, `${nm}'s`).replace(/(<h1 class="title">)Untitled/g, `$1${nm}`)
+              .replace(/Notes connected to Untitled/g, `Notes connected to ${nm}`).replace(/%0A%0AUntitled"/g, `%0A%0A${encodeURIComponent(String(prS.name))}"`); }
           const soc: BarSocial | undefined = prS ? { ...barSocial(prS, !!own), viewer } : undefined;
           // views, kudos and Add friend sit under the person's name (profile) or the city title; other pages keep the bar clean
           const rowAt = rel === "index.html" ? (/<p class="lede">[\s\S]*?<\/p>/.test(html) ? /<p class="lede">[\s\S]*?<\/p>/ : /<h1 class="title">[\s\S]*?<\/h1>/) : rel === "city.html" ? /<h1 class="c-title">[\s\S]*?<\/h1>/ : null;

@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.25.5",
+      "date": "2026-10-18",
+      "title": "Your name, never 'Untitled'",
+      "items": [
+        "A page without a name shows your @handle until you add one, and Caldera tells you where: the name: line in Caldera/profile.md, or Settings > Caldera.",
+        "Moving a GitHub sign-up into Obsidian keeps the name your page already had."
+      ]
+    },
+    {
       "version": "0.25.4",
       "date": "2026-10-18",
       "title": "Agents park on a sky base",

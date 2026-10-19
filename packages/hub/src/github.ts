@@ -759,7 +759,9 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       if (!acct) { ctx.json(res, 404, { error: "unknown or expired code" }); return true; }
       const identity = JSON.parse(ctx.unseal(acct.key_sealed)), edits = JSON.parse(acct.edits || "{}");
       q("UPDATE gh_accounts SET claimed=?, key_sealed='', claim_code=NULL, token_sealed='' WHERE gh_id=?").run(new Date().toISOString(), acct.gh_id);
-      ctx.json(res, 200, { identity, handle: acct.handle, name: edits.name || "", headline: edits.headline || "", github: acct.login }); return true;
+      // the name and headline the page shows now (GitHub's, or what they typed), so the vault starts from the same page
+      const live = q("SELECT name, headline FROM profiles WHERE id=?").get(acct.profile_id) as any;
+      ctx.json(res, 200, { identity, handle: acct.handle, name: edits.name || live?.name || acct.login, headline: edits.headline || live?.headline || "", github: acct.login }); return true;
     }
     return false;
   }
