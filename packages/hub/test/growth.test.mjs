@@ -212,3 +212,19 @@ test("every digest section links back to the page it's about (HTML and plain tex
   const st = hub.mail.compose({ ...d, stale: 5 }, "http://hub.test/u", false);
   assert.match(st.html, /Open Obsidian<\/a> &middot; <a href="[^"]*\/@mike\/"/);
 });
+
+test("email links back to the hub carry src=<email kind>; one-time links and other sites don't", async () => {
+  const { tagLinks } = await import("../dist/server.js"), H = "https://hub.test";
+  const html = `<a href="${H}/@ana/">a</a> <a href="${H}/?invite=mike">i</a> <a href="${H}/settings#update">s</a> <a href="${H}/v1/email/unsub?t=x">u</a> <a href="${H}/signin/link?c=1">l</a> <a href="${H}/privacy">p</a> <a href="https://hub.test.evil.com/x">e</a> <a href="https://github.com/x">g</a> <a href="obsidian://caldera">o</a>`;
+  const t = tagLinks(html, H, "email-digest", true);
+  assert.match(t, /href="https:\/\/hub\.test\/@ana\/\?src=email-digest"/);
+  assert.match(t, /href="https:\/\/hub\.test\/\?invite=mike&amp;src=email-digest"/);
+  assert.match(t, /href="https:\/\/hub\.test\/settings\?src=email-digest#update"/);
+  for (const keep of ["/v1/email/unsub?t=x\"", "/signin/link?c=1\"", "/privacy\"", "https://hub.test.evil.com/x\"", "https://github.com/x\"", "obsidian://caldera\""]) assert.ok(t.includes(keep), keep);
+  assert.equal(tagLinks(`@iv (${H}/@iv/), see ${H}/people?sort=new.`, H, "email-x", false), `@iv (${H}/@iv/?src=email-x), see ${H}/people?sort=new&src=email-x.`);
+  assert.equal(tagLinks(`${H}/@a/?src=other`, H, "email-x", false), `${H}/@a/?src=other`);
+  // compose marks the kind; send() tags every hub link with it
+  const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [{ handle: "rq", name: "RQ", note: "" }], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [] };
+  const m = hub.mail.compose(d, "http://hub.test/v1/email/unsub?t=z", false);
+  assert.equal(m.src, "email-digest");
+});

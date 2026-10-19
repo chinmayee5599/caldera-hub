@@ -9,7 +9,8 @@
  */
 import crypto from "node:crypto";
 
-export interface Mail { to: string; subject: string; html: string; text: string; headers?: Record<string, string> }
+/** `src` = which email this is (e.g. "email-digest"): every link back to our own site gets ?src=<it> so visits from email are attributable */
+export interface Mail { to: string; subject: string; html: string; text: string; headers?: Record<string, string>; src?: string }
 export interface DigestData {
   handle: string; name: string; hosted: boolean;
   views24: number; visitors24: number; views7: number; visitors7: number;
@@ -51,6 +52,20 @@ export interface EmailCtx {
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const ascii = (s: string) => s.normalize("NFKD").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/[^\n\x20-\x7e]/g, "");
 const DAY = 86_400_000;
+
+/** Attribution: add src=<kind> to every link back to the hub in an email (HTML hrefs and plain-text URLs). One-time and
+ *  account links (unsubscribe, confirm, sign-in, /v1 API) and legal pages are left alone; other sites are never touched. */
+const NO_TAG = /^\/(v1\/|start\/confirm|signin|auth\/|privacy|terms)/;
+export function tagLinks(body: string, hub: string, src: string, html: boolean): string {
+  if (!src) return body;
+  const base = hub.replace(/\/$/, ""), re = new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(/[^\\s\"'<>()\\]]*|(?![\\w.-]))", "g");
+  return body.replace(re, (whole: string, path = "") => {
+    const trail = /[.,;:!?]+$/.exec(path)?.[0] || "", p0 = path.slice(0, path.length - trail.length) || "/";
+    if (NO_TAG.test(p0) || /[?&](amp;)?src=/.test(p0)) return whole;
+    const hashAt = p0.indexOf("#"), pathq = hashAt < 0 ? p0 : p0.slice(0, hashAt), hash = hashAt < 0 ? "" : p0.slice(hashAt);
+    return base + pathq + (pathq.includes("?") ? (html ? "&amp;" : "&") : "?") + "src=" + encodeURIComponent(src) + hash + trail;
+  });
+}
 // addresses we never mail: reserved/test domains, throwaway inboxes, and common typos of real providers
 const BAD_DOMAIN = /(^|\.)(example\.(com|org|net)|test|invalid|localhost|mailinator\.com|guerrillamail\.com|10minutemail\.com|tempmail\.com|yopmail\.com|trashmail\.com)$/i;
 const TYPO_DOMAIN = /^(gmial|gmai|gamil|gnail|gmaill|gmail\.co|gmail\.cm|gmail\.con|hotmial|hotmal|yaho|yahooo|outlok|iclod|icoud)(\.|$)/i;
@@ -96,7 +111,8 @@ export function emailer(ctx: EmailCtx) {
     if (q("SELECT 1 FROM email_prompt WHERE owner=? AND dismissed IS NOT NULL").get(owner)) return null; return { suggestion: suggestion(owner) }; };
   const dismissPrompt = (owner: string) => q("INSERT OR REPLACE INTO email_prompt VALUES (?,?)").run(owner, new Date().toISOString());
 
-  async function send(m: Mail) {
+  async function send(m0: Mail) {
+    const m: Mail = m0.src ? { ...m0, html: tagLinks(m0.html, hub, m0.src, true), text: tagLinks(m0.text, hub, m0.src, false) } : m0;
     if (ctx.send) return ctx.send(m);
     if (!ctx.resendKey) throw new Error("email is not set up on this hub");
     const r = await fetch("https://api.resend.com/emails", { method: "POST",
@@ -218,7 +234,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
     H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:13.5px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a>.</p>`);
     T.push(`Bring a friend: ${invite}`);
-    return { to: "", subject, html: shell(quiet ? "This week on Caldera" : `Your day on Caldera, @${esc(d.handle)}`, H.join(""), unsub), text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`),
+    return { to: "", subject, html: shell(quiet ? "This week on Caldera" : `Your day on Caldera, @${esc(d.handle)}`, H.join(""), unsub), text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`), src: quiet ? "email-weekly" : "email-digest",
       headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };
   }
 
@@ -282,7 +298,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const id = crypto.randomBytes(18).toString("base64url"), un = `${hub}/v1/email/invite-unsub?t=${id}`, who = o.inviterName || "@" + o.inviterHandle;
     q("INSERT INTO invites_sent VALUES (?,?,?,?,?)").run(id, o.inviter, o.login.toLowerCase(), hashOf(o.to), new Date().toISOString());
     const why = o.why ? ` (${o.why})` : "";
-    await send({ to: o.to, subject: ascii(`${who} invited you to Caldera`),
+    await send({ to: o.to, src: "email-invite", subject: ascii(`${who} invited you to Caldera`),
       html: shell(`${esc(who)} invited you to Caldera`, `<p style="margin:0 0 12px">Hi @${esc(o.login)},</p><p style="margin:0 0 12px">${esc(who)} (@${esc(o.inviterHandle)}) is on Caldera and thought you'd like it${esc(why)}.</p><p style="margin:0 0 12px">Caldera is a free, open-source social network for GitHub and Obsidian: your public repos become a living city, and you meet people by what they build. Signing up with GitHub takes about 30 seconds, and you'll start out connected with ${esc(who)}.</p><p style="margin:22px 0"><a href="${esc(o.link)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">See ${esc(who)}'s page and join</a></p><p style="color:#8A8794;font-size:13px;margin:0">We found this address on your public GitHub profile. This is the only invite we'll send you this month, and you won't get another from us unless someone you know asks. <a href="${esc(un)}" style="color:#6E4FE0">Don't email me about Caldera</a> (one click).</p>`),
       text: ascii(`Hi @${o.login},\n\n${who} (@${o.inviterHandle}) is on Caldera and thought you'd like it${why}.\n\nCaldera is a free, open-source social network for GitHub and Obsidian: your public repos become a living city, and you meet people by what they build. Signing up with GitHub takes about 30 seconds.\n\nSee ${who}'s page and join: ${o.link}\n\nWe found this address on your public GitHub profile.\n\n--\nDon't want Caldera emails? One click: ${un}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`),
       headers: { "List-Unsubscribe": `<${un}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
@@ -302,7 +318,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (!to || suppressed(to)) return false;
     const who = a.name && a.name !== a.handle ? `${a.name} (@${a.handle})` : `@${a.handle}`;
     const what = a.request ? `${who} wants to message you` : a.count > 1 ? `${who} sent you ${a.count} messages` : `${who} sent you a message`;
-    await send({ to, subject: ascii(`${what} on Caldera`),
+    await send({ to, src: a.request ? "email-message-request" : "email-message", subject: ascii(`${what} on Caldera`),
       html: shell(esc(what), `<p style="margin:0 0 14px;padding:12px 14px;border-left:3px solid #6E4FE0;background:#F7F5FC;color:#24222B">${esc(a.preview)}</p>${a.request ? `<p style="margin:0 0 12px;color:#55525E">Accept to reply, or ignore it. They won't be told which.</p>` : ""}<p style="margin:18px 0"><a href="${esc(a.url)}" style="display:inline-block;padding:11px 20px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${a.request ? "See the request" : "Reply on Caldera"}</a></p><p style="color:#8A8794;font-size:12.5px;margin:0">Replying to this email doesn't reach @${esc(a.handle)}. <a href="${esc(a.off)}" style="color:#8A8794">Stop emails about messages</a> (one click).</p>`),
       text: ascii(`${what} on Caldera:\n\n"${a.preview}"\n\n${a.request ? "See the request" : "Reply"}: ${a.url}\n\nReplying to this email doesn't reach @${a.handle}.\n--\nStop emails about messages: ${a.off}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`),
       headers: { "List-Unsubscribe": `<${a.off}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
@@ -310,9 +326,9 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
   }
 
   /** a plain one-off email in the Caldera shell (sign-up links, weekly update nudges) */
-  async function note(m: { to: string; subject: string; title: string; html: string; text: string; headers?: Record<string, string> }) {
+  async function note(m: { to: string; subject: string; title: string; html: string; text: string; headers?: Record<string, string>; src?: string }) {
     if (!m.to || suppressed(m.to)) return false;
-    await send({ to: m.to, subject: ascii(m.subject), html: shell(esc(m.title), m.html), text: ascii(m.text), headers: m.headers }); return true;
+    await send({ to: m.to, subject: ascii(m.subject), html: shell(esc(m.title), m.html), text: ascii(m.text), headers: m.headers, src: m.src }); return true;
   }
   return { note, subscribe, confirm, messageAlert, unsubToken, unsubscribe, status, runDigest, schedule, page, compose, isActive: (d: DigestData) => rank.active(d), hashOf, suggest, suggestion, promptFor, dismissPrompt, matches, hasConfirmed, sendSignin, sendInvite, inviteBlock, inviteUnsub, invitesToday: (inviter: string) => (q("SELECT COUNT(*) n FROM invites_sent WHERE inviter=? AND ts > ?").get(inviter, new Date(Date.now() - DAY).toISOString()) as any).n as number, inviteCap: INVITES_PER_DAY };
 }

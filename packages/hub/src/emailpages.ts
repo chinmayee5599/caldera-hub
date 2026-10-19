@@ -104,7 +104,7 @@ export interface EmailCtx {
   startOwner: (id: string) => string; memberOf: (req: http.IncomingMessage) => string | null;
   sameOrigin: (req: http.IncomingMessage) => boolean; allowNewProfile: (req: http.IncomingMessage) => boolean;
   tooMany: (key: string, max: number, windowMs?: number) => boolean;
-  note: (m: { to: string; subject: string; title: string; html: string; text: string; headers?: Record<string, string> }) => Promise<boolean>;
+  note: (m: { to: string; subject: string; title: string; html: string; text: string; headers?: Record<string, string>; src?: string }) => Promise<boolean>;
   page: (res: http.ServerResponse, status: number, title: string, body: string) => void;
   hasFollower: (id: string) => boolean;
   /** remember the confirmed address so message alerts and the daily summary can reach them */
@@ -315,7 +315,7 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       if (a.nudge_off || !quiet || nudged) continue;
       q("UPDATE email_accounts SET nudged=? WHERE profile_id=?").run(new Date().toISOString(), a.profile_id);
       try { const to = c.unseal(a.email_sealed), link = `${pub}/settings#update`;
-        await c.note({ to, subject: "What's new this week? Update your Caldera page in a minute", title: "What's new this week?",
+        await c.note({ to, src: "email-update-nudge", subject: "What's new this week? Update your Caldera page in a minute", title: "What's new this week?",
           html: `<p>Paste this into ChatGPT or Claude, then paste its answer on <a href="${esc(link)}">your page settings</a>. Every project you mention grows its building in your city.</p><pre style="white-space:pre-wrap;background:#F7F5FC;padding:12px;border-radius:8px;font-size:12.5px">${esc(UPDATE_PROMPT)}</pre><p><a href="${esc(link)}" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">Update my page</a></p><p style="color:#777;font-size:12.5px">At most once a week. Turn it off on your page settings.</p>`,
           text: `Paste this into ChatGPT or Claude, then paste its answer at ${link}:\n\n${UPDATE_PROMPT}\n\nAt most once a week. Turn it off on your page settings.` });
       } catch (e: any) { console.error("email nudge", a.handle, e.message); }

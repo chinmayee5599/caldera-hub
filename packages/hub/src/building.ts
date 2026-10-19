@@ -270,7 +270,7 @@ ${hiddenList.length ? `<p class="mut" style="margin-top:12px">Hidden: ${hiddenLi
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
     if (p === "/me/building" || p === "/me/building/") {
       const me = c.memberOf(req);
-      if (!me) { res.writeHead(302, { location: "/signin", "cache-control": "no-store" }); res.end(); return true; }
+      if (!me) { res.writeHead(302, { location: "/signin?back=%2Fme%2Fbuilding", "cache-control": "no-store" }); res.end(); return true; }
       if (req.method === "POST") {
         if (!c.sameOrigin(req)) { c.json(res, 403, { error: "wrong origin" }); return true; }
         const chunks: Buffer[] = []; for await (const ch of req) chunks.push(ch as Buffer);

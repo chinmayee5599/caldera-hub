@@ -172,7 +172,7 @@ test("a new message emails the recipient once (summary or GitHub-verified addres
     assert.equal(await hub.messages.sweepAlerts(0), 1);
     assert.equal(sent.length, 1); assert.equal(sent[0].to, "ana@realmail.dev");
     assert.match(sent[0].subject, /BO \(@bo\) sent you 2 messages on Caldera/);
-    assert.match(sent[0].text, /loved your post/); assert.match(sent[0].text, /http:\/\/hub\.test\/messages\/@bo/);
+    assert.match(sent[0].text, /loved your post/); assert.match(sent[0].text, /http:\/\/hub\.test\/messages\/@bo/); assert.match(sent[0].text, /http:\/\/hub\.test\/messages\/@bo\?src=email-message\b/); assert.match(sent[0].html, /href="http:\/\/hub\.test\/messages\/@bo\?src=email-message"/); assert.doesNotMatch(sent[0].headers["List-Unsubscribe"], /src=/);
     hub.messages.send(B, "ana", "one more");
     assert.equal(await hub.messages.sweepAlerts(0), 0, "no second email inside 30 minutes");
     assert.equal(sent.filter(m => m.to === "bo@x").length, 0);

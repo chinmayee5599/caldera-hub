@@ -42,7 +42,7 @@ const waitFor = async (fn, ms = 4000) => { for (let i = 0; i < ms / 100; i++) { 
 test("/settings: GitHub sign-up sees lights + in-page Obsidian connect; vault owner sees read-only page; anonymous goes to sign in", async () => {
   const { h } = hubWith(); const { base, publish, signIn } = await start(h);
   assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/settings");
-  assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin", "anonymous: sign in first");
+  assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin?back=%2Fsettings", "anonymous: sign in first");
   assert.equal((await fetch(base + "/settings/status")).status, 401);
   // a GitHub sign-up (newbie has no Obsidian page that lists them)
   const s = await signIn("newbie"); assert.ok(s.sess);
@@ -114,7 +114,9 @@ test("alerts: pinned first, audience, unread badge on the owner's bar, seen beac
   assert.match(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="ch-badge">1<\/span>/);
   const al = await (await fetch(base + "/alerts", { headers: ck })).text(); assert.match(al, /Fresh/); assert.match(al, /THE PROMPT/, "copy text is in the page for the copy button");
   assert.doesNotMatch(await (await fetch(base + "/@mike/", { headers: ck })).text(), /<span class="ch-badge">/, "/alerts marked it read");
-  assert.equal((await fetch(base + "/alerts", { redirect: "manual" })).headers.get("location"), "/signin");
+  assert.equal((await fetch(base + "/alerts", { redirect: "manual" })).headers.get("location"), "/signin?back=%2Falerts");
+  assert.equal((await fetch(base + "/me/building", { redirect: "manual" })).headers.get("location"), "/signin?back=%2Fme%2Fbuilding", "email intro links come back after sign-in");
+  assert.match(await (await fetch(base + "/signin?back=%2Fme%2Fbuilding")).text(), /href="\/auth\/github\?back=%2Fme%2Fbuilding"/);
   // releases post once per version
   const a1 = h.admin.alertPost({ title: "New in Caldera 9.9.9: x", body: "- y", version: "9.9.9" }).posted, a2 = h.admin.alertPost({ title: "again", body: "z", version: "9.9.9" }).posted;
   assert.equal(a1, a2);

@@ -390,7 +390,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.equal(h.db.prepare("SELECT COUNT(*) n FROM member_days d JOIN gh_accounts g ON g.profile_id=d.owner WHERE g.login='octo-cat'").get().n, 1, "a signed-in visit marks the member as seen today (once)");
   assert.match(me, /t\/1\.js(&quot;|")\s+integrity=(&quot;|")sha384-/); assert.ok(me.includes("agent-hook.mjs") && me.includes("SHA-256 is "));
   assert.equal((await fetch(base + "/me", { redirect: "manual" })).headers.get("location"), "/settings", "/me moved");
-  assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin", "/settings needs a sign-in");
+  assert.equal((await fetch(base + "/settings", { redirect: "manual" })).headers.get("location"), "/signin?back=%2Fsettings", "/settings needs a sign-in (and comes back after)");
   const post = (body, c = cookie, origin = "http://hub.test") => fetch(base + "/me", { method: "POST", headers: { cookie: c, origin, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship", summary: "", links: "", listed: "on" }, cookie, "https://evil.example")).includes("Wrong origin"));
   assert.ok((await post({ do: "save", name: "Octo", headline: "I ship small tools", summary: "Hello", links: "Blog | https://octo.dev", listed: "on" })).includes("Republished"));

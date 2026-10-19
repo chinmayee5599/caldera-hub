@@ -28,6 +28,7 @@ import { messages } from "./messages";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
+export { tagLinks } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
 import { citySnapshot, applyPrivateMode, rewriteCityPage, type CityData } from "../../../../caldera/packages/plugin/src/city";
@@ -1543,7 +1544,7 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
   function signinGeneral(res: http.ServerResponse, back = "") {
-    const bq = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world|@[a-z0-9-]+\/)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
+    const bq = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world|@[a-z0-9-]+\/|me\/building|settings|alerts)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     signinPage(res, 200, "Sign in", `<h1>Sign in to Caldera</h1><p class="lede">Sign this browser in as the owner of your page. It stays signed in for a year.</p>
 <div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
 <div class="card"><h2>Made your page with ChatGPT or Claude?</h2><p class="mut">Enter your email on the start page (leave the profile box empty) and we send you a sign-in link.</p><a class="btn ghost" href="/start">Email me a sign-in link</a></div>
@@ -2406,8 +2407,8 @@ export function makeAlertBatcher(send: (subject: string, text: string) => void, 
       const d = new Date(now()).toISOString().slice(0, 10); if (d !== day) { day = d; sent = 0; }
       if (sent < perDay) {
         sent++;
-        if (ev.type === "signup") send(`New Caldera profile: ${who(ev.handle)} (${ev.total} total)`, `New Caldera profile: ${who(ev.handle)}${ev.name ? ` (${ev.name})` : ""}\nTotal profiles: ${ev.total}\n${site}/@${ev.handle || ""}/\n\nAll profiles: ${site}/people` + (sent === perDay ? `\n\nThat's ${perDay} today: further sign-ups today arrive as one email an hour.` : ""));
-        else send(`Caldera profile deleted: ${who(ev.handle)} (${ev.total} total)`, `Caldera profile deleted: ${who(ev.handle)}. Total profiles: ${ev.total}\n\nAll profiles: ${site}/people?sort=new`);
+        if (ev.type === "signup") send(`New Caldera profile: ${who(ev.handle)} (${ev.total} total)`, `New Caldera profile: ${who(ev.handle)}${ev.name ? ` (${ev.name})` : ""}\nTotal profiles: ${ev.total}\n${site}/@${ev.handle || ""}/?src=email-signup-alert\n\nAll profiles: ${site}/people?src=email-signup-alert` + (sent === perDay ? `\n\nThat's ${perDay} today: further sign-ups today arrive as one email an hour.` : ""));
+        else send(`Caldera profile deleted: ${who(ev.handle)} (${ev.total} total)`, `Caldera profile deleted: ${who(ev.handle)}. Total profiles: ${ev.total}\n\nAll profiles: ${site}/people?sort=new&src=email-signup-alert`);
         return;
       }
       queue.push(ev);
@@ -2417,7 +2418,7 @@ export function makeAlertBatcher(send: (subject: string, text: string) => void, 
       const q = queue; queue = [];
       const ups = q.filter(e => e.type === "signup"), dels = q.filter(e => e.type === "delete"), total = q[q.length - 1].total;
       const subject = `${ups.length} new Caldera profile${ups.length === 1 ? "" : "s"} in the last hour${dels.length ? `, ${dels.length} deleted` : ""} (${total} total)`;
-      const text = [ups.length ? `New: ${ups.map(e => who(e.handle) + (e.name ? ` (${e.name})` : "")).join(", ")}` : "", dels.length ? `Deleted: ${dels.map(e => who(e.handle)).join(", ")}` : "", `Total profiles: ${total}`, `${site}/people?sort=new`].filter(Boolean).join("\n\n");
+      const text = [ups.length ? `New: ${ups.map(e => who(e.handle) + (e.name ? ` (${e.name})` : "")).join(", ")}` : "", dels.length ? `Deleted: ${dels.map(e => who(e.handle)).join(", ")}` : "", `Total profiles: ${total}`, `${site}/people?sort=new&src=email-signup-alert`].filter(Boolean).join("\n\n");
       send(subject, text);
     },
     pending: () => queue.length,
