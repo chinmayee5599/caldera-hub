@@ -196,6 +196,8 @@ export interface FeedCtx {
   postCard?: (o: { handle: string; name: string; sentence: string; detail: string }) => Promise<Buffer>;
   ogTags?: (o: { url: string; image: string; title: string; description: string }) => string;
   tooMany: (key: string, max: number, windowMs?: number) => boolean;
+  /** people this member might want to follow (ranked by the hub's suggestions), for the feed's right rail */
+  suggest?: (meId: string, n: number) => { handle: string; name: string; headline?: string | null; avatar: string | null; why?: string | null }[];
   /** public GitHub metadata for recommended repos (a member's token raises the rate limit; none works too) */
   fetch?: typeof fetch; ghToken?: () => Promise<string | null>;
   /** has this member got a city with public repos (new accounts without one get stricter link limits) */
@@ -589,7 +591,20 @@ export function feed(c: FeedCtx) {
 .fd-tip{position:fixed;z-index:60;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 14px;border-radius:10px;background:var(--text-strong);color:var(--bg);font-size:14px;box-shadow:0 10px 26px rgba(0,0,0,.3)}
 .fd-shared{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--text)}
 .fd-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (max-width:520px){.fd-thumb{display:none}.fd-act{font-size:14px}.fd-q .row{grid-template-columns:1fr}}</style>`;
+@media (max-width:520px){.fd-thumb{display:none}.fd-act{font-size:14px}.fd-q .row{grid-template-columns:1fr}}
+.fd-wrap.has-rail{display:grid;grid-template-columns:minmax(0,720px) 300px;gap:24px;justify-content:center;max-width:1080px;margin:0 auto;padding:0 16px}
+.fd-wrap.has-rail .fd{margin:0;max-width:none;padding-left:0;padding-right:0}.fd-rail{padding-top:24px}.fd-rail .fd-people{position:sticky;top:calc(env(safe-area-inset-top,0px) + 76px)}
+.fd-people-top{display:none;margin-top:16px}@media (max-width:1000px){.fd-wrap.has-rail{display:block;padding:0}.fd-wrap.has-rail .fd{padding:24px 16px 72px}.fd-rail{display:none}.fd-people-top{display:block}}
+.fd-people h2{font:600 15px 'Source Serif 4',Georgia,serif;margin:0 0 10px}.fd-pp{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.fd-pp:first-of-type{border-top:0}
+.fd-pp-av{flex:none;width:36px;height:36px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--accent-soft,rgba(108,71,255,.12));color:var(--accent,#6C47FF);font-weight:600;text-decoration:none}.fd-pp-av img{width:100%;height:100%;object-fit:cover}
+.fd-pp-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.fd-pp-t a{color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fd-pp-t a:hover b{text-decoration:underline}
+.fd-pp-t small{color:var(--text-muted);font-size:12.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fd-pp-f{flex:none;min-height:30px;padding:0 12px}.fd-pp-f[data-done]{opacity:.75}.fd-pp-n{margin:8px 0 0;font-size:12.5px;color:var(--text-muted)}</style>`;
+  const FOLLOW_JS = `<script>(function(){document.querySelectorAll('[data-follow]').forEach(function(b){b.addEventListener('click',function(){if(b.hasAttribute('data-done'))return;var h=b.getAttribute('data-follow');b.disabled=true;
+fetch('/v1/friend/'+encodeURIComponent(h),{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}'}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})},function(){return{ok:false,j:{}}}).then(function(x){
+document.querySelectorAll('[data-follow="'+h+'"]').forEach(function(o){if(x.ok){o.textContent=x.j.state==='friends'?'Friends':'Following';o.setAttribute('data-done','1');o.disabled=true}else o.disabled=false});
+var m=x.ok?(x.j.state==='friends'?'You and @'+h+' follow each other: you are friends now.':'You follow @'+h+'. If they follow you back, you are friends.'):(x.j.error||'Could not follow. Try again.');
+var t=document.createElement('div');t.className='fd-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},2600)})})})})();</script>`;
   const avatarHtml = (w: any) => w?.avatar ? `<span class="fd-av"><img src="${esc(w.avatar)}" alt="" loading="lazy"></span>` : `<span class="fd-av" aria-hidden="true">${esc(String(w?.name || w?.handle || "?").charAt(0).toUpperCase())}</span>`;
   const whoLink = (w: any) => `<a href="/@${esc(w.handle)}/">${esc(w.name || "@" + w.handle)}</a>`;
   const linkify = (t: string) => esc(t).replace(/\bhttps?:\/\/[^\s<]+[^\s<.,;:!?)]/g, u => `<a href="${u}" target="_blank" rel="noopener noreferrer nofollow ugc">${u.replace(/^https?:\/\//, "")}</a>`);
@@ -772,19 +787,30 @@ var mw=$('.fd-more');if(mw)mw.hidden=!x.j.more;tip(n?n+' new':'Up to date')})})}
     const recs = n.recs.slice(0, 3).map(r => `<div class="fd-m"><div class="t"><b>${esc(r.text)}</b><small>Recommended for people like you &middot; <a href="${esc(r.url)}">see it</a></small></div></div>`).join("");
     return `<section class="fd-card fd-you" aria-label="For you"><h2>For you</h2>${n.waiting.slice(0, 6).map(w => `<div class="fd-m" data-waiting data-post="${esc(w.post)}" data-from="${esc(w.from.handle)}"><div class="t"><b>${esc(w.kind === "help" ? `@${w.from.handle} can help with your post` : w.text)}</b><small>${w.kind === "help" ? "Accept to connect" : "Sent to you because you match. Accept to connect"} &middot; <a href="${esc(w.url)}">see the post</a></small></div><span class="acts"><button type="button" class="fd-btn pri" data-answer="yes">Accept</button> <button type="button" class="fd-btn" data-answer="no">Not now</button></span></div>`).join("")}${recs}</section>`;
   }
+  /** "People you might know": suggested members with one-tap Follow, in the right rail (above the feed on phones) */
+  function peopleHtml(meId: string, where: "rail" | "top") {
+    let ppl: NonNullable<ReturnType<NonNullable<FeedCtx["suggest"]>>> = [];
+    try { ppl = (c.suggest?.(meId, 5) || []).filter(p => p?.handle); } catch { /* suggestions never break the feed */ }
+    if (!ppl.length) return "";
+    const rows = ppl.map(p => { const nm = p.name || "@" + p.handle;
+      return `<div class="fd-pp"><a class="fd-pp-av" href="/@${esc(p.handle)}/" aria-hidden="true" tabindex="-1">${p.avatar ? `<img src="${esc(p.avatar)}" alt="" loading="lazy">` : esc(nm.replace(/^@/, "").charAt(0).toUpperCase())}</a>
+<div class="fd-pp-t"><a href="/@${esc(p.handle)}/"><b>${esc(nm)}</b></a><small>${esc(p.why || p.headline || "@" + p.handle)}</small></div><button type="button" class="fd-btn fd-pp-f" data-follow="${esc(p.handle)}" aria-label="Follow ${esc(nm)}">Follow</button></div>`; }).join("");
+    return `<section class="fd-card fd-people fd-people-${where}" aria-label="People you might know"><h2>People you might know</h2>${rows}<p class="fd-pp-n">Follow each other and you're friends.</p></section>`;
+  }
   function feedPage(res: http.ServerResponse, type: string, me: string | null, authorIn = "") {
     const ap = authorIn ? c.byHandle(authorIn) : null, author = ap && visible(ap) ? ap.handle as string : "";
     const t = FILTER[type] ? type : "all", items = page(t, "", me, 30, author), meH = me ? c.profile(me)?.handle || "" : "";
+    const people = me && !author ? peopleHtml(me, "rail") : "";
     const tabs = [["all", "All"], ["posts", "Asks"], ["recommends", "Recommends"], ["members", "New members"], ["cities", "Cities"], ["kudos", "Kudos"]].map(([k, l]) => `<a href="/feed${k === "all" ? "" : "?type=" + k}"${k === t ? ' aria-current="page"' : ""}>${l}</a>`).join("");
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Feed - Caldera</title>
 <meta name="description" content="What's happening on Caldera: new members, new cities, kudos, and what people are looking for."><link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
-<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><main class="fd">
+<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><div class="fd-wrap${people ? " has-rail" : ""}"><main class="fd">
 <div class="fd-head"><h1>Feed</h1><button type="button" class="fd-btn" data-refresh data-type="${t}" data-author="${esc(author)}" title="Load the latest without reloading the page"><span class="fd-spin" aria-hidden="true">&#8635;</span> Refresh</button></div><p class="lede">What's happening across Caldera, and what people are looking for. Post an ask and it goes to the people who fit.</p>
-${me ? youHtml(me) + composerHtml() : SIGNIN("/feed")}
+${me ? youHtml(me) + composerHtml() + (people ? peopleHtml(me, "top") : "") : SIGNIN("/feed")}
 ${author ? `<p class="fd-shared">Showing posts and activity from <a href="/@${esc(author)}/">@${esc(author)}</a>. <a href="/feed">Show everyone</a></p>` : ""}<nav class="fd-tabs" aria-label="Filter the feed">${tabs}</nav><div class="fd-list">${items.map(i => itemHtml(i, me)).join("") || `<p class="fd-empty">Nothing here yet.</p>`}</div>
 <div class="fd-more"${items.length >= 30 ? "" : " hidden"}><button type="button" class="fd-btn" data-more data-type="${t}" data-author="${esc(author)}">Show older</button></div>
-</main>${SCRIPT(me, meH)}</body></html>`;
+</main>${people ? `<aside class="fd-rail">${people}</aside>` : ""}</div>${SCRIPT(me, meH)}${people ? FOLLOW_JS : ""}</body></html>`;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: "Cookie" });
     res.end(c.navify(html, "/feed"));
   }

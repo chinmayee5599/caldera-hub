@@ -107,3 +107,19 @@ test("profile activity card: posts then activity, one at a time; owner gets Clos
   assert.match(feed, /Showing posts and activity from <a href="\/@bo\/">@bo<\/a>/);
   assert.doesNotMatch(feed, /@cy is looking|>CY<\/a> recommends/, "only bo's items");
 });
+
+test("feed rail: people you might know, with one-tap Follow; followed people drop off; hidden and signed-out get none", async () => {
+  const page = async w => (await fetch(base + "/feed", { headers: w ? { cookie: await ownerCookie(w) } : {} })).text();
+  const rail = html => (html.match(/<aside class="fd-rail">([\s\S]*?)<\/aside>/) || [])[1] || "";
+  const html = await page("ana"), r = rail(html);
+  assert.match(r, /People you might know/);
+  assert.match(r, /data-follow="mike"/, "suggests members with a Follow button");
+  assert.doesNotMatch(r, /data-follow="(ana|hid)"/, "never yourself or an unlisted member");
+  assert.match(html, /class="fd-card fd-people fd-people-top"/, "the same list sits above the feed on phones");
+  for (const [, js] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new Function(js), "the page's scripts compile");
+  const f = await as("ana", "/v1/friend/mike", {});
+  assert.equal(f.status, 200);
+  assert.doesNotMatch(rail(await page("ana")), /data-follow="mike"/, "someone you follow is no longer suggested");
+  assert.doesNotMatch(await page(null), /<aside class="fd-rail">|aria-label="People you might know"/, "signed-out visitors get no rail");
+  assert.doesNotMatch(await (await fetch(base + "/feed?author=bo", { headers: { cookie: await ownerCookie("ana") } })).text(), /<aside class="fd-rail">/, "one member's posts: no rail");
+});

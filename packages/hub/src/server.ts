@@ -368,6 +368,7 @@ export function createHub(opts: HubOptions) {
     const me = profile(id); if (!me) return [];
     const skip = new Set<string>([id, ...(q("SELECT b FROM friends WHERE a=?").all(id) as any[]).map(r => r.b)]);
     const rq = openRequests(id); for (const r of [...rq.incoming, ...rq.outgoing]) skip.add(r.id);
+    for (const r of q("SELECT target FROM friend_intents WHERE owner=?").all(id) as any[]) skip.add(r.target);   // follows waiting to be signed
     const mine = interests(me), wk = Date.now() - 7 * DAY;
     const arr = (x: { topics: Set<string>; groups: Set<string>; words: Set<string> }) => ({ topics: [...x.topics], groups: [...x.groups], words: [...x.words] }), meI = arr(mine);
     return (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(p => !skip.has(p.id) && listed(p)).map(p => {
@@ -1625,7 +1626,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       q("DELETE FROM alert_reads WHERE alert_id IN (SELECT id FROM alerts WHERE target IS NOT NULL AND (dkey LIKE ? OR cta_url LIKE ?))").run(...like);
       q("DELETE FROM alerts WHERE target IS NOT NULL AND (dkey LIKE ? OR cta_url LIKE ?)").run(...like); },
     postCard: async (o) => toPng(postCardSvg({ ...o, host: hubUrl().replace(/^https?:\/\//, "") })),
-    fetch: opts.githubFetch || fetch, ghToken: () => GH.anyToken(), hasRepos: (pr: any) => !!cityOf(pr.handle)?.buildings });
+    fetch: opts.githubFetch || fetch, ghToken: () => GH.anyToken(), hasRepos: (pr: any) => !!cityOf(pr.handle)?.buildings,
+    suggest: (id, n) => suggestFor(id, n) });
   // the feed's matching and posting policy is an open-core hook (public: exact tag overlap)
   FEED!.setMatcher(ext.feedMatcher());
   MSG = messages({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, modOf, areFriends, memberOf, sameOrigin, readBody, json, navify, tooMany, seal, unseal,
