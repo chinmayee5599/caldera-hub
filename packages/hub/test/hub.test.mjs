@@ -502,8 +502,11 @@ test("private repos from an organization's install show as padlocks (no redirect
     if (u === "https://github.com/login/oauth/access_token") return J({ access_token: "tok77", expires_in: 28800, refresh_token: "r" });
     if (u.endsWith("/user") || u.endsWith("/users/lewis")) return J(me);
     if (u.includes("/users/lewis/repos")) return J([repo("lewis", "fleet", false)]);
-    if (u.includes("/user/installations?")) return J({ total_count: installs.length, installations: installs.map(id => ({ id })) });
-    if (u.includes("/user/installations/900/repositories")) return J({ total_count: 2, repositories: [repo("acme-org", "billing", true), repo("acme-org", "mobile-app", true)] });
+    // the app's own view: installations, an installation token, its repos, and who can access each repo
+    if (u.includes("/app/installations?")) return J(installs.map(id => ({ id, account: { id: 5000, login: "acme-org", type: "Organization" } })));
+    if (u.includes("/app/installations/900/access_tokens")) return J({ token: "inst900" });
+    if (u.includes("/installation/repositories")) return J({ total_count: 3, repositories: [repo("acme-org", "billing", true), repo("acme-org", "mobile-app", true), repo("acme-org", "hr-records", true)] });
+    if (u.includes("/collaborators/lewis/permission")) return J({ permission: u.includes("hr-records") ? "none" : "write" });
     if (u.includes("/stats/commit_activity") || u.includes("/events")) return J([]);
     if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
     return J({ message: "not mocked " + u }, 404);
@@ -519,8 +522,8 @@ test("private repos from an organization's install show as padlocks (no redirect
   installs = [900];   // the organization installs the Caldera app; GitHub never sends him back to Caldera
   await city();
   let html = ""; for (let i = 0; i < 50; i++) { html = await city(); if (padlocks(html) === 2) break; await new Promise(r => setTimeout(r, 100)); }
-  assert.equal(padlocks(html), 2, "both org repos are padlocked buildings");
-  for (const w of ["acme-org", "secret plans", "\"billing\"", "mobile-app"]) assert.ok(!html.includes(w), "private names, owners and descriptions never appear: " + w + " @ " + html.slice(Math.max(0, html.indexOf(w) - 80), html.indexOf(w) + 40));
+  assert.equal(padlocks(html), 2, "the two org repos he can access are padlocked buildings; the one he can't is left off");
+  for (const w of ["acme-org", "secret plans", "\"billing\"", "mobile-app", "hr-records"]) assert.ok(!html.includes(w), "private names, owners and descriptions never appear: " + w + " @ " + html.slice(Math.max(0, html.indexOf(w) - 80), html.indexOf(w) + 40));
   assert.ok(h.db.prepare("SELECT installation FROM gh_accounts WHERE login='lewis'").get().installation === "900", "the install was recorded");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
