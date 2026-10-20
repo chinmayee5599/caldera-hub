@@ -58,7 +58,7 @@ test("sign up with email + an AI: paste, confirm, page and city live, update gro
   assert.equal((await fetch(base + "/settings/page", { redirect: "manual" })).status, 302);
 });
 
-test("signed out, tapping Message: sign-up page says why, email sign-up credits the inviter and lands in the conversation", async () => {
+test("signed out, tapping Message: sign-up page says why, GitHub first (no email sign-up), the inviter is credited and it lands in the conversation", async () => {
   const join = async (text, email) => { await form("/start", { text, email }); const l = mails[mails.length - 1].text.match(/start\/confirm\?t=(\S+)/)[1];
     const c = await form("/start/confirm", { t: new URL(base + "/start/confirm?t=" + l).searchParams.get("t") }); return c; };
   await join("name: Mike Host\nheadline: Speaker", "host@example.com");
@@ -67,7 +67,9 @@ test("signed out, tapping Message: sign-up page says why, email sign-up credits 
   assert.equal(m.status, 302); assert.equal(m.headers.get("location"), "/signin?back=%2Fmessages%2F%40mike-host");
   const si = await (await fetch(base + m.headers.get("location"))).text();
   assert.match(si, /Sign up to message Mike Host/); assert.match(si, /land right in your conversation with @mike-host/);
-  assert.match(si, /href="\/start\?back=%2Fmessages%2F%40mike-host&amp;invite=mike-host"|href="\/start\?back=%2Fmessages%2F%40mike-host&invite=mike-host"/, "email sign-up keeps the way back and the invite");
+  assert.doesNotMatch(si, /Sign up with email/, "no email sign-up offered: GitHub first, Obsidian second");
+  assert.ok(si.indexOf("Sign up with GitHub") < si.indexOf("Sign up with Obsidian"), "GitHub is the primary sign-up");
+  assert.match(si, /community\.obsidian\.md\/plugins\/caldera/, "Obsidian sign-up goes to the plugin");
   assert.match(si, /\/auth\/github\?back=%2Fmessages%2F%40mike-host&(amp;)?invite=mike-host/, "GitHub sign-up too");
   assert.match(si, /Already on Caldera\?/);
   // an unknown handle gets the ordinary sign-in page

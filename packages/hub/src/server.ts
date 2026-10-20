@@ -1610,6 +1610,13 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
 @media (prefers-reduced-motion:reduce){.kd-fly{display:none}}</style></head><body>${siteHeader()}<script src="/assets/site.js" defer></script><main class="kd">${inner}</main>${script ? `<script>${script}</script>` : ""}</body></html>`);
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
+  // Sign-up is GitHub first, Obsidian second (no email sign-up offered here): GitHub sign-ups get a city on day one
+  const GH_ICON = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+  const signupCards = (q2: string, after: string, bq: string) => `<div class="card"><h2>Sign up free</h2><p class="mut">Takes about a minute. Your public repos become a living city on the world map, and your page fills itself in from GitHub.</p>
+<div class="row"><a class="btn" href="/auth/github?${q2}" style="display:inline-flex;align-items:center;gap:8px">${GH_ICON}Sign up with GitHub</a><a class="btn ghost" href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">Sign up with Obsidian</a></div>
+<p class="mut" style="font-size:13px;margin-top:12px">With Obsidian your vault becomes a living profile (notes, a daily journal, your AI usage): install the Caldera plugin, publish your page, then ${after}.</p>
+<p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
+<div class="card"><h2>Already on Caldera?</h2><div class="row"><a class="btn small ghost" href="/auth/github${bq}" style="display:inline-flex;align-items:center;gap:7px">${GH_ICON}Sign in with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:10px">Made your page in Obsidian? Open your page and tap <b>Sign in</b> in the bar at the top, then come back here. Made it with ChatGPT or Claude? <a href="/start${bq}">Email me a sign-in link</a>.</p></div>`;
   function signinGeneral(res: http.ServerResponse, back = "") {
     const bq = /^\/(messages|messages\/@[a-z0-9-]+|messages\/groups(?:\/[a-z0-9-]+(?:\/[0-9a-f]{16})?)?|feed|people|world|@[a-z0-9-]+\/|me\/building|settings|alerts)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     // "Message" on someone's page, signed out: say why, offer sign-up first (credited to them), and land in the conversation after
@@ -1618,17 +1625,15 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
     const gs = back.match(/^\/messages\/groups\/([a-z0-9-]+)/)?.[1] || "", gname = gs && CHAT ? CHAT.nameOf(gs) : null;
     if (gname) {
       const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)), q2 = `back=${encodeURIComponent(back)}`;
-      signinPage(res, 200, `Join ${gname}`, `<h1>Sign up to join ${e(gname)}</h1><p class="lede">Groups are where Caldera members talk shop. You need a free page first. It takes about a minute, then you land right in the conversation.</p>
-<div class="card"><h2>Sign up</h2><p class="mut">No GitHub needed: ChatGPT or Claude writes your page, you confirm your email. Use GitHub? Your repos become your city.</p><div class="row"><a class="btn" href="/start?${q2}">Sign up with email</a><a class="btn ghost" href="/auth/github?${q2}">Sign up with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
-<div class="card"><h2>Already on Caldera?</h2><div class="row"><a class="btn small ghost" href="/auth/github${bq}">Sign in with GitHub</a><a class="btn small ghost" href="/start${bq}">Email me a sign-in link</a></div></div>`);
+      signinPage(res, 200, `Join ${gname}`, `<h1>Sign up to join ${e(gname)}</h1><p class="lede">Groups are where Caldera members talk shop. You need a free page first, then you land right in the conversation.</p>
+${signupCards(q2, `open this group again`, bq)}`);
       return;
     }
     if (them && !modOf(them.handle, them.id)) {
       const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
       const h = them.handle as string, who = String(body(them).name || "").trim() || `@${h}`, q2 = `back=${encodeURIComponent(back)}&invite=${encodeURIComponent(h)}`;
-      signinPage(res, 200, `Message @${h}`, `<h1>Sign up to message ${e(who)}</h1><p class="lede">Messages on Caldera are between members, so you need a free page first. It takes about a minute, then you land right in your conversation with @${e(h)}.</p>
-<div class="card"><h2>Sign up</h2><p class="mut">No GitHub needed: ChatGPT or Claude writes your page, you confirm your email. Use GitHub? Your repos become your city.</p><div class="row"><a class="btn" href="/start?${q2}">Sign up with email</a><a class="btn ghost" href="/auth/github?${q2}">Sign up with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
-<div class="card"><h2>Already on Caldera?</h2><p class="mut">Sign in and you go straight to the conversation.</p><div class="row"><a class="btn small ghost" href="/auth/github${bq}">Sign in with GitHub</a><a class="btn small ghost" href="/start${bq}">Email me a sign-in link</a></div><p class="mut" style="font-size:12.5px;margin-top:8px">Made your page in Obsidian? Open your page and tap <b>Sign in</b> in the bar at the top, then tap Message again.</p></div>
+      signinPage(res, 200, `Message @${h}`, `<h1>Sign up to message ${e(who)}</h1><p class="lede">Messages on Caldera are between members, so you need a free page first. Then you land right in your conversation with @${e(h)}.</p>
+${signupCards(q2, `tap Message on @${e(h)}'s page again`, bq)}
 <p class="mut"><a href="/@${e(h)}/">Back to ${e(who)}'s page</a></p>`);
       return;
     }
@@ -1636,7 +1641,7 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
 <div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
 <div class="card"><h2>Made your page with ChatGPT or Claude?</h2><p class="mut">Enter your email on the start page (leave the profile box empty) and we send you a sign-in link.</p><a class="btn ghost" href="/start">Email me a sign-in link</a></div>
 <div class="card"><h2>Made your page in Obsidian?</h2><p class="mut">Open your page and tap <b>Sign in</b> in the bar at the top for an email link or a code from Obsidian. Or in Obsidian, run <b>Caldera: Open my public page (as owner)</b>.</p></div>
-<p class="mut">No page yet? <a href="/#install">Sign up with GitHub</a>, or <a href="/start">make your page with ChatGPT or Claude</a>.</p>`);
+<p class="mut">No page yet? <a href="/auth/github${bq}">Sign up with GitHub</a>, or <a href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">with Obsidian</a>.</p>`);
   }
   function signinHome(res: http.ServerResponse, pr: any, note = "") {
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
