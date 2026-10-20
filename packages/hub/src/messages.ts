@@ -258,10 +258,14 @@ export function messages(c: MsgCtx) {
   }
   function listHtml(me: string, current: string | null, tab: string) {
     const all = inbox(me), reqs = all.filter(x => x.state === "request"), rows = tab === "requests" ? reqs : all;
-    const items = rows.map(x => `<a class="ms-row${x.handle === current ? " is-on" : ""}${x.unread ? " is-unread" : ""}" href="/messages/@${esc(x.handle || "")}"${x.handle ? "" : ' aria-disabled="true"'}>${avatarHtml(x, 44)}`
+    // waiting on you: unread, or their message is the last word (unanswered), or a request to answer; newest first, on top
+    const waiting = (x: typeof all[number]) => x.state === "request" || x.unread > 0 || (x.state === "open" && !!x.last && !x.last.mine);
+    const row = (x: typeof all[number]) => `<a class="ms-row${x.handle === current ? " is-on" : ""}${x.unread ? " is-unread" : ""}" href="/messages/@${esc(x.handle || "")}"${x.handle ? "" : ' aria-disabled="true"'}>${avatarHtml(x, 44)}`
       + `<span class="ms-row-m"><span class="ms-row-top"><b>${esc(x.name)}</b><time datetime="${esc(x.last?.ts || x.updated)}">${esc(ago(x.last?.ts || x.updated))}</time></span>`
       + `<span class="ms-row-last">${x.state === "request" ? "Wants to message you" : x.state === "pending" ? "Request sent" + (x.last ? `: ${esc(x.last.text)}` : "") : x.last ? (x.last.mine ? "You: " : "") + esc(x.last.text) : ""}</span></span>`
-      + `${x.unread ? '<span class="ms-dot" aria-label="Unread"></span>' : ""}</a>`).join("");
+      + `${x.unread ? `<span class="ms-unread" aria-label="${x.unread} unread">${x.unread > 99 ? "99+" : x.unread}</span>` : waiting(x) ? '<span class="ms-reply" title="Waiting for your reply">Reply</span>' : ""}</a>`;
+    const wait = tab === "requests" ? [] : rows.filter(waiting), rest = tab === "requests" ? rows : rows.filter(x => !waiting(x));
+    const items = (wait.length ? `<div class="ms-sec wait">Waiting on you &middot; ${wait.length}</div>` + wait.map(row).join("") + (rest.length ? `<div class="ms-sec">Everything else</div>` : "") : "") + rest.map(row).join("");
     return `<section class="ms-list" aria-label="Conversations">${listHead(me, "dm")}`
       + `<div class="ms-tabs" role="tablist"><a role="tab" href="/messages${current ? "/@" + esc(current) : ""}" aria-selected="${tab !== "requests"}">All</a><a role="tab" href="/messages?tab=requests" aria-selected="${tab === "requests"}">Requests${reqs.length ? ` &middot; ${reqs.length}` : ""}</a></div>`
       + (items || `<div class="ms-empty"><b>${tab === "requests" ? "No requests" : "No messages yet"}</b><span>${tab === "requests" ? "When someone who isn't a friend writes to you, it waits here until you accept." : "Open someone's profile and tap Message. Friends get it right away; anyone else gets a request first."}</span>${tab === "requests" ? "" : '<a class="ms-btn ghost" href="/people">Find people</a>'}</div>`)
@@ -368,6 +372,10 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-row-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.ms-row-top{display:flex;justify-content:space-between;gap:8px}.ms-row-top b{color:var(--text-strong,#f2f2f5);font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ms-row.is-unread .ms-row-top b{font-weight:600}
 .ms-row-top time{font-size:12px;color:var(--text-muted,#8a8a93);flex:none}.ms-row-last{font-size:13.5px;color:var(--text-muted,#8a8a93);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ms-row.is-unread .ms-row-last{color:var(--text,#dadadf)}
 .ms-dot{width:9px;height:9px;margin-top:7px;flex:none;border-radius:999px;background:var(--accent,#8b6cf6)}
+.ms-sec{padding:14px 16px 6px;font:600 11.5px var(--font-mono,'IBM Plex Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#8a8a93)}.ms-sec.wait{color:#B9A6FF}
+.ms-unread{flex:none;align-self:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#E5484D;color:#fff;font:700 12px/22px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
+.ms-reply{flex:none;align-self:center;font:600 11px 'IBM Plex Sans',Arial,sans-serif;color:#B9A6FF;border:1px solid #4A3A80;border-radius:999px;padding:2px 8px}
+@media (min-width:761px){.ms-list{position:sticky;top:0;align-self:flex-start;max-height:calc(100vh - 80px);overflow-y:auto;scrollbar-width:thin}.ms-thread{position:sticky;top:0;align-self:flex-start}}
 .ms-av{flex:none;border-radius:999px;object-fit:cover;background:#3a2f66}.ms-ini{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:600}
 .ms-pref{display:flex;gap:8px;align-items:center;margin-top:auto;padding:16px;font-size:13px;color:var(--text-muted,#8a8a93)}
 .ms-thread{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -400,7 +408,8 @@ const JS = `(function(){var T=document.querySelector('.ms-thread[data-h]');var b
 function tip(m){var t=document.createElement('div');t.className='ms-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
 function post(u,o){return fetch(u,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera. Check your connection.'}}})}
 var pref=document.getElementById('ms-email');if(pref)pref.addEventListener('change',function(){post('/v1/messages/prefs',{email:pref.checked}).then(function(x){tip(x.ok?(pref.checked?'You\\'ll get an email when someone messages you.':'No more emails about messages.'):'Could not save that.')})});
-if(!T)return;var h=T.getAttribute('data-h'),id=T.getAttribute('data-id');function toB(){if(!box)return;box.scrollTop=box.scrollHeight;if(box.scrollHeight<=box.clientHeight+2)window.scrollTo(0,document.documentElement.scrollHeight)}toB();setTimeout(toB,120);window.addEventListener('load',toB);
+if(!T)return;var h=T.getAttribute('data-h'),id=T.getAttribute('data-id');function toB(){if(!box)return;box.scrollTop=box.scrollHeight;if(innerWidth<=760&&box.scrollHeight<=box.clientHeight+2)window.scrollTo(0,document.documentElement.scrollHeight)}   // the page itself only scrolls on phones (list hidden there)
+var L=document.querySelector('.ms-list'),on=L&&L.querySelector('.ms-row.is-on');if(on&&L.scrollHeight>L.clientHeight){var r=on.offsetTop-L.clientHeight/2;L.scrollTop=Math.max(0,r)}toB();setTimeout(toB,120);window.addEventListener('load',toB);
 var last=(function(){var b=box&&box.querySelectorAll('.ms-b[data-ts]');return b&&b.length?b[b.length-1].getAttribute('data-ts'):''})();
 var F=document.getElementById('ms-form'),ta=document.getElementById('ms-text');
 function add(m){var e=box.querySelector('.ms-empty');if(e)e.remove();var d=document.createElement('div');d.className='ms-b '+(m.mine?'me':'them');d.innerHTML=m.html;if(m.ts){d.setAttribute('data-ts',m.ts);last=m.ts}box.appendChild(d);box.scrollTop=box.scrollHeight;return d}

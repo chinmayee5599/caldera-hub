@@ -301,7 +301,7 @@ if(del&&!b.getAttribute('data-sure')){b.setAttribute('data-sure','1');b.textCont
 post('/v1/groups/post/'+id+'/'+(del?'delete':'report')).then(function(x){if(!x.ok){tip(x.j.error||'Could not do that.');return}
 if(del){var a=document.getElementById('p-'+id);if(a){if(a.closest('.cg-root'))location.href='/messages/groups/'+V.getAttribute('data-g');else a.remove()}tip('Deleted.')}else{tip('Reported. Thanks, we\\'ll take a look.');var d=b.closest('details');if(d)d.open=false}})});
 if(!V||!box)return;var g=V.getAttribute('data-g'),root=V.getAttribute('data-root')||'';
-function toBottom(){if(location.hash)return;box.scrollTop=box.scrollHeight;if(box.scrollHeight<=box.clientHeight+2)window.scrollTo(0,document.documentElement.scrollHeight)}   // chat order: newest at the bottom, opened at the bottom
+function toBottom(){if(location.hash)return;box.scrollTop=box.scrollHeight;if(innerWidth<=760&&box.scrollHeight<=box.clientHeight+2)window.scrollTo(0,document.documentElement.scrollHeight)}   // chat order: newest at the bottom, opened at the bottom
 toBottom();setTimeout(toBottom,120);window.addEventListener('load',toBottom);
 var last=(function(){var b=box.querySelectorAll('.cg-p[data-ts]');var l='';b.forEach(function(x){var t=x.getAttribute('data-ts');if(t>l)l=t});return l})();
 function add(p){if(document.getElementById('p-'+p.id))return;var e=box.querySelector('.ms-empty');if(e)e.remove();var w=document.createElement('div');w.innerHTML=p.html;var el=w.firstChild;box.appendChild(el);if(p.ts>last)last=p.ts;var near=box.scrollHeight-box.scrollTop-box.clientHeight<240;if(near||p.mine)box.scrollTop=box.scrollHeight}

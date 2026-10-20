@@ -115,3 +115,17 @@ test("groups home: shows new posts and replies across groups, with DM/feed alert
     assert.match(h, /New posts <span class="cg-n">2<\/span>/); assert.doesNotMatch(h, /cg-h-item is-new[^>]*ai-model/);
   } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
 });
+
+test("direct messages: anything waiting on you (unread, unanswered, requests) is listed first with its count", async () => {
+  const S = await setup();
+  try {
+    const sent = await S.post("/v1/messages/send", { to: "cy", text: "Hi Cy, quick question about your city" }, S.as("bo")); assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    await S.post("/v1/messages/send", { to: "bo", text: "Hey Bo, an older note" }, S.as("ana"));
+    const html = await (await S.get("cy", "/messages")).text();
+    const wait = html.indexOf("Waiting on you"), bo = html.indexOf(">BO<");
+    assert.ok(wait > 0, "a 'Waiting on you' section"); assert.ok(bo > wait, "the waiting conversation sits under it");
+    assert.match(html, /class="ms-unread" aria-label="1 unread">1</, "with its unread count");
+    const ana = await (await S.get("ana", "/messages")).text();
+    assert.doesNotMatch(ana, /Waiting on you/, "your own last word is not waiting on you");
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
