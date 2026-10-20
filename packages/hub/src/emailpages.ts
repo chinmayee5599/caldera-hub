@@ -112,6 +112,8 @@ export interface EmailCtx {
   /** delete the member and everything tied to them (the hub's own erase) */
   eraseProfile: (id: string) => void;
   onPublished?: (id: string, created: boolean) => void;
+  /** credit the member whose invite brought a new page; returns the inviter's id */
+  recordReferral?: (invitee: string, inviterHandle: unknown, via: string) => string | null;
 }
 
 export function emailPages(c: EmailCtx) {
@@ -194,17 +196,19 @@ export function emailPages(c: EmailCtx) {
 .ep button.btn{cursor:pointer}</style>`;
   const copyJs = `<script>document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-copy')).textContent;var done=function(){var o=b.textContent;b.textContent='Copied';setTimeout(function(){b.textContent=o},1600)};try{navigator.clipboard.writeText(t).then(done,function(){prompt('Copy this',t)})}catch(e){prompt('Copy this',t)}})})</script>`;
 
-  function startPage(res: http.ServerResponse, msg = "", text = "", email = "") {
+  function startPage(res: http.ServerResponse, msg = "", text = "", email = "", back = "", inv = "") {
+    const to = back.match(/^\/messages\/@([a-z0-9-]+)$/)?.[1] || "";
     c.page(res, msg.startsWith("ok:") ? 200 : 200, "Sign up with email", `${STYLE}<main class="ep"><h1>Make your page with ChatGPT or Claude</h1>
 <p class="lede">No GitHub or Obsidian needed. Your AI writes your profile; you paste it here and confirm your email. Change anything later the same way.</p>
+${to ? `<p class="ok" role="status">Make your page, confirm your email, and you go straight to your conversation with <b>@${esc(to)}</b>. Already on Caldera? Enter just your email below for a sign-in link.</p>` : ""}
 ${msg ? `<p class="${msg.startsWith("ok:") ? "ok" : "err"}" role="status">${esc(msg.replace(/^ok:/, ""))}</p>` : ""}
 <section class="card"><h2><span class="n">1</span>Copy this prompt into ChatGPT, Claude or any AI</h2><pre id="p-start">${esc(START_PROMPT)}</pre><div class="row"><button type="button" class="btn small" data-copy="p-start">Copy the prompt</button><span class="mut">It works best in a chat that already knows you.</span></div></section>
-<form method="post" action="/start" class="card"><h2><span class="n">2</span>Paste what it writes back</h2>
+<form method="post" action="/start" class="card">${back ? `<input type="hidden" name="back" value="${esc(back)}">` : ""}${inv ? `<input type="hidden" name="invite" value="${esc(inv)}">` : ""}<h2><span class="n">2</span>Paste what it writes back</h2>
 <label class="mut" for="pt">The block that starts with "name:"</label><textarea id="pt" name="text" maxlength="20000" placeholder="name: ...">${esc(text)}</textarea>
 <h2 style="margin-top:16px"><span class="n">3</span>Your email</h2><input type="email" name="email" autocomplete="email" required placeholder="you@example.com" value="${esc(email)}">
 <p class="mut">We send one link to confirm. Open it and your page goes live. No password.</p>
 <div class="row"><button class="btn" type="submit">Make my page</button><span class="mut">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></div></form>
-<p class="mut">Already made your page this way? Enter just your email above (leave the box empty) and we send a sign-in link. Use GitHub? <a href="/auth/github">Sign up with GitHub</a> instead: your repos become your city.</p></main>${copyJs}`);
+<p class="mut">Already made your page this way? Enter just your email above (leave the box empty) and we send a sign-in link. Use GitHub? <a href="/auth/github${back || inv ? `?${[back ? `back=${encodeURIComponent(back)}` : "", inv ? `invite=${encodeURIComponent(inv)}` : ""].filter(Boolean).join("&")}` : ""}">Sign up with GitHub</a> instead: your repos become your city.</p></main>${copyJs}`);
   }
 
   function settingsPage(res: http.ServerResponse, acct: any, msg = "") {
@@ -230,25 +234,31 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
   const form = async (req: http.IncomingMessage) => { const ch: Buffer[] = []; for await (const x of req) ch.push(x as Buffer); return new URLSearchParams(Buffer.concat(ch).toString("utf8").slice(0, 60_000)); };
   const ipKey = (req: http.IncomingMessage) => String(req.headers["x-real-ip"] || req.socket.remoteAddress || "?");
 
+  // where to land after confirming (e.g. the conversation that asked for sign-up) and whose invite brought them
+  const okBack = (v: unknown) => { const s0 = String(v || ""); return /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world)$/.test(s0) ? s0 : ""; };
+  const okInv = (v: unknown) => String(v || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+  const carry = (back: string, inv: string) => `${back ? `&back=${encodeURIComponent(back)}` : ""}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}`;
+
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
-    if (p === "/start" && req.method === "GET") { startPage(res); return true; }
+    if (p === "/start" && req.method === "GET") { startPage(res, "", "", "", okBack(url.searchParams.get("back")), okInv(url.searchParams.get("invite"))); return true; }
     if (p === "/start" && req.method === "POST") {
       if (!c.sameOrigin(req)) { startPage(res, "Wrong origin. Please try again."); return true; }
       const f = await form(req), text = String(f.get("text") || ""), email = String(f.get("email") || "").trim().toLowerCase();
-      if (!okEmail(email)) { startPage(res, "That email doesn't look right.", text, email); return true; }
+      const back = okBack(f.get("back")), inv = okInv(f.get("invite")), again = (m: string) => startPage(res, m, text, email, back, inv);
+      if (!okEmail(email)) { again("That email doesn't look right."); return true; }
       const pr = parseProfile(text), ex = q("SELECT handle FROM email_accounts WHERE email_hash=?").get(hash(email)) as any;
       // a returning member can leave the box empty: that's a sign-in link
-      if (!ex && !pr.name && !pr.headline && !pr.about) { startPage(res, text.trim() ? "We couldn't read that. Paste the whole block your AI wrote, starting with \"name:\"." : "Paste the profile your AI wrote first (step 2).", text, email); return true; }
-      if (c.tooMany("emailsignup:" + ipKey(req), 8) || c.tooMany("emailsignup:" + hash(email), 3)) { startPage(res, "Too many tries. Wait an hour, then try again.", text, email); return true; }
+      if (!ex && !pr.name && !pr.headline && !pr.about) { again(text.trim() ? "We couldn't read that. Paste the whole block your AI wrote, starting with \"name:\"." : "Paste the profile your AI wrote first (step 2)."); return true; }
+      if (c.tooMany("emailsignup:" + ipKey(req), 8) || c.tooMany("emailsignup:" + hash(email), 3)) { again("Too many tries. Wait an hour, then try again."); return true; }
       const tok = crypto.randomBytes(24).toString("base64url");
       q("INSERT INTO email_pending VALUES (?,?,?,?,?)").run(hash(tok), c.seal(email), JSON.stringify(pr), Date.now() + 2 * DAY, new Date().toISOString());
       q("DELETE FROM email_pending WHERE expires < ?").run(Date.now());
-      const link = `${pub}/start/confirm?t=${tok}`;
+      const link = `${pub}/start/confirm?t=${tok}${carry(back, inv)}`;
       try {
         await c.note({ to: email, subject: ex ? "Your Caldera sign-in link" : "Confirm your email to publish your Caldera page", title: ex ? "Sign in to Caldera" : "One click and your page is live",
           html: `<p>${ex ? `Open this link to sign in as <b>@${esc(ex.handle)}</b> and update your page with what you pasted.` : `Open this link to confirm your email. Your page${pr.name ? ` for <b>${esc(pr.name)}</b>` : ""} goes live right away.`}</p><p><a href="${esc(link)}" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${ex ? "Sign in" : "Publish my page"}</a></p><p style="color:#777;font-size:13px">The link works once, for 48 hours. If you didn't ask for this, ignore this email.</p>`,
           text: `${ex ? "Sign in to Caldera" : "Confirm your email and your Caldera page goes live"}: ${link}\n\nThe link works once, for 48 hours. If you didn't ask for this, ignore this email.` });
-      } catch (e: any) { startPage(res, "We couldn't send the email: " + e.message, text, email); return true; }
+      } catch (e: any) { again("We couldn't send the email: " + e.message); return true; }
       c.page(res, 200, "Check your email", `${STYLE}<main class="ep"><h1>Check your email</h1><p class="lede">We sent a link to <b>${esc(email)}</b>. Open it and your page goes live.</p><p class="mut">Nothing there in a minute? Check spam, or <a href="/start">try again</a>.</p></main>`);
       return true;
     }
@@ -256,11 +266,12 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
     if (p === "/start/confirm" && req.method === "GET") {
       const t = String(url.searchParams.get("t") || ""), row0 = t ? q("SELECT expires FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
       if (!row0 || row0.expires < Date.now()) { c.page(res, 400, "Link expired", `${STYLE}<main class="ep"><h1>That link expired or was already used</h1><p><a class="btn" href="/start">Start again</a> &middot; <a href="/signin">Sign in</a></p></main>`); return true; }
-      c.page(res, 200, "Confirm", `${STYLE}<main class="ep"><h1>One click to finish</h1><form method="post" action="/start/confirm"><input type="hidden" name="t" value="${esc(t)}"><button class="btn" type="submit">Publish my page and sign in</button></form></main>`); return true;
+      c.page(res, 200, "Confirm", `${STYLE}<main class="ep"><h1>One click to finish</h1><form method="post" action="/start/confirm"><input type="hidden" name="t" value="${esc(t)}">${okBack(url.searchParams.get("back")) ? `<input type="hidden" name="back" value="${esc(okBack(url.searchParams.get("back")))}">` : ""}${okInv(url.searchParams.get("invite")) ? `<input type="hidden" name="invite" value="${esc(okInv(url.searchParams.get("invite")))}">` : ""}<button class="btn" type="submit">Publish my page and sign in</button></form></main>`); return true;
     }
     if (p === "/start/confirm" && req.method === "POST") {
       if (!c.sameOrigin(req)) { c.page(res, 403, "No", `${STYLE}<main class="ep"><h1>Wrong origin</h1></main>`); return true; }
-      const t = String((await form(req)).get("t") || ""), row = t ? q("SELECT * FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
+      const cf = await form(req), t = String(cf.get("t") || ""), row = t ? q("SELECT * FROM email_pending WHERE token_hash=?").get(hash(t)) as any : null;
+      const back = okBack(cf.get("back")), inv = okInv(cf.get("invite"));
       if (!row || row.expires < Date.now()) { c.page(res, 400, "Link expired", `${STYLE}<main class="ep"><h1>That link expired or was already used</h1><p><a class="btn" href="/start">Start again</a> &middot; <a href="/signin">Sign in</a></p></main>`); return true; }
       q("DELETE FROM email_pending WHERE token_hash=?").run(hash(t));
       const email = c.unseal(row.email_sealed), pr = JSON.parse(row.content || "{}") as Profile;
@@ -279,7 +290,12 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       c.rememberEmail(acct.profile_id, email);
       try { publish(acct); } catch (e: any) { c.page(res, 500, "Not yet", `${STYLE}<main class="ep"><h1>We couldn't publish your page</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/start">Try again</a></p></main>`); return true; }
       c.onPublished?.(acct.profile_id, created);
-      res.writeHead(302, { location: `/@${acct.handle}/city.html?welcome=1`, "set-cookie": c.startOwner(acct.profile_id), "cache-control": "no-store" }); res.end(); return true;
+      // joined from someone's invite (e.g. their Message button): credit them, and the new member follows them
+      if (created && inv && inv !== acct.handle) try {
+        const inviter = c.recordReferral?.(acct.profile_id, inv, "email");
+        if (inviter) c.accept(C.sign(JSON.parse(c.unseal(acct.key_sealed)), "friend.request", { to: inviter, note: "I joined Caldera from your invite." }));
+      } catch { /* best effort */ }
+      res.writeHead(302, { location: back || `/@${acct.handle}/city.html?welcome=1`, "set-cookie": c.startOwner(acct.profile_id), "cache-control": "no-store" }); res.end(); return true;
     }
     if (p === "/settings/page" || ((p === "/settings" || p === "/me") && req.method === "GET")) {
       const acct = acctOf(c.memberOf(req));

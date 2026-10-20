@@ -57,3 +57,39 @@ test("sign up with email + an AI: paste, confirm, page and city live, update gro
   // someone else's settings path isn't hijacked: a non-member gets the usual sign-in redirect
   assert.equal((await fetch(base + "/settings/page", { redirect: "manual" })).status, 302);
 });
+
+test("signed out, tapping Message: sign-up page says why, email sign-up credits the inviter and lands in the conversation", async () => {
+  const join = async (text, email) => { await form("/start", { text, email }); const l = mails[mails.length - 1].text.match(/start\/confirm\?t=(\S+)/)[1];
+    const c = await form("/start/confirm", { t: new URL(base + "/start/confirm?t=" + l).searchParams.get("t") }); return c; };
+  await join("name: Mike Host\nheadline: Speaker", "host@example.com");
+  // the Message button on a page, signed out: sent to sign in, remembering the conversation
+  const m = await fetch(base + "/messages/@mike-host", { redirect: "manual" });
+  assert.equal(m.status, 302); assert.equal(m.headers.get("location"), "/signin?back=%2Fmessages%2F%40mike-host");
+  const si = await (await fetch(base + m.headers.get("location"))).text();
+  assert.match(si, /Sign up to message Mike Host/); assert.match(si, /land right in your conversation with @mike-host/);
+  assert.match(si, /href="\/start\?back=%2Fmessages%2F%40mike-host&amp;invite=mike-host"|href="\/start\?back=%2Fmessages%2F%40mike-host&invite=mike-host"/, "email sign-up keeps the way back and the invite");
+  assert.match(si, /\/auth\/github\?back=%2Fmessages%2F%40mike-host&(amp;)?invite=mike-host/, "GitHub sign-up too");
+  assert.match(si, /Already on Caldera\?/);
+  // an unknown handle gets the ordinary sign-in page
+  assert.match(await (await fetch(base + "/signin?back=%2Fmessages%2F%40nobody-here")).text(), /Sign in to Caldera/);
+  // the email path carries both through the form, the email link and the confirm button
+  const st = await (await fetch(base + "/start?back=%2Fmessages%2F%40mike-host&invite=mike-host")).text();
+  assert.match(st, /straight to your conversation with <b>@mike-host<\/b>/); assert.match(st, /name="back" value="\/messages\/@mike-host"/); assert.match(st, /name="invite" value="mike-host"/);
+  assert.equal((await fetch(base + "/start?back=https%3A%2F%2Fevil.example")).status, 200);
+  assert.doesNotMatch(await (await fetch(base + "/start?back=https%3A%2F%2Fevil.example")).text(), /evil\.example/, "only on-site paths come back");
+  await form("/start", { text: "name: Ava Guest\nheadline: Came to the talk", email: "ava@example.com", back: "/messages/@mike-host", invite: "mike-host" });
+  const link = mails[mails.length - 1].text.match(/https?:\/\/\S+start\/confirm\?\S+/)[0].replace(ORIGIN, base);
+  assert.match(link, /back=%2Fmessages%2F%40mike-host/); assert.match(link, /invite=mike-host/);
+  const btn = await (await fetch(link)).text(); assert.match(btn, /name="back" value="\/messages\/@mike-host"/);
+  const c = await form("/start/confirm", { t: new URL(link).searchParams.get("t"), back: "/messages/@mike-host", invite: "mike-host" });
+  assert.equal(c.status, 302); assert.equal(c.headers.get("location"), "/messages/@mike-host", "straight into the conversation");
+  const cookie = (c.headers.getSetCookie?.() || [c.headers.get("set-cookie")]).map(x => x.split(";")[0]).join("; ");
+  const dm = await fetch(base + "/messages/@mike-host", { headers: { cookie }, redirect: "manual" });
+  assert.equal(dm.status, 200, "signed in as the new member, the conversation opens"); assert.match(await dm.text(), /Conversation with @mike-host/);
+  const host = hub.db.prepare("SELECT id FROM profiles WHERE handle='mike-host'").get(), ava = hub.db.prepare("SELECT id FROM profiles WHERE handle='ava-guest'").get();
+  assert.equal(hub.db.prepare("SELECT inviter FROM referrals WHERE invitee=?").get(ava.id)?.inviter, host.id, "the invite is credited to the page they came from");
+  // a forged back on confirm can't send them off-site
+  await form("/start", { text: "name: Bo Test\nheadline: x", email: "bo@example.com" });
+  const t3 = new URL(mails[mails.length - 1].text.match(/https?:\/\/\S+start\/confirm\?\S+/)[0]).searchParams.get("t");
+  assert.equal((await form("/start/confirm", { t: t3, back: "//evil.example" })).headers.get("location"), "/@bo-test/city.html?welcome=1");
+});

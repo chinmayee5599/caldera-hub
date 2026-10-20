@@ -428,7 +428,7 @@ ${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your ve
 <label style="margin:10px 0"><input type="checkbox" name="on" checked> Email me a daily summary</label>
 <div class="row"><button class="btn" type="submit">Continue</button><button class="btn ghost small" type="submit" name="do" value="email-dismiss" formnovalidate>Not now</button></div></form>`;
   }
-  function mePage(res: http.ServerResponse, a: any, note = "", people: GhPerson[] = []) {
+  function mePage(res: http.ServerResponse, a: any, note = "", people: GhPerson[] = [], next = "") {
     const pr = q("SELECT * FROM profiles WHERE id=?").get(a.profile_id) as any, edits = JSON.parse(a.edits || "{}");
     const url = `${pub}/@${a.handle}/`, ak = q("SELECT key, secret FROM agent_keys WHERE owner=?").get(a.profile_id) as any;
     const sites = q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").all(a.profile_id) as any[];
@@ -448,7 +448,7 @@ ${hookCheck}
       + (x.invited ? `<span class="mut">invited</span>` : x.canEmail ? `<form method="post" style="display:inline"><input type="hidden" name="do" value="gh-invite"><input type="hidden" name="login" value="${esc(x.login)}"><button class="btn small ghost" type="submit">Email invite</button></form>` : `<span class="mut">no public email: send the message</span>`) + `</div>`).join("")}</div></div>` : "";
     const growth = growthCards(a, edits) + ghp;
     if (!pr) {   // first build still running (or queued behind other sign-ups): show progress, refresh until it lands
-      page(res, 200, "Building your city", `<meta http-equiv="refresh" content="2"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. It opens by itself when it is ready.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
+      page(res, 200, "Building your city", `<meta http-equiv="refresh" content="2"><div class="card"><h1 style="margin-top:0">Building your city&hellip;</h1><p>Caldera is reading your public GitHub repos and turning them into your page and city. This usually takes under a minute${buildWaiters.length ? `; ${buildWaiters.length} other new member${buildWaiters.length === 1 ? " is" : "s are"} ahead of you` : ""}. It opens by itself when it is ready${/^\/messages\/@[a-z0-9-]+$/.test(next) ? `, then takes you straight to your conversation with ${esc(next.slice(10))}` : ""}.</p><p class="mut">Your page will be at <a href="${esc(url)}">${esc(url)}</a></p></div>`);
       return;
     }
     const em = ctx.social?.email?.status(a.profile_id);
@@ -793,7 +793,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       if (req.method === "GET" && url.searchParams.get("welcome") && q("SELECT 1 FROM profiles WHERE id=?").get(acct.profile_id)) {
         const back = safeBack(url.searchParams.get("back")); redirect(res, back || `/@${acct.handle}/city.html?welcome=1`); return true; }
       if (req.method === "GET") { const j = groupsFrom(url.searchParams.get("joined"))[0];
-        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.${safeBack(url.searchParams.get("back")) ? ` <a href="${esc(safeBack(url.searchParams.get("back")))}">Continue where you were &rarr;</a>` : ""} <span class="mut" style="font-size:12.5px">By using Caldera you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span>` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct)); return true; }
+        mePage(res, acct, url.searchParams.get("uploaded") ? `Your ${url.searchParams.get("uploaded") === "banner" ? "masthead" : "photo"} is up and your page is republished.` : url.searchParams.get("welcome") ? `<b>Welcome to Caldera.</b> Your page is live. Share it below, add a few friends, or move it into Obsidian later.${safeBack(url.searchParams.get("back")) ? ` <a href="${esc(safeBack(url.searchParams.get("back")))}">Continue where you were &rarr;</a>` : ""} <span class="mut" style="font-size:12.5px">By using Caldera you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span>` : j ? `You joined <a href="/g/${esc(j)}">${esc(j)}</a>.` : "", await peopleOf(acct), url.searchParams.get("welcome") ? safeBack(url.searchParams.get("back")) : ""); return true; }
       if (req.method === "POST") {
         const origin = String(req.headers.origin || ""); if (origin && origin !== pub && !(origin === "null" && req.headers["sec-fetch-site"] === "same-origin")) { page(res, 403, "No", "<h1>Wrong origin</h1>"); return true; }
         const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
