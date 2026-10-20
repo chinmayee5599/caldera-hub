@@ -300,6 +300,7 @@ export function createHub(opts: HubOptions) {
   `);
   // how two people became friends: request (accepted), invite (accepted request from an invitee), founder (the welcome
   // friendship every new profile gets), repo (both work on the same public GitHub repo; why = owner/repo)
+  try { db.exec("ALTER TABLE traffic ADD COLUMN host TEXT"); } catch { /* already there */ }   // which of the district's sites was visited
   for (const col of ["kind TEXT DEFAULT 'request'", "why TEXT"]) { try { db.exec(`ALTER TABLE friends ADD COLUMN ${col}`); } catch { /* already there */ } }
   if (!db.prepare("SELECT 1 FROM friend_meta WHERE k='kinds_v1'").get()) {   // one-time backfill of kinds for rows made before they existed
     const fh = opts.founder ? (db.prepare("SELECT id FROM profiles WHERE handle=?").get(opts.founder.toLowerCase()) as any)?.id : null;
@@ -946,11 +947,18 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   // events, from the owner's own feed with the site's secret. Visitors are a salted daily hash, like profile views.
   const sitesOf = (owner: string) => q("SELECT key, project, public FROM traffic_sites WHERE owner=?").all(owner) as { key: string; project: string; public: number }[];
   const keyBuckets = new Map<string, { n: number; reset: number }>();
-  function record(key: string, kind: string, visitor: string, ts = now()) {
+  /** The visited site as one word: "https://stash.mjonesone.com/x" -> "stash", "https://www.kitse.co" -> "kitse". */
+  function siteToken(u: string) {
+    let h = ""; try { h = new URL(u).hostname.toLowerCase(); } catch { return ""; }
+    if (!h || h === "localhost" || /^[\d.:]+$/.test(h)) return "";
+    const labels = h.split(".").filter(Boolean); while (labels.length > 2 && /^(www|app|m|my|go|get|beta|staging)$/.test(labels[0])) labels.shift();
+    return (labels[0] || "").replace(/[^a-z0-9-]/g, "").slice(0, 40);
+  }
+  function record(key: string, kind: string, visitor: string, ts = now(), host = "") {
     const t = Date.now(); let b = keyBuckets.get(key);
     if (!b || b.reset < t) { b = { n: 0, reset: t + 60_000 }; keyBuckets.set(key, b); }
     if (++b.n > 1200) return false;   // a flood on one site can't fill the database
-    q("INSERT INTO traffic VALUES (?,?,?,?)").run(key, ts, kind, visitor);
+    q("INSERT INTO traffic (key, ts, kind, visitor, host) VALUES (?,?,?,?,?)").run(key, ts, kind, visitor, host || null);
     if (Math.random() < 0.002) q("DELETE FROM traffic WHERE ts < ?").run(new Date(Date.now() - 35 * DAY).toISOString());
     return true;
   }
@@ -982,7 +990,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const t5 = new Date(Date.now() - 5 * 60_000).toISOString(), t24 = new Date(Date.now() - DAY).toISOString(), t3 = new Date(Date.now() - 3 * 60_000).toISOString();
     const by = new Map(sites.map(s => [s.key, s]));
     const name = (k: string) => { const s = by.get(k)!; return full || s.public ? s.project : "Private"; };
-    const ds: Record<string, { now: number; views: number; visitors: number; signups: number; buys: number; heat: number }> = {};
+    const ds: Record<string, { now: number; views: number; visitors: number; signups: number; buys: number; heat: number; sites?: Record<string, number> }> = {};
     const d = (k: string) => ds[name(k)] ||= { now: 0, views: 0, visitors: 0, signups: 0, buys: 0, heat: 0 };
     const keys = sites.map(s => s.key), qs = keys.map(() => "?").join(",");
     for (const r of q(`SELECT key, COUNT(DISTINCT visitor) n FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key`).all(...keys, t5) as any[]) d(r.key).now += r.n;
@@ -993,9 +1001,13 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     // glow: how lit the district's windows are. Each visitor counts fully when they arrive and fades to nothing over 30
     // minutes after their last page view, so a busy site lights up and goes dark again as people leave.
     const t30 = new Date(Date.now() - 30 * 60_000).toISOString();
-    for (const r of q(`SELECT key, visitor, MAX(ts) ts FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key, visitor`).all(...keys, t30) as any[])
-      d(r.key).heat += Math.max(0, 1 - (Date.now() - Date.parse(r.ts)) / (30 * 60_000));
+    // ...and per site (the page's host), so the people in the windows stand in that site's own building, not the whole district
+    for (const r of q(`SELECT key, host, visitor, MAX(ts) ts FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key, host, visitor`).all(...keys, t30) as any[]) {
+      const h = Math.max(0, 1 - (Date.now() - Date.parse(r.ts)) / (30 * 60_000)), x = d(r.key); x.heat += h;
+      if (r.host && name(r.key) !== "Private") { x.sites ||= {}; x.sites[r.host] = (x.sites[r.host] || 0) + h; }
+    }
     const glow = (h: number) => Math.round((1 - Math.exp(-h / 8)) * 50) / 50;   // 8 recent visitors light about 63%, 20 about 92%
+    const siteGlow = (v: { sites?: Record<string, number> }) => v.sites ? { sites: Object.fromEntries(Object.entries(v.sites).map(([k, h]) => [k, glow(h)]).filter(([, g]) => (g as number) > 0).slice(0, 12)) } : {};
     // a "new" view is a visitor's first on that site in 30 minutes: it drops into the city as a new arrival
     const FRESH = `NOT EXISTS (SELECT 1 FROM traffic p WHERE p.key=t.key AND p.visitor=t.visitor AND p.kind='view' AND p.ts < t.ts AND p.ts > strftime('%Y-%m-%dT%H:%M:%fZ', t.ts, '-30 minutes'))`;
     if (!full) {
@@ -1010,11 +1022,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
           if (r.kind === "signup") x.s++; else if (r.kind === "buy") x.b++; else x.v++;
         }
       }
-      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now), glow: glow(v.heat) }])), agents, ...(arrivals ? { arrivals } : {}), ...dayStats(q, keys, name, false, depSalt(owner), since) };
+      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now), glow: glow(v.heat), ...siteGlow(v) }])), agents, ...(arrivals ? { arrivals } : {}), ...dayStats(q, keys, name, false, depSalt(owner), since) };
     }
     const events = (q(`SELECT t.key, t.ts, t.kind, (t.kind='view' AND ${FRESH}) AS fresh FROM traffic t WHERE t.key IN (${qs}) AND t.ts > ? ORDER BY t.ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts, ...(r.fresh ? { n: 1 } : {}) }));
     for (const k of kudosFor(owner, t3)) events.push({ d: "", k: "kudos", ts: k.ts, e: k.kind, from: k.from } as any);   // kudos burst over the private city
-    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, heat: Math.round(v.heat * 10) / 10, level: level(v.now), glow: glow(v.heat) }])), events, agents, ...dayStats(q, keys, name, true, depSalt(owner)) };
+    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, heat: Math.round(v.heat * 10) / 10, level: level(v.now), glow: glow(v.heat), ...siteGlow(v) }])), events, agents, ...dayStats(q, keys, name, true, depSalt(owner)) };
   }
   const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
     return !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, wk) || !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk); };
@@ -2356,7 +2368,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const ua = String(req.headers["user-agent"] || ""), kind = ["signup", "buy"].includes(url.searchParams.get("k") || "") ? url.searchParams.get("k")! : "view";
         if (ua && !BOT_UA.test(ua) && q("SELECT 1 FROM traffic_sites WHERE key=?").get(m[1])) {
           const day = new Date().toISOString().slice(0, 10);
-          try { record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16)); } catch { /* never break the site */ }
+          try { record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + ipOf(req) + ua).digest("hex").slice(0, 16), now(), siteToken(String(req.headers.origin || req.headers.referer || ""))); } catch { /* never break the site */ }
         }
         res.writeHead(200, { "content-type": "image/gif", "cache-control": "no-store", "access-control-allow-origin": "*", "cross-origin-resource-policy": "cross-origin" });
         return res.end(PIXEL);

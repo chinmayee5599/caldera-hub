@@ -88,7 +88,7 @@ test("window glow: recent visitors light a district, and it fades over 30 minute
     await fetch(base + `/v1/profiles/${id.id}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ manifest: C.sign(id, "profile.manifest", { name: "Gil", handle: "gil", boxKey: id.boxPublic }), files: { "index.html": Buffer.from("<html><body>x</body></html>").toString("base64") } }) });
     hub.db.prepare("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run("k1", id.id, "Shop", 1, "s", new Date().toISOString());
     const at = minAgo => new Date(Date.now() - minAgo * 60_000).toISOString();
-    const add = (n, minAgo) => { for (let i = 0; i < n; i++) hub.db.prepare("INSERT INTO traffic VALUES (?,?,?,?)").run("k1", at(minAgo), "view", `v${minAgo}-${i}`); };
+    const add = (n, minAgo) => { for (let i = 0; i < n; i++) hub.db.prepare("INSERT INTO traffic (key, ts, kind, visitor) VALUES (?,?,?,?)").run("k1", at(minAgo), "view", `v${minAgo}-${i}`); };
     const glow = async () => ((await (await fetch(base + "/v1/live/gil")).json()).districts.Shop || {}).glow || 0;
     add(20, 1);
     const busy = await glow(); assert.ok(busy > 0.85, `20 people just now light most windows (${busy})`);
@@ -96,5 +96,12 @@ test("window glow: recent visitors light a district, and it fades over 30 minute
     const fading = await glow(); assert.ok(fading > 0.2 && fading < busy, `20 minutes later it is dimmer (${fading})`);
     hub.db.prepare("DELETE FROM traffic").run(); add(20, 31);
     assert.equal(await glow(), 0, "after 30 minutes the windows are dark");
+    // the pixel records which site was visited (from the page's origin), so people stand in that site's building
+    hub.db.prepare("DELETE FROM traffic").run();
+    hub.db.prepare("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run("kshopsite0001", id.id, "Shop", 1, "s2", new Date().toISOString());
+    const r = await fetch(base + "/v1/t/kshopsite0001.gif", { headers: { "user-agent": "Mozilla/5.0 (Macintosh) Safari", referer: "https://www.stash.example.com/item/3" } });
+    assert.equal(r.status, 200);
+    const sites = (await (await fetch(base + "/v1/live/gil")).json()).districts.Shop.sites;
+    assert.ok(sites && sites.stash > 0, `the visit is counted for the stash site (${JSON.stringify(sites)})`);
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });

@@ -103,7 +103,9 @@ export function foldLive(per: { handle: string; live: any }[], at: string) {
     if (!live) continue; const k = "@" + handle;
     const lv = Object.values(live.districts || {}).reduce((m: number, d: any) => Math.max(m, Number(d?.level) || 0), 0);
     const gl = Object.values(live.districts || {}).reduce((m: number, d: any) => Math.max(m, Number(d?.glow) || 0), 0);
-    out.districts[k] = { level: lv, glow: gl };
+    const st: Record<string, number> = {};
+    for (const d of Object.values(live.districts || {}) as any[]) for (const [h, g] of Object.entries(d?.sites || {})) if (Object.keys(st).length < 24) st[h] = Math.max(st[h] || 0, Number(g) || 0);
+    out.districts[k] = { level: lv, glow: gl, ...(Object.keys(st).length ? { sites: st } : {}) };
     for (const a of Array.isArray(live.agents) ? live.agents.slice(0, 20) : []) out.agents.push({ id: String(a.id || "").slice(0, 10) + handle.slice(0, 4), d: k, state: a.state });
     if (live.arrivals) { anyArr = true; const x = out.arrivals[k] = { v: 0, s: 0, b: 0 }; for (const v of Object.values(live.arrivals) as any[]) { x.v += +v.v || 0; x.s += +v.s || 0; x.b += +v.b || 0; } }
     for (const t of Object.values(live.today || {}) as any[]) {
