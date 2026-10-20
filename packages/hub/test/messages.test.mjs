@@ -52,7 +52,8 @@ test("friends message directly; strangers send one request that waits for Accept
     // THE header carries Messages with the unread badge, left of the bell; signed out it is not there
     const feed = await (await S.get("bo", "/feed")).text();
     assert.match(feed, /<a class="ch-icon ch-msgs" href="[^"]*\/messages" aria-label="Messages, 1 unread"[^>]*>[\s\S]*?<span class="ch-badge">1<\/span><\/a><details class="ch-bell"/);
-    assert.ok(!(await (await fetch(S.base + "/feed")).text()).includes("ch-msgs"));
+    { const out = await (await fetch(S.base + "/feed")).text(); assert.ok(!out.includes('class="ch-icon ch-msgs"') && !out.includes('class="ch-bn-msgs"'), "signed out: no Messages link, top or bottom"); }
+    assert.match(feed, /<a class="ch-bn-msgs" href="[^"]*\/messages"><span class="ch-bi">[\s\S]*?<span class="ch-badge">1<\/span><\/span>Messages<\/a>/, "the phone tab bar carries the badge too");
     const tb = await S.thread("bo", "ana"); assert.equal(tb.state, "open"); assert.equal(tb.messages.length, 1); assert.equal(tb.messages[0].mine, false);
     assert.equal(await S.unread("bo"), 0, "reading marks it read");
     // a stranger: the first message is a request; no second message until accepted

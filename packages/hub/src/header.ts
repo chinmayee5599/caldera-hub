@@ -107,14 +107,25 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-al-i b{display:block;font-size:14px;color:var(--ch-strong);font-weight:600;line-height:1.35}.ch-al-i small{display:block;margin-top:3px;color:var(--ch-muted);font-size:12.5px}
 .ch-al-empty{padding:12px 8px;color:var(--ch-muted);font-size:13.5px}
 .ch-menu{display:none}
+.ch-bn{display:none;position:fixed;left:0;right:0;bottom:0;z-index:70;box-sizing:border-box;height:calc(64px + env(safe-area-inset-bottom,0px));padding:0 4px env(safe-area-inset-bottom,0px);background:rgba(20,20,22,.97);border-top:1px solid #2A2A2E;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.ch-bn a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;color:#8A8A93;font:500 11.5px/1 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.ch-bn a .ch-bi{position:relative;display:grid;place-items:center;width:44px;height:28px;border-radius:14px}
+.ch-bn a[aria-current="page"]{color:#F2F2F5;font-weight:600}.ch-bn a[aria-current="page"] .ch-bi{background:#2A2440;color:#B9A6FF}
+.ch-bn a:active .ch-bi{background:#26232F}.ch-bn a:focus-visible{outline:2px solid #8B6CF6;outline-offset:-4px;border-radius:12px}
+.ch-bn .ch-badge{top:-5px;right:-2px;background:#E5484D;color:#fff;box-shadow:0 0 0 2px #141416}.ch-bn .ch-bav{width:24px;height:24px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#3A2F5C;color:#D6CBFF;font-size:12px;font-weight:600}.ch-bn .ch-bav img{width:100%;height:100%;object-fit:cover}
+.ch-bn a[aria-current="page"] .ch-bav{box-shadow:0 0 0 2px #8B6CF6}
 .ch-strip{position:relative;z-index:59;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:9px 44px 9px 24px;background:#2A1F4A;border-bottom:1px solid #4A3A80;color:#ECE7FF;font:500 14px/1.35 'IBM Plex Sans',Arial,sans-serif;text-align:left}
 .ch-strip[hidden]{display:none}.ch-strip .ch-i{color:#B9A6FF}.ch-strip b{color:#fff;font-weight:600}.ch-strip span{display:inline-flex;align-items:center;gap:8px;min-width:0}
 .ch-strip a.ch-go{display:inline-flex;align-items:center;height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff!important;font-weight:600;text-decoration:none;white-space:nowrap}.ch-strip a.ch-go:hover{filter:brightness(1.1)}
 .ch-strip button{all:unset;cursor:pointer;position:absolute;right:12px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:28px;height:28px;border-radius:8px;color:#B8B8C2;font-size:18px;line-height:1}.ch-strip button:hover{color:#fff;background:#3A2F5C}.ch-strip button:focus-visible,.ch-strip a:focus-visible{outline:2px solid #B9A6FF;outline-offset:2px}
 .ch a:focus-visible,.ch summary:focus-visible{outline:2px solid var(--ch-accent);outline-offset:2px}
-@media (max-width:760px){.ch{--ch-h:52px;gap:8px;padding:0 12px}.ch-nav{display:none}.ch-menu{display:block}.ch-brand span{display:none}
+@media (max-width:760px){.ch{--ch-h:52px;gap:8px;padding:0 12px}.ch-nav{display:none}
 .ch-seg a span{display:none}.ch-seg a{padding:0 9px}.ch-acct{padding:0 3px}.ch-acct .ch-hd,.ch-acct .ch-i{display:none}.ch-text{font-size:14px}.ch-cta{height:34px;padding:0 13px;font-size:14px}.ch-stale{display:none}
-.ch-strip{padding:8px 44px 8px 12px;font-size:13.5px}.ch-right{gap:6px;margin-left:auto}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
+.ch-strip{padding:8px 44px 8px 12px;font-size:13.5px}.ch-right{gap:6px;margin-left:auto}
+.ch-menu{display:none}.ch .ch-msgs{display:none}.ch-brand span{display:inline}
+.ch-bn{display:grid}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+.fd-tip,.ms-tip,.pc-tip{bottom:calc(76px + env(safe-area-inset-bottom,0px))!important}
+body:has(.ms.is-thread) .ch-bn{display:none}body:has(.ms.is-thread){padding-bottom:0}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
 </style>`;
 
 /** Live unread counts for the signed-in header: badges, the messages strip, "(3)" in the tab title and a dot on the
@@ -129,7 +140,7 @@ function strip(m,f){if(!S)return;var hid=null;try{hid=sessionStorage.getItem('ch
 if(!m||cur==='messages'||hid===key(m,f)){S.hidden=true;return}
 var t=S.querySelector('span>span');t.innerHTML='';var b=document.createElement('b');b.textContent=m+' unread message'+(m===1?'':'s');t.appendChild(b);if(f)t.appendChild(document.createTextNode(' from '+f));
 S.querySelector('a.ch-go').textContent=m===1?'Read it':'Read them';S.hidden=false}
-function show(m,a,f){badge(h.querySelector('.ch-msgs'),m,'Messages');var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
+function show(m,a,f){badge(h.querySelector('.ch-msgs'),m,'Messages');var bm=document.querySelector('.ch-bn-msgs .ch-bi');if(bm){badge(bm,m,'Messages');bm.removeAttribute('aria-label');bm.parentNode.setAttribute('aria-label','Messages'+(m>0?', '+m+' unread':''))}var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
 var n=m+a;document.title=(n?'('+(n>9?'9+':n)+') ':'')+base;if(!fl&&n){fl=document.createElement('link');fl.rel='icon';f0='/favicon.svg';(document.head||document.documentElement).appendChild(fl)}if(fl)fl.setAttribute('href',n?dot:f0);h.setAttribute('data-m',m);h.setAttribute('data-a',a);h.setAttribute('data-from',f)}
 if(S){S.querySelector('button').addEventListener('click',function(){S.hidden=true;try{sessionStorage.setItem('ch-strip-x',key(h.getAttribute('data-m'),h.getAttribute('data-from')))}catch(e){}})}
 show(+h.getAttribute('data-m')||0,+h.getAttribute('data-a')||0,h.getAttribute('data-from')||'');
@@ -146,10 +157,15 @@ export function appHeader(o: HeaderOpts): string {
   const mobile = `<details class="ch-menu"><summary class="ch-icon" aria-label="Menu">${icon("menu")}</summary><div class="ch-pop" style="left:0;right:auto">`
     + [["feed", "Feed", "/feed"], ["people", "People", "/people"], ["world", "World", "/world"], ["guide", "Guide", "/guide"]].map(([k, l, h]) => `<a class="ch-mi" href="${e(hub + h)}"${cur === k ? ' aria-current="page"' : ""}>${icon(k)}${l}</a>`).join("")
     + `</div></details>`;
+  // phones: a bottom tab bar instead of the hamburger (thumb-reachable, big targets); hidden above 760px
+  const tab = (key: string, label: string, href: string, inner: string, on: boolean, cls = "") => `<a${cls ? ` class="${cls}"` : ""} href="${e(href)}"${on ? ' aria-current="page"' : ""}><span class="ch-bi">${inner}</span>${label}</a>`;
+  const tabs = (list: string[]) => `<nav class="ch-bn" aria-label="Main" style="grid-template-columns:repeat(${list.length},1fr)">${list.join("")}</nav>`;
+  const base3 = [tab("feed", "Feed", `${hub}/feed`, icon("feed", 22), cur === "feed"), tab("people", "People", `${hub}/people`, icon("people", 22), cur === "people"), tab("world", "World", `${hub}/world`, icon("world", 22), cur === "world")];
   if (!v) {
     const signin = o.signinHref || `${hub}/signin`, join = o.joinHref || `${hub}/#install`;
     return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="out">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
-      + `<div class="ch-right"><a class="ch-text" href="${e(signin)}" rel="nofollow">Sign in</a><a class="ch-cta" href="${e(join)}">Get started</a></div></header>`;
+      + `<div class="ch-right"><a class="ch-text" href="${e(signin)}" rel="nofollow">Sign in</a><a class="ch-cta" href="${e(join)}">Get started</a></div></header>`
+      + tabs([...base3, tab("guide", "Guide", `${hub}/guide`, icon("guide", 22), cur === "guide")]);
   }
   const own = o.own || null;
   const seg = own ? `<div class="ch-seg" role="group" aria-label="View your profile as">`
@@ -170,11 +186,17 @@ export function appHeader(o: HeaderOpts): string {
     + mi("user", "My profile", `${hub}/@${v.handle}/`)
     + mi("settings", "Settings", `${hub}/settings`)
     + mi("bell", "Alerts", `${hub}/alerts`)
+    + mi("guide", "Guide", `${hub}/guide`)
     + `<div class="ch-sep"></div>` + mi("out", "Sign out", `${hub}/signout?h=${encodeURIComponent(v.handle)}`, ' style="color:var(--ch-muted)"')
     + `</div></details>`;
   const items = (o.items || []).join("");
   // unread messages get a strip under the nav on every page but Messages itself: the badge alone is easy to miss
   const mu = v.msgs?.unread || 0, from = (v.msgs?.from || []).map(x => "@" + x);
+  const meOn = !!own || (cur === "settings");
+  const bav = `<span class="ch-bav">${v.avatar ? `<img src="${e(v.avatar)}" alt="">` : e((v.name || v.handle).charAt(0).toUpperCase())}</span>`;
+  const bottom = tabs([...base3,
+    tab("messages", "Messages", `${hub}/messages`, `${icon("message", 22)}${mu ? `<span class="ch-badge">${mu > 9 ? "9+" : mu}</span>` : ""}`, cur === "messages", "ch-bn-msgs"),
+    tab("me", "Me", `${hub}/@${v.handle}/`, bav, meOn)]);
   const strip = `<div class="ch-strip" id="ch-strip" role="status" data-cur="${e(cur)}"${mu && cur !== "messages" ? "" : " hidden"}><span>${icon("message", 18)}<span><b>${mu} unread message${mu === 1 ? "" : "s"}</b>${from.length ? ` from ${e(from.join(", "))}` : ""}</span></span><a class="ch-go" href="${e(hub)}/messages">Read ${mu === 1 ? "it" : "them"}</a><button type="button" aria-label="Hide until a new message arrives">&times;</button></div>`;
   const js = `<script>(function(){var h=document.getElementById('caldera-bar');if(!h||h.dataset.wired)return;h.dataset.wired='1';var ds=h.querySelectorAll('details');
 ds.forEach(function(d){d.addEventListener('toggle',function(){if(!d.open)return;ds.forEach(function(x){if(x!==d)x.open=false});
@@ -183,7 +205,7 @@ document.addEventListener('click',function(ev){ds.forEach(function(d){if(d.open&
 document.addEventListener('keydown',function(ev){if(ev.key==='Escape')ds.forEach(function(d){d.open=false})});
 ${BADGE_JS}})()</script>`;
   return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}" data-hub="${e(hub)}"${v.badgeToken ? ` data-bt="${e(v.badgeToken)}"` : ""} data-m="${mu}" data-a="${v.unread}" data-from="${e(from.join(", "))}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
-    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${js}`;
+    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${bottom}${js}`;
 }
 
 /** Which nav item a path belongs to. */
