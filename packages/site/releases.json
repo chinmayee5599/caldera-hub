@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.27.0",
+      "date": "2026-10-20",
+      "title": "Free tools, on your map",
+      "items": [
+        "Made something free? List it at caldera.social/tools and it shows on your profile, as a Workshop in your city, and in the Free tools market on the World map.",
+        "Listings link to your own release page or site; Caldera never hosts downloads. Your first listing is reviewed, then new ones go live right away.",
+        "Members who get your tool give you gravity."
+      ]
+    },
+    {
       "version": "0.26.1",
       "date": "2026-10-20",
       "title": "Better topic suggestions",
