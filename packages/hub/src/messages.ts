@@ -376,7 +376,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-more{position:relative}.ms-more>summary{list-style:none;cursor:pointer;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid var(--line,#2a2a2e);color:var(--text-muted,#8a8a93);font-size:18px}.ms-more>summary::-webkit-details-marker{display:none}
 .ms-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:5;min-width:200px;display:flex;flex-direction:column;padding:6px;background:var(--bg-raised,#232327);border:1px solid var(--line-strong,#3a3a40);border-radius:var(--radius-md,8px)}
 .ms-menu a,.ms-menu button{all:unset;cursor:pointer;padding:8px 10px;border-radius:6px;color:var(--text,#dadadf);font-size:14px}.ms-menu a:hover,.ms-menu button:hover{background:var(--bg,#1c1c1f)}.danger,.ms-menu .danger{color:var(--danger,#f0716a)!important}
-.ms-msgs{flex:1;padding:20px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:calc(100vh - 300px);min-height:280px}
+.ms-msgs{flex:1;padding:20px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:calc(100vh - 300px);min-height:280px}.ms-msgs>:first-child{margin-top:auto}
 .ms-b{max-width:min(520px,80%);padding:10px 14px;font-size:15px;line-height:1.5;word-wrap:break-word;overflow-wrap:anywhere}.ms-b.them{align-self:flex-start;border-radius:18px 18px 18px 6px;background:var(--bg-raised,#232327);color:var(--text,#dadadf)}
 .ms-b.me{align-self:flex-end;border-radius:18px 18px 6px 18px;background:#7a58f0;color:#fff}.ms-b.me a{color:#fff;text-decoration:underline}.ms-b.sending{opacity:.6}
 .ms-compose{display:flex;gap:10px;align-items:flex-end;padding:12px 20px 8px;border-top:1px solid var(--line,#2a2a2e)}
@@ -400,7 +400,7 @@ const JS = `(function(){var T=document.querySelector('.ms-thread[data-h]');var b
 function tip(m){var t=document.createElement('div');t.className='ms-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
 function post(u,o){return fetch(u,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera. Check your connection.'}}})}
 var pref=document.getElementById('ms-email');if(pref)pref.addEventListener('change',function(){post('/v1/messages/prefs',{email:pref.checked}).then(function(x){tip(x.ok?(pref.checked?'You\\'ll get an email when someone messages you.':'No more emails about messages.'):'Could not save that.')})});
-if(!T)return;var h=T.getAttribute('data-h'),id=T.getAttribute('data-id');if(box)box.scrollTop=box.scrollHeight;
+if(!T)return;var h=T.getAttribute('data-h'),id=T.getAttribute('data-id');function toB(){if(!box)return;box.scrollTop=box.scrollHeight;if(box.scrollHeight<=box.clientHeight+2)window.scrollTo(0,document.documentElement.scrollHeight)}toB();setTimeout(toB,120);window.addEventListener('load',toB);
 var last=(function(){var b=box&&box.querySelectorAll('.ms-b[data-ts]');return b&&b.length?b[b.length-1].getAttribute('data-ts'):''})();
 var F=document.getElementById('ms-form'),ta=document.getElementById('ms-text');
 function add(m){var e=box.querySelector('.ms-empty');if(e)e.remove();var d=document.createElement('div');d.className='ms-b '+(m.mine?'me':'them');d.innerHTML=m.html;if(m.ts){d.setAttribute('data-ts',m.ts);last=m.ts}box.appendChild(d);box.scrollTop=box.scrollHeight;return d}
