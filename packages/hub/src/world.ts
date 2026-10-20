@@ -30,6 +30,10 @@ const str = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/
 /** One building, re-cleaned: public repos keep name/link/history; anything else becomes a nameless padlocked block. */
 export function cleanRepo(r: CityRepo, project: string): CityRepo {
   const url = typeof r.url === "string" && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(r.url) ? r.url : undefined;
+  if (r.priv && !r.locked && r.name) {   // "named" private repo: name, language and activity, never a link or description
+    return { name: str(r.name, 100), project, public: false, priv: true, language: str(r.language || "Other", 30), commits: Math.max(0, Math.round(Number(r.commits) || 0)),
+      weeks: (Array.isArray(r.weeks) ? r.weeks : []).slice(-12).map(w => Math.max(0, Math.round(Number(w) || 0))), week: Math.max(0, Math.round(Number(r.week) || 0)), today: 0 };
+  }
   if (r.locked || r.public !== true || !r.name) {
     return { name: "", project, public: false, locked: true, language: "Private", commits: Math.max(0, Math.round(Number(r.commits) || 0)), weeks: [], week: (Number(r.week) || 0) > 0 ? 1 : 0, today: 0 };
   }

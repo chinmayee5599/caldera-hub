@@ -49,7 +49,7 @@ export interface GhCtx {
   /** how private repos show on a member's public city (privatemode.ts) */
   /** search engines: may this member's page be indexed (listed members, after the notice period), and their choice */
   searchPref?: { on: (pr: any) => boolean; set: (owner: string, on: boolean) => void };
-  privateMode?: { modeFor: (pr: any) => "show" | "anonymous" | "hidden"; chosen: (pr: any) => string | undefined; set: (owner: string, mode: unknown) => boolean; since: string };
+  privateMode?: { modeFor: (pr: any) => "show" | "anonymous" | "hidden" | "named"; chosen: (pr: any) => string | undefined; set: (owner: string, mode: unknown) => boolean; since: string };
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -69,6 +69,7 @@ function privateReposForm(mode: string, chosen: boolean): string {
   return `<form method="post" class="card" id="private-repos"><input type="hidden" name="do" value="private-repos"><b>Private repos on my city</b>
 <p class="mut" style="margin:4px 0 10px">Your public city, the World and your share card. Your private view always shows everything.${chosen ? "" : " <b>You haven't chosen yet</b>, so Caldera's default applies."}</p>
 <style>.pr-opt{display:block;margin:8px 0}.pr-opt span{display:block;margin-left:24px;font-size:13px}</style>
+${opt("named", "Show with names", "Your city looks like your private view: repo names, language colours and activity in their real projects. Nobody can open the code, links or descriptions. (Made your page in Obsidian? Choose this in Caldera settings there too.)")}
 ${opt("show", "Show as padlocked", "Nameless locked buildings in place. Visitors can still tell roughly how big and how busy private work is, and which project it sits beside.")}
 ${opt("anonymous", "Anonymous", "One separate padlocked district with no sizes, activity or projects. Visitors only learn that you have private work.")}
 ${opt("hidden", "Hidden", "No trace of private repos anywhere public, including totals.")}
@@ -326,7 +327,7 @@ export function github(ctx: GhCtx) {
     const city = cityData(cityRepos, () => ({ n: 0, paths: [] }), new Date().toISOString());
     // private repos: the member's setting decides what their public city and code numbers say about them
     const prRow = q("SELECT * FROM profiles WHERE id=?").get(acct.profile_id) || { id: acct.profile_id, created: new Date().toISOString() };
-    const pmode = ctx.privateMode?.modeFor(prRow) || "show", counted = pmode === "show" ? cityRepos : cityRepos.filter(r => r.public);
+    const pmode = ctx.privateMode?.modeFor(prRow) || "show", counted = pmode === "show" || pmode === "named" ? cityRepos : cityRepos.filter(r => r.public);
     const pubCity = publicCity(city, city.districts.map(d => d.name), pmode);
     const total = counted.reduce((a, r) => a + r.commits, 0), langs = [...new Set(counted.map(r => r.language).filter(l => l !== "Other"))].slice(0, 6);
     const weekly = Array.from({ length: 12 }, (_, i) => counted.reduce((a, r) => a + (r.weeks[i] || 0), 0));

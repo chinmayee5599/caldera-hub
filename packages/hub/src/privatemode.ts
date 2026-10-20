@@ -44,7 +44,7 @@ export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinc
 /** Live feeds for visitors: with private work anonymous or hidden, nothing in them may point at it - no "Private"
  *  district counts, arrivals, footprints, departures, or drones over private repos (or unmapped ones). */
 export function scrubPrivateLive<T>(o: T, mode: PrivateMode): T {
-  if (!o || mode === "show") return o;
+  if (!o || mode === "show" || mode === "named") return o;
   const priv = (k: unknown) => k === "Private" || k === "Vault" || k === "";
   const out: any = { ...(o as any) };
   for (const [k, v] of Object.entries(out)) {
