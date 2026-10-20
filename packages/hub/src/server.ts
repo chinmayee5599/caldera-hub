@@ -26,6 +26,7 @@ import { funnel } from "./funnel";
 import { emailPages } from "./emailpages";
 import { messages } from "./messages";
 import { chat, CHAT_CSS, CHAT_JS } from "./chat";
+import { mapPanel } from "./mapprompt";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
@@ -64,6 +65,13 @@ function withAppHead(html: string): string {
   const out = html.replace(/<meta name="viewport" content="([^"]*)"/i, (m, c) => /viewport-fit/.test(c) ? m : `<meta name="viewport" content="${c}, viewport-fit=cover"`);
   const tags = /apple-touch-icon/.test(html) ? APP_HEAD.replace(/<link rel="apple-touch-icon"[^>]*>/, "") : APP_HEAD;   // keep a page's own icon
   return out.replace(/<\/head>/i, () => tags + "</head>");
+}
+/** City pages: the "Power up this map" pill (expands to a prompt anyone hands their AI), pinned bottom-left. */
+let MAP_HUB = "https://caldera.social";
+function withMapPanel(html: string, handle?: string): string {
+  if (html.includes('id="power-up"')) return html;
+  const panel = mapPanel(MAP_HUB, { floating: true, handle });
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, () => panel + "</body>") : html + panel;
 }
 export const MANIFEST = JSON.stringify({ name: "Caldera", short_name: "Caldera", id: "/", start_url: "/feed?src=homescreen", scope: "/", display: "standalone",
   background_color: "#141416", theme_color: "#141416", description: "The social layer for what you build",
@@ -813,6 +821,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   const emit = (ev: Parameters<NonNullable<HubOptions["onEvent"]>>[0]) => { try { opts.onEvent?.(ev); } catch { /* never let a notifier break a request */ } };
 
+  MAP_HUB = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
   let CHAT: ReturnType<typeof chat> | null = null;   // Groups under Messages (same)
@@ -1919,7 +1928,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }
-          if (rel === "city.html") html = injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1]));
+          if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1])));
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;
@@ -2472,7 +2481,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       const bar = nav ? calderaBar(opts.publicUrl || "https://caldera.social", mine, nav, undefined, bellFor(byHandle(mine)?.id)) : "";
       if (rel === "index.html" && !pub && row) html = html.replace("<!--caldera:owner-->", priv.layer);
       if (rel === "city.html" && pr && (sitesOf(pr.id).length || q("SELECT 1 FROM agent_keys WHERE owner=?").get(pr.id))) html = injectLive(html, { url: `live.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, mode: pub ? "public" : "private" });
-      if (rel === "city.html") html = injectBuildWatch(html, `build.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, buildOf(mine, pub ? null : row?.built));
+      if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `build.json?t=${liveToken(mine)}${pub ? "&view=public" : ""}`, buildOf(mine, pub ? null : row?.built)), mine);
       if (rel === "city.html" && pr) { html = cityExtras(html, pub ? null : pr.id); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.privateUrl), originOf(opts.publicUrl)); }
       html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar) : bar + html;
       res.writeHead(200, headers); return res.end(html);

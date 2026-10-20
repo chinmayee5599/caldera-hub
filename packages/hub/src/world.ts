@@ -6,6 +6,7 @@
  * here so a private or locked building can never carry a name, link or history. Unlisted and moderated profiles never
  * appear. Live activity is the same coarse public projection a member's own public city gets, folded per member.
  */
+import { mapPanel } from "./mapprompt";
 import { CITY_CSS, CITY_JS, type CityData, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 
 export interface WorldMemberIn {
@@ -137,6 +138,7 @@ ${o.nav}
 <div class="c-toasts" aria-live="polite"></div><div class="c-mininame" aria-hidden="true"><i></i>Caldera world</div>
 <div class="c-card" id="card" hidden></div><div class="c-hint">Drag to move &middot; scroll or pinch to zoom &middot; click a name to fly there</div></div>
 <div class="w-foot"><span class="w-legend"><i></i>Friendships are rays of light</span><span class="w-legend w-legend-stack"><i></i>Dashed coral: builds with a similar stack</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
+${mapPanel(hub)}
 </main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>
 <script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })};window.CALDERA_GIFTS=${safeJson({ url: "/v1/gifts" })}</script>
 <script type="application/json" id="city-data">${safeJson(data)}</script>
