@@ -231,3 +231,24 @@ test("sandboxed pages (profiles, cities) refresh the header counts with the head
     assert.equal((await get("bo", "/feed").then(r => r.text())).match(/data-bt="([^"]+)"/)?.[1], bt, "same token on every page for a while");
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("Feed in the nav counts what's new since the member last opened the feed (not their own), and opening it clears it", async () => {
+  const { hub, d, get } = await setup();
+  try {
+    const feedN = async (h) => (await (await get(h, "/v1/me/badges")).json()).feed;
+    const id = (h) => hub.db.prepare("SELECT id FROM profiles WHERE handle=?").get(h).id;
+    const n0 = await feedN("bo"); assert.ok(n0 >= 1, "never opened: the last few days count (dee just joined)");
+    const page = await (await get("bo", "/@cy/")).text();
+    assert.match(page, /<a class="ch-feed" href="[^"]*\/feed">[\s\S]*?<span class="ch-badge ch-new">\d+<\/span><\/a>/, "top nav Feed carries the count");
+    assert.match(page, /class="ch-bn-feed"[^>]*><span class="ch-bi">[\s\S]*?<span class="ch-badge ch-new">\d+<\/span><\/span>Feed/, "phone tab too");
+    const feed = await (await get("bo", "/feed")).text();
+    assert.doesNotMatch(feed, /<span class="ch-badge ch-new">/, "not on the feed itself");
+    assert.equal(await feedN("bo"), 0, "opening the feed clears it");
+    // something new happens between two other members: counted; bo's own activity: not
+    const later = new Date(Date.now() + 2000).toISOString();
+    hub.db.prepare("INSERT INTO friends (a, b, ts, kind) VALUES (?,?,?,?)").run(...[id("ana"), id("cy")].sort(), later, "request");
+    hub.db.prepare("INSERT INTO friends (a, b, ts, kind) VALUES (?,?,?,?)").run(...[id("bo"), id("dee")].sort(), later, "request");
+    await new Promise(r => setTimeout(r, 31_000));   // the activity list is cached for 30s
+    assert.equal(await feedN("bo"), 1, "another pair's friendship counts; one bo is part of doesn't");
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -219,6 +219,7 @@ export function feed(c: FeedCtx) {
   q(`CREATE TABLE IF NOT EXISTS post_kudos (post TEXT, sender TEXT, kind TEXT, day TEXT, ts TEXT, PRIMARY KEY (post, sender, day))`).run();
   q(`CREATE TABLE IF NOT EXISTS post_reports (post TEXT, reporter TEXT, reason TEXT, ts TEXT, PRIMARY KEY (post, reporter))`).run();
   q(`CREATE TABLE IF NOT EXISTS post_bans (member TEXT PRIMARY KEY, reason TEXT, ts TEXT)`).run();
+  q(`CREATE TABLE IF NOT EXISTS feed_seen (member TEXT PRIMARY KEY, ts TEXT)`).run();   // when each member last opened the feed (the nav's "new" count)
   // comments: threaded under a post (parent = another comment on the same post, or null). status ok | deleted (kept as a
   // "[deleted]" stub while it still has replies) | hidden (operator)
   q(`CREATE TABLE IF NOT EXISTS post_comments (id TEXT PRIMARY KEY, post TEXT, parent TEXT, author TEXT, body TEXT, ts TEXT, status TEXT)`).run();
@@ -973,5 +974,15 @@ cf.querySelector('[data-no]').addEventListener('click',function(){cf.parentNode.
     for (const sql of ["DELETE FROM post_links WHERE src=? OR dst=?", "DELETE FROM post_kudos WHERE sender=?", "DELETE FROM post_reports WHERE reporter=?", "DELETE FROM post_bans WHERE member=?"]) { const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id)); }
     cache = null;
   }
-  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, profileCard, closePost, postRow, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, addComment, deleteComment, threadOf, commentCount, invalidate: () => { cache = null; } };
+  /** How many feed items arrived since `member` last opened the feed, not counting ones they're part of. Never opened it: the last 3 days. */
+  function newFor(member: string): number {
+    const pr = c.profile(member); if (!pr?.handle) return 0;
+    const seen = (q("SELECT ts FROM feed_seen WHERE member=?").get(member) as any)?.ts || new Date(Date.now() - 3 * 86400_000).toISOString();
+    let n = 0;
+    for (const i of activity()) { if (String(i.ts) <= seen) break; if (i.who?.handle !== pr.handle && i.other?.handle !== pr.handle) n++; }   // newest first; their own news isn't "new" to them
+    return n;
+  }
+  const markSeen = (member: string) => { q("INSERT INTO feed_seen VALUES (?,?) ON CONFLICT(member) DO UPDATE SET ts=excluded.ts").run(member, c.now()); };
+
+  return { setMatcher: (m: FeedMatcher) => { M = m; }, route, activity, page, newFor, markSeen, profileCard, closePost, postRow, matchesFor, noticesFor, lookingFor, recsFor, createPost, sendPost, helpPost, answer, kudosPost, admin, erase, addComment, deleteComment, threadOf, commentCount, invalidate: () => { cache = null; } };
 }

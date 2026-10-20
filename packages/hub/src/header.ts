@@ -18,6 +18,7 @@ export interface HeaderViewer {
   alerts: { title: string; when: string; read: boolean; pinned?: boolean; href?: string }[];
   seenUrl?: string;           // image beacon that marks the shown alerts read
   msgs?: { unread: number; from: string[] };   // unread direct messages (and from whom), for the strip under the nav
+  feedNew?: number;           // feed items since they last opened the feed (a violet count on Feed: new, not urgent)
   badgeToken?: string;        // lets sandboxed pages (profiles, cities) refresh the counts without the cookie
 }
 
@@ -90,6 +91,7 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch details{position:relative}.ch summary{list-style:none;cursor:pointer}.ch summary::-webkit-details-marker{display:none}
 .ch-icon{position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--ch-line);background:var(--ch-raised);color:var(--ch-text)}
 .ch-icon:hover,.ch details[open]>.ch-icon{color:var(--ch-strong);border-color:var(--ch-pop-line)}
+.ch-nav a{position:relative}.ch-badge.ch-new{background:#8B6CF6;color:#fff}.ch-nav .ch-badge{top:1px;right:-3px}
 .ch-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ch-danger);color:#fff;font:600 11px/18px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
 .ch-acct{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px 0 3px;border-radius:999px;border:1px solid var(--ch-line);background:var(--ch-raised);color:var(--ch-strong);font-size:14px}
 .ch details[open]>.ch-acct{border-color:var(--ch-accent)}
@@ -112,7 +114,7 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-bn a .ch-bi{position:relative;display:grid;place-items:center;width:44px;height:28px;border-radius:14px}
 .ch-bn a[aria-current="page"]{color:#F2F2F5;font-weight:600}.ch-bn a[aria-current="page"] .ch-bi{background:#2A2440;color:#B9A6FF}
 .ch-bn a:active .ch-bi{background:#26232F}.ch-bn a:focus-visible{outline:2px solid #8B6CF6;outline-offset:-4px;border-radius:12px}
-.ch-bn .ch-badge{top:-5px;right:-2px;background:#E5484D;color:#fff;box-shadow:0 0 0 2px #141416}.ch-bn .ch-bav{width:24px;height:24px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#3A2F5C;color:#D6CBFF;font-size:12px;font-weight:600}.ch-bn .ch-bav img{width:100%;height:100%;object-fit:cover}
+.ch-bn .ch-badge{top:-5px;right:-2px;background:#E5484D;color:#fff;box-shadow:0 0 0 2px #141416}.ch-bn .ch-badge.ch-new{background:#8B6CF6}.ch-bn .ch-bav{width:24px;height:24px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#3A2F5C;color:#D6CBFF;font-size:12px;font-weight:600}.ch-bn .ch-bav img{width:100%;height:100%;object-fit:cover}
 .ch-bn a[aria-current="page"] .ch-bav{box-shadow:0 0 0 2px #8B6CF6}
 .ch-strip{position:relative;z-index:59;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:9px 44px 9px 24px;background:#2A1F4A;border-bottom:1px solid #4A3A80;color:#ECE7FF;font:500 14px/1.35 'IBM Plex Sans',Arial,sans-serif;text-align:left}
 .ch-strip[hidden]{display:none}.ch-strip .ch-i{color:#B9A6FF}.ch-strip b{color:#fff;font-weight:600}.ch-strip span{display:inline-flex;align-items:center;gap:8px;min-width:0}
@@ -142,19 +144,21 @@ function strip(m,f){if(!S)return;var hid=null;try{hid=sessionStorage.getItem('ch
 if(!m||cur==='messages'||hid===key(m,f)){S.hidden=true;return}
 var t=S.querySelector('span>span');t.innerHTML='';var b=document.createElement('b');b.textContent=m+' unread message'+(m===1?'':'s');t.appendChild(b);if(f)t.appendChild(document.createTextNode(' from '+f));
 S.querySelector('a.ch-go').textContent=m===1?'Read it':'Read them';S.hidden=false}
-function show(m,a,f){badge(h.querySelector('.ch-msgs'),m,'Messages');var bm=document.querySelector('.ch-bn-msgs .ch-bi');if(bm){badge(bm,m,'Messages');bm.removeAttribute('aria-label');bm.parentNode.setAttribute('aria-label','Messages'+(m>0?', '+m+' unread':''))}var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
+function show(m,a,f,fd){badge(h.querySelector('.ch-msgs'),m,'Messages');var bm=document.querySelector('.ch-bn-msgs .ch-bi');if(bm){badge(bm,m,'Messages');bm.removeAttribute('aria-label');bm.parentNode.setAttribute('aria-label','Messages'+(m>0?', '+m+' unread':''))}var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
+if(typeof fd==='number'&&cur!=='feed'){var fl2=[h.querySelector('.ch-feed'),document.querySelector('.ch-bn-feed .ch-bi')];fl2.forEach(function(el){if(!el)return;var b=el.querySelector('.ch-badge');if(fd>0){if(!b){b=document.createElement('span');b.className='ch-badge ch-new';el.appendChild(b)}b.textContent=fd>99?'99+':String(fd)}else if(b)b.remove()})}
 var n=m+a;document.title=(n?'('+(n>9?'9+':n)+') ':'')+base;if(!fl&&n){fl=document.createElement('link');fl.rel='icon';f0='/favicon.svg';(document.head||document.documentElement).appendChild(fl)}if(fl)fl.setAttribute('href',n?dot:f0);h.setAttribute('data-m',m);h.setAttribute('data-a',a);h.setAttribute('data-from',f)}
 if(S){S.querySelector('button').addEventListener('click',function(){S.hidden=true;try{sessionStorage.setItem('ch-strip-x',key(h.getAttribute('data-m'),h.getAttribute('data-from')))}catch(e){}})}
 show(+h.getAttribute('data-m')||0,+h.getAttribute('data-a')||0,h.getAttribute('data-from')||'');
 var bt=h.getAttribute('data-bt'),same=false;try{same=!!hub&&new URL(hub).origin===location.origin&&self.origin!=='null'}catch(e){}
-var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '))},function(){busy=0})}
+var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '),j.feed)},function(){busy=0})}
 if(same||(hub&&bt)){setInterval(tick,30000);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});window.addEventListener('focus',tick)}`;
 
 /** The header for one request's viewer. Same markup and CSS everywhere: the regression test compares these. */
 export function appHeader(o: HeaderOpts): string {
   const hub = o.hub.replace(/\/$/, ""), v = o.viewer || null, cur = o.current || "";
   const link = (key: string, label: string, href: string) => `<a href="${e(href)}"${cur === key ? ' aria-current="page"' : ""}>${icon(key)}<span>${label}</span></a>`;
-  const navLinks = [link("feed", "Feed", `${hub}/feed`), link("people", "People", `${hub}/people`), link("world", "World", `${hub}/world`)].concat(v ? [] : [link("guide", "Guide", `${hub}/guide`)]);
+  const fn = v && cur !== "feed" ? v.feedNew || 0 : 0, fbadge = fn ? `<span class="ch-badge ch-new">${fn > 99 ? "99+" : fn}</span>` : "";
+  const navLinks = [link("feed", "Feed", `${hub}/feed`).replace("</span></a>", `</span>${fbadge}</a>`).replace("<a ", '<a class="ch-feed" '), link("people", "People", `${hub}/people`), link("world", "World", `${hub}/world`)].concat(v ? [] : [link("guide", "Guide", `${hub}/guide`)]);
   const brand = `<a class="ch-brand" href="${e(hub)}/" aria-label="Caldera home">${LOGO}<span>Caldera</span></a>`;
   const mobile = `<details class="ch-menu"><summary class="ch-icon" aria-label="Menu">${icon("menu")}</summary><div class="ch-pop" style="left:0;right:auto">`
     + [["feed", "Feed", "/feed"], ["people", "People", "/people"], ["world", "World", "/world"], ["guide", "Guide", "/guide"]].map(([k, l, h]) => `<a class="ch-mi" href="${e(hub + h)}"${cur === k ? ' aria-current="page"' : ""}>${icon(k)}${l}</a>`).join("")
@@ -162,7 +166,7 @@ export function appHeader(o: HeaderOpts): string {
   // phones: a bottom tab bar instead of the hamburger (thumb-reachable, big targets); hidden above 760px
   const tab = (key: string, label: string, href: string, inner: string, on: boolean, cls = "") => `<a${cls ? ` class="${cls}"` : ""} href="${e(href)}"${on ? ' aria-current="page"' : ""}><span class="ch-bi">${inner}</span>${label}</a>`;
   const tabs = (list: string[]) => `<nav class="ch-bn" aria-label="Main" style="grid-template-columns:repeat(${list.length},1fr)">${list.join("")}</nav>`;
-  const base3 = [tab("feed", "Feed", `${hub}/feed`, icon("feed", 22), cur === "feed"), tab("people", "People", `${hub}/people`, icon("people", 22), cur === "people"), tab("world", "World", `${hub}/world`, icon("world", 22), cur === "world")];
+  const base3 = [tab("feed", "Feed", `${hub}/feed`, icon("feed", 22) + fbadge, cur === "feed", "ch-bn-feed"), tab("people", "People", `${hub}/people`, icon("people", 22), cur === "people"), tab("world", "World", `${hub}/world`, icon("world", 22), cur === "world")];
   if (!v) {
     const signin = o.signinHref || `${hub}/signin`, join = o.joinHref || `${hub}/#install`;
     return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="out">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`

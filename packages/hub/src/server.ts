@@ -1306,7 +1306,7 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
       conn: cn ? { github: cn.github.on, obsidian: cn.obsidian.on } : undefined, unread: rows.filter(a => !a.read).length,
       alerts: rows.map(a => ({ title: a.title, when: ago(a.ts), read: !!a.read, pinned: !!a.pinned, href: `${PUB()}/alerts#a-${a.id}` })),
       seenUrl: upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(pr.id, upTo))}` : undefined,
-      msgs: unreadMsgs(pr.id), badgeToken: badgeToken(pr.id) };
+      msgs: unreadMsgs(pr.id), feedNew: FEED ? FEED.newFor(pr.id) : 0, badgeToken: badgeToken(pr.id) };
   }
   /** One badge token per member, reused for 6 of its 12 hours: the header reads the same on every page. */
   const badgeToks = new Map<string, { t: string; until: number }>();
@@ -1323,7 +1323,9 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
   }
   /** THE header for one request on the public site: who is looking, and whether this is their own profile or city. */
   function headerFor(req: http.IncomingMessage, pathname: string): { header: string; signedIn: boolean } {
-    const me = memberOf(req), viewer = headerViewer(me);
+    const me = memberOf(req);
+    if (me && FEED && currentFor(pathname) === "feed") try { FEED.markSeen(me); } catch { /* never break a page */ }   // opening the feed clears its count
+    const viewer = headerViewer(me);
     const pm = pathname.match(/^\/@([a-z0-9-]+)(\/.*)?$/), h = pm ? pm[1] : "";
     let own = null as any;
     if (viewer && h && viewer.handle === h) {
@@ -1743,7 +1745,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         res.setHeader("cache-control", "no-store"); res.setHeader("vary", "Cookie");
         if (!me) return json(res, 401, { error: "signed out" });
         const m = unreadMsgs(me), al = alerts.forOwner(me, alertKind(me), 20).filter((a: any) => !a.read).length;
-        return json(res, 200, { messages: m.unread, from: m.from, alerts: al });
+        return json(res, 200, { messages: m.unread, from: m.from, alerts: al, feed: FEED ? FEED.newFor(me) : 0 });
       }
       if (/^\/(start(\/confirm)?|settings(\/page)?|me)$/.test(p) && await EMP!.route(req, res, url, p)) return;   // email pages (falls through for everyone else)
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
