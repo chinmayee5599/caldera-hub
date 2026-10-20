@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.28.3",
+      "date": "2026-10-20",
+      "title": "People in the windows",
+      "items": [
+        "While a site has visitors, you can see people standing in some of the lit windows of that district. The busier it is, the more of them there are."
+      ]
+    },
+    {
       "version": "0.28.2",
       "date": "2026-10-20",
       "title": "Lights follow your visitors",
