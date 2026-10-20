@@ -91,7 +91,7 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch details{position:relative}.ch summary{list-style:none;cursor:pointer}.ch summary::-webkit-details-marker{display:none}
 .ch-icon{position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--ch-line);background:var(--ch-raised);color:var(--ch-text)}
 .ch-icon:hover,.ch details[open]>.ch-icon{color:var(--ch-strong);border-color:var(--ch-pop-line)}
-.ch-nav a{position:relative}.ch-badge.ch-new{background:#8B6CF6;color:#fff}.ch-nav .ch-badge{top:1px;right:-3px}
+.ch-nav a{position:relative}.ch-badge.ch-new{background:#8B6CF6;color:#fff}.ch-nav .ch-badge{position:static;margin-left:1px}
 .ch-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ch-danger);color:#fff;font:600 11px/18px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
 .ch-acct{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px 0 3px;border-radius:999px;border:1px solid var(--ch-line);background:var(--ch-raised);color:var(--ch-strong);font-size:14px}
 .ch details[open]>.ch-acct{border-color:var(--ch-accent)}
