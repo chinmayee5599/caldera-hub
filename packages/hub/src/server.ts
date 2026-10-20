@@ -982,14 +982,20 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const t5 = new Date(Date.now() - 5 * 60_000).toISOString(), t24 = new Date(Date.now() - DAY).toISOString(), t3 = new Date(Date.now() - 3 * 60_000).toISOString();
     const by = new Map(sites.map(s => [s.key, s]));
     const name = (k: string) => { const s = by.get(k)!; return full || s.public ? s.project : "Private"; };
-    const ds: Record<string, { now: number; views: number; visitors: number; signups: number; buys: number }> = {};
-    const d = (k: string) => ds[name(k)] ||= { now: 0, views: 0, visitors: 0, signups: 0, buys: 0 };
+    const ds: Record<string, { now: number; views: number; visitors: number; signups: number; buys: number; heat: number }> = {};
+    const d = (k: string) => ds[name(k)] ||= { now: 0, views: 0, visitors: 0, signups: 0, buys: 0, heat: 0 };
     const keys = sites.map(s => s.key), qs = keys.map(() => "?").join(",");
     for (const r of q(`SELECT key, COUNT(DISTINCT visitor) n FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key`).all(...keys, t5) as any[]) d(r.key).now += r.n;
     for (const r of q(`SELECT key, kind, COUNT(*) n, COUNT(DISTINCT visitor) u FROM traffic WHERE key IN (${qs}) AND ts > ? GROUP BY key, kind`).all(...keys, t24) as any[]) {
       const x = d(r.key); if (r.kind === "view") { x.views += r.n; x.visitors += r.u; } else if (r.kind === "signup") x.signups += r.n; else if (r.kind === "buy") x.buys += r.n;
     }
     const level = (n: number) => n <= 0 ? 0 : n < 3 ? 1 : n < 10 ? 2 : n < 30 ? 3 : 4;
+    // glow: how lit the district's windows are. Each visitor counts fully when they arrive and fades to nothing over 30
+    // minutes after their last page view, so a busy site lights up and goes dark again as people leave.
+    const t30 = new Date(Date.now() - 30 * 60_000).toISOString();
+    for (const r of q(`SELECT key, visitor, MAX(ts) ts FROM traffic WHERE key IN (${qs}) AND ts > ? AND kind='view' GROUP BY key, visitor`).all(...keys, t30) as any[])
+      d(r.key).heat += Math.max(0, 1 - (Date.now() - Date.parse(r.ts)) / (30 * 60_000));
+    const glow = (h: number) => Math.round((1 - Math.exp(-h / 8)) * 50) / 50;   // 8 recent visitors light about 63%, 20 about 92%
     // a "new" view is a visitor's first on that site in 30 minutes: it drops into the city as a new arrival
     const FRESH = `NOT EXISTS (SELECT 1 FROM traffic p WHERE p.key=t.key AND p.visitor=t.visitor AND p.kind='view' AND p.ts < t.ts AND p.ts > strftime('%Y-%m-%dT%H:%M:%fZ', t.ts, '-30 minutes'))`;
     if (!full) {
@@ -1004,11 +1010,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
           if (r.kind === "signup") x.s++; else if (r.kind === "buy") x.b++; else x.v++;
         }
       }
-      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now) }])), agents, ...(arrivals ? { arrivals } : {}), ...dayStats(q, keys, name, false, depSalt(owner), since) };
+      return { at: now(), districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { level: level(v.now), glow: glow(v.heat) }])), agents, ...(arrivals ? { arrivals } : {}), ...dayStats(q, keys, name, false, depSalt(owner), since) };
     }
     const events = (q(`SELECT t.key, t.ts, t.kind, (t.kind='view' AND ${FRESH}) AS fresh FROM traffic t WHERE t.key IN (${qs}) AND t.ts > ? ORDER BY t.ts DESC LIMIT 300`).all(...keys, t3) as any[]).map(r => ({ d: name(r.key), k: r.kind, ts: r.ts, ...(r.fresh ? { n: 1 } : {}) }));
     for (const k of kudosFor(owner, t3)) events.push({ d: "", k: "kudos", ts: k.ts, e: k.kind, from: k.from } as any);   // kudos burst over the private city
-    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, level: level(v.now) }])), events, agents, ...dayStats(q, keys, name, true, depSalt(owner)) };
+    return { at: now(), private: true, districts: Object.fromEntries(Object.entries(ds).map(([k, v]) => [k, { ...v, heat: Math.round(v.heat * 10) / 10, level: level(v.now), glow: glow(v.heat) }])), events, agents, ...dayStats(q, keys, name, true, depSalt(owner)) };
   }
   const hasLive = (owner: string) => { const wk = new Date(Date.now() - 7 * DAY).toISOString();
     return !!q(`SELECT 1 FROM traffic t JOIN traffic_sites s ON s.key=t.key WHERE s.owner=? AND t.ts > ? LIMIT 1`).get(owner, wk) || !!q("SELECT 1 FROM agents WHERE owner=? AND ts > ? LIMIT 1").get(owner, wk); };

@@ -78,3 +78,23 @@ test("free tools: verified-only listing, founder review, profile + city + world 
     assert.equal((await get(null, `/tools/go/${second.body.id}`)).status, 404, "removed tools stop redirecting");
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("window glow: recent visitors light a district, and it fades over 30 minutes after they leave", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-glow-"));
+  const hub = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  const base = "http://127.0.0.1:" + await hub.listen(0);
+  try {
+    const id = C.newIdentity();
+    await fetch(base + `/v1/profiles/${id.id}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ manifest: C.sign(id, "profile.manifest", { name: "Gil", handle: "gil", boxKey: id.boxPublic }), files: { "index.html": Buffer.from("<html><body>x</body></html>").toString("base64") } }) });
+    hub.db.prepare("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run("k1", id.id, "Shop", 1, "s", new Date().toISOString());
+    const at = minAgo => new Date(Date.now() - minAgo * 60_000).toISOString();
+    const add = (n, minAgo) => { for (let i = 0; i < n; i++) hub.db.prepare("INSERT INTO traffic VALUES (?,?,?,?)").run("k1", at(minAgo), "view", `v${minAgo}-${i}`); };
+    const glow = async () => ((await (await fetch(base + "/v1/live/gil")).json()).districts.Shop || {}).glow || 0;
+    add(20, 1);
+    const busy = await glow(); assert.ok(busy > 0.85, `20 people just now light most windows (${busy})`);
+    hub.db.prepare("DELETE FROM traffic").run(); add(20, 20);
+    const fading = await glow(); assert.ok(fading > 0.2 && fading < busy, `20 minutes later it is dimmer (${fading})`);
+    hub.db.prepare("DELETE FROM traffic").run(); add(20, 31);
+    assert.equal(await glow(), 0, "after 30 minutes the windows are dark");
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});
