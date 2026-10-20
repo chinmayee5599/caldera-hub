@@ -1170,11 +1170,13 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
       const logins = new Set<string>();
       for (const r of q("SELECT login FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
       for (const r of q("SELECT login FROM gh_links WHERE profile_id=?").all(pr.id) as any[]) if (r.login) logins.add(String(r.login).toLowerCase());
-      return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: autoOff(pr) };
+      return { id: pr.id as string, handle: pr.handle as string, logins: [...logins].filter(l => /^[a-z0-9][a-z0-9-]{0,38}$/.test(l)), optOut: autoOff(pr),
+        privateOk: PM.modeFor(pr) === "show" };   // anonymous/hidden: their private work leaves no public trace, so no private-project link
     }),
     kindOf: (a, b) => (q("SELECT COALESCE(kind,'request') k FROM friends WHERE a=? AND b=?").get(a, b) as any)?.k ?? null,
     tombstoned: (a, b) => !!q("SELECT 1 FROM repo_tombstones WHERE a=? AND b=?").get(...[a, b].sort()),
     connect: (a, b, kind, why) => { befriend(a, b, kind, now(), why); worldCache = null; },
+    privateRepos: () => GH.appPrivateRepos(),
     storeCircle: (member, edges) => {
       const t = now(), ins = q("INSERT INTO gh_circle VALUES (?,?,?,?,?) ON CONFLICT(member, login, relation, repo) DO UPDATE SET seen=excluded.seen");
       q("DELETE FROM gh_circle WHERE member=?").run(member);   // each scan is the member's whole circle: replace, don't accumulate

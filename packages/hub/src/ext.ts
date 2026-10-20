@@ -24,7 +24,12 @@ export interface Suggestion { score: number; why: string }
 export interface GhAccount { created_at?: string; public_repos?: number; followers?: number }
 
 // GitHub circle jobs (shared repos, follows, waiting connections)
-export interface RepoMember { id: string; handle: string; logins: string[]; optOut: boolean }
+export interface RepoMember { id: string; handle: string; logins: string[]; optOut: boolean;
+  /** their private-repos setting lets their private work show publicly ("show"): needed for a private-project friendship */
+  privateOk?: boolean }
+/** A private repo the hub's GitHub App can read (any installation), with that installation's short-lived token. Its name
+ *  is never shown publicly: a friendship found here reads "a private project". */
+export interface AppRepo { full: string; token: string }
 export interface RepoPair { a: string; b: string; ah: string; bh: string; repo: string; kind: "repo" | "github"; why: string; action: "connect" | "already" | "tombstone" | "opted-out" }
 export interface CircleEdge { login: string; relation: "following" | "follower" | "repo"; repo?: string }
 export interface RepoDeps {
@@ -35,6 +40,8 @@ export interface RepoDeps {
   tombstoned(a: string, b: string): boolean;
   connect(a: string, b: string, kind: "repo" | "github", why: string): void;
   storeCircle?(member: string, edges: CircleEdge[]): void;
+  /** every private repo across the app's installations (omitted or empty: no private-project matching) */
+  privateRepos?(): Promise<AppRepo[]>;
   pause?: number;
   log?: (...a: unknown[]) => void;
 }
