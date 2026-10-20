@@ -21,7 +21,7 @@ async function login(id) {
 
 before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
-  hub = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir, publicUrl: "" });
+  hub = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir, publicUrl: "" });
   base = "http://127.0.0.1:" + await hub.listen(0);
 });
 after(() => { hub.server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -100,7 +100,7 @@ test("security: reserved handles, sandboxed profile pages, rate limits", async (
 
 test("security: new-profile cap per address", async () => {
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub2-"));
-  const h2 = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir2, limits: { newProfilesPerDay: 2 } }); const b2 = "http://127.0.0.1:" + await h2.listen(0);
+  const h2 = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir2, limits: { newProfilesPerDay: 2 } }); const b2 = "http://127.0.0.1:" + await h2.listen(0);
   const codes = [];
   for (let i = 0; i < 3; i++) { const id = C.newIdentity(); codes.push((await fetch(b2 + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(id, "profile.manifest", { name: "n" + i, handle: "user" + i, boxKey: id.boxPublic })) })).status); }
   assert.deepEqual(codes, [200, 200, 429]);
@@ -154,7 +154,7 @@ test("directory: lists listed profiles, honours listed:false, hides moderated, a
 test("onEvent: signup fires once per new profile, not on updates; delete fires", async () => {
   const fs2 = await import("node:fs"), os2 = await import("node:os"), path2 = await import("node:path");
   const dir2 = fs2.mkdtempSync(path2.join(os2.tmpdir(), "caldera-ev-")), events = [];
-  const h2 = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir2, onEvent: e => events.push(e) });
+  const h2 = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir2, onEvent: e => events.push(e) });
   const b2 = "http://127.0.0.1:" + await h2.listen(0);
   const p2 = (body) => fetch(b2 + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(r => r.status);
   const z = C.newIdentity();
@@ -175,7 +175,7 @@ test("every hosted profile page gets the Caldera bar linking home with the owner
 
 test("gardens: signed garden index, cross-garden backlinks injected into note pages, recent feed", async () => {
   const gdir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-garden-"));
-  const gh = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: gdir, publicUrl: "", garden: true }); const gbase = "http://127.0.0.1:" + await gh.listen(0);
+  const gh = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: gdir, publicUrl: "", garden: true }); const gbase = "http://127.0.0.1:" + await gh.listen(0);
   const post = (p, body) => fetch(gbase + p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json() }));
   const get = (p) => fetch(gbase + p).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
   const g1 = C.newIdentity(), g2 = C.newIdentity();
@@ -200,7 +200,7 @@ test("gardens: signed garden index, cross-garden backlinks injected into note pa
 });
 
 test("owner activity: counts real visits (not bots, not the owner's own view), owner-only, erased with the profile", async () => {
-  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-")); const h3 = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d3, garden: true }); const base = "http://127.0.0.1:" + await h3.listen(0);
+  const d3 = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-")); const h3 = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d3, garden: true }); const base = "http://127.0.0.1:" + await h3.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const get = (p, tk) => fetch(base + p, { headers: tk ? { authorization: "Bearer " + tk } : {} }).then(async r => ({ status: r.status, body: r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text() }));
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -224,7 +224,7 @@ test("owner activity: counts real visits (not bots, not the owner's own view), o
 
 test("private owner address: tailnet login gates it, layer encrypted at rest, public hub never serves it", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "pia" } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "pia" } });
   const base = "http://127.0.0.1:" + await h.listen(0), pbase = "http://127.0.0.1:" + await h.listenPrivate(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -257,7 +257,7 @@ test("private owner address: tailnet login gates it, layer encrypted at rest, pu
 
 test("live traffic: owner registers sites, pixel + secret-signed events count, public sees levels only, private sees numbers", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "rae" } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.tailnet.ts.net:8443", tailnetOwners: { "me@example.com": "rae" } });
   const base = "http://127.0.0.1:" + await h.listen(0), pbase = "http://127.0.0.1:" + await h.listenPrivate(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -302,7 +302,7 @@ test("live traffic: owner registers sites, pixel + secret-signed events count, p
 
 test("agents: owner key from site sync, secret-signed reports, public sees district + state only", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const login = async (id) => { const { body } = await post("/v1/auth/challenge", { id: id.id }); return (await post("/v1/auth/verify", C.sign(id, "message", { nonce: body.nonce }))).body.token; };
@@ -353,7 +353,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
     return J({ message: "not mocked " + u }, 404);
   };
   // the sign-up gate is an open-core hook: this test plugs in its own (empty accounts wait)
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: me => (Number(me.public_repos) || 0) + (Number(me.followers) || 0) > 0 } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: me => (Number(me.public_repos) || 0) + (Number(me.followers) || 0) > 0 } });
   const base = "http://127.0.0.1:" + await h.listen(0);
   // someone already owns @mike
   const mk = C.newIdentity(); await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(mk, "profile.manifest", { name: "M", handle: "mike", boxKey: mk.boxPublic })) });
@@ -416,7 +416,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
 
 test("an older Caldera can't overwrite what a newer one published (bundle and private layer)", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-hub-"));
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.ts.net:8443", tailnetOwners: { "me@x.com": "vee" } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, privateUrl: "https://box.ts.net:8443", tailnetOwners: { "me@x.com": "vee" } });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const post = (p, b, tk) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...(tk ? { authorization: "Bearer " + tk } : {}) }, body: JSON.stringify(b) }).then(async r => ({ status: r.status, body: await r.json() }));
   const vee = C.newIdentity(), man = () => C.sign(vee, "profile.manifest", { name: "Vee", handle: "vee", boxKey: vee.boxPublic });
@@ -469,7 +469,7 @@ test("a new GitHub repo is on the map by the next page load (hosted members)", a
     if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
     return J({ message: "not mocked " + u }, 404);
   };
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" } });
   const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];
@@ -517,7 +517,7 @@ test("private repos from an organization's install show as padlocks (no redirect
     if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
     return J({ message: "not mocked " + u }, 404);
   };
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, ext: { ...publicExt, githubAccountOk: () => true } });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0" } });
   const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];

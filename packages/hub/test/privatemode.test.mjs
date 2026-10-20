@@ -17,7 +17,7 @@ const lockedIn = c => c.districts.flatMap(d => d.repos).filter(r => r.locked);
 
 async function hubWithRae() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-pm-"));
-  const h = createHub({ dataDir: d });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  dataDir: d });
   const base = "http://127.0.0.1:" + await h.listen(0);
   const rae = C.newIdentity();
   const r = await fetch(`${base}/v1/profiles/${rae.id}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ manifest: C.sign(rae, "profile.manifest", { name: "Rae", handle: "rae", boxKey: rae.boxPublic }), files }) });
@@ -71,4 +71,32 @@ test("members from before the setting keep padlocks until they choose, and are a
   h.privateModes.set(rae.id, "anonymous");
   assert.equal(h.privateModes.chosen(h.db.prepare("SELECT * FROM profiles WHERE id=?").get(rae.id)), "anonymous");
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("names are the default for new members; existing members get a one-tap offer that Obsidian also picks up", async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-pm-named-"));
+  const hub = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  const base = "http://127.0.0.1:" + await hub.listen(0);
+  const post = (p, body, h = {}) => fetch(base + p, { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+  try {
+    const old = C.newIdentity(), fresh = C.newIdentity();
+    for (const [h, id] of [["rae", old], ["neo", fresh]]) await post(`/v1/profiles/${id.id}/bundle`, { manifest: C.sign(id, "profile.manifest", { name: h, handle: h, boxKey: id.boxPublic }), files });
+    hub.db.prepare("UPDATE profiles SET created=? WHERE handle='rae'").run("2026-01-01T00:00:00.000Z");
+    const PM = hub.privateModes, pr = h => hub.db.prepare("SELECT * FROM profiles WHERE handle=?").get(h);
+    assert.equal(PM.modeFor(pr("rae")), "show", "existing members keep padlocks until they choose");
+    assert.equal(PM.modeFor(pr("neo")), "named", "new members show private repos by name by default");
+
+    assert.equal(hub.offerNamed(), 1, "only the existing member with padlocks is offered names");
+    assert.equal(hub.offerNamed(), 0, "once each");
+    const al = hub.db.prepare("SELECT * FROM alerts WHERE target=? AND dkey='private-named-offer'").get(old.id);
+    assert.match(al.cta_url, /^http:\/\/hub\.test\/v1\/private-mode\/named\?t=/);
+    assert.equal((await fetch(base + "/v1/private-mode/named?t=forged")).status, 400);
+    const ok = await fetch(al.cta_url.replace("http://hub.test", base));
+    assert.equal(ok.status, 200); assert.match(await ok.text(), /show by name/);
+    assert.equal(PM.modeFor(pr("rae")), "named");
+    // Obsidian reads the web choice from its alerts poll
+    const { body: ch } = await post("/v1/auth/challenge", { id: old.id }), tok = (await post("/v1/auth/verify", C.sign(old, "message", { nonce: ch.nonce }))).body.token;
+    const r = await (await fetch(base + `/v1/owner/${old.id}/alerts`, { headers: { authorization: "Bearer " + tok } })).json();
+    assert.equal(r.privateRepos.mode, "named"); assert.ok(r.privateRepos.ts);
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });

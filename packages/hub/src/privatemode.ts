@@ -12,13 +12,17 @@ import { privateModeOf, type PrivateMode } from "../../../../caldera/packages/pl
 
 type Q = (sql: string) => { get: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown[]; run: (...a: unknown[]) => unknown };
 
-export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinceOverride?: string) {
+export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinceOverride?: string, namedSinceOverride?: string) {
   q("CREATE TABLE IF NOT EXISTS hub_meta (k TEXT PRIMARY KEY, v TEXT)").run();
   q("CREATE TABLE IF NOT EXISTS private_modes (owner TEXT PRIMARY KEY, mode TEXT, ts TEXT)").run();
   q("CREATE TABLE IF NOT EXISTS private_mode_prompted (owner TEXT PRIMARY KEY, ts TEXT)").run();
   let since = (q("SELECT v FROM hub_meta WHERE k='private_mode_since'").get() as any)?.v as string | undefined;
   if (sinceOverride) since = sinceOverride;   // tests: treat everyone as joined before (or after) the setting existed
   else if (!since) { since = nowIso(); q("INSERT OR REPLACE INTO hub_meta VALUES ('private_mode_since', ?)").run(since); }
+  // members who join from here on show private repos by name unless they choose otherwise (Mike, 2026-10-20)
+  let namedSince = (q("SELECT v FROM hub_meta WHERE k='private_named_since'").get() as any)?.v as string | undefined;
+  if (namedSinceOverride) namedSince = namedSinceOverride;   // tests: when names became the default
+  else if (!namedSince) { namedSince = nowIso(); q("INSERT OR REPLACE INTO hub_meta VALUES ('private_named_since', ?)").run(namedSince); }
   const bodyOf = (pr: any) => { try { return JSON.parse(pr.manifest).body || {}; } catch { return {}; } };
 
   /** the member's explicit choice, if they made one (web or manifest, whichever is newer) */
@@ -32,8 +36,11 @@ export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinc
   return {
     since,
     chosen,
-    /** what visitors get: the choice, else "show" */
-    modeFor(pr: any): PrivateMode { return chosen(pr) || "show"; },
+    /** what visitors get: the choice, else "named" for members who joined after names became the default, else "show" */
+    modeFor(pr: any): PrivateMode { return chosen(pr) || (String(pr?.created || "") > String(namedSince) ? "named" : "show"); },
+    namedSince: () => namedSince as string,
+    /** the web choice and when it was made (Obsidian adopts a newer web choice) */
+    web(owner: string): { mode: PrivateMode; ts: string } | null { const r = q("SELECT mode, ts FROM private_modes WHERE owner=?").get(owner) as any; return r && privateModeOf(r.mode) ? { mode: r.mode, ts: r.ts } : null; },
     set(owner: string, mode: unknown) { const m = privateModeOf(mode); if (!m) return false; q("INSERT OR REPLACE INTO private_modes VALUES (?,?,?)").run(owner, m, nowIso()); return true; },
     /** the one-time "choose how your private repos show" prompt: true the first time only */
     promptOnce(owner: string) { if (q("SELECT 1 FROM private_mode_prompted WHERE owner=?").get(owner)) return false; q("INSERT INTO private_mode_prompted VALUES (?,?)").run(owner, nowIso()); return true; },

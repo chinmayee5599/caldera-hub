@@ -20,7 +20,7 @@ const CITY = `<a class="city-peek" href="city.html"><svg viewBox="-10 -20 300 20
 
 before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-growth-"));
-  hub = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir, publicUrl: "http://hub.test", limits: { newProfilesPerDay: 100, writesPerMinute: 1000, perMinute: 5000 }, email: { send: async m => { sent.push(m); } } });
+  hub = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: dir, publicUrl: "http://hub.test", limits: { newProfilesPerDay: 100, writesPerMinute: 1000, perMinute: 5000 }, email: { send: async m => { sent.push(m); } } });
   base = "http://127.0.0.1:" + await hub.listen(0);
   const files = { "index.html": Buffer.from(`<html><head><title>Mike</title></head><body>${CITY}</body></html>`).toString("base64") };
   await post(`/v1/profiles/${ids.mike.id}/bundle`, { manifest: man("mike", { headline: "Building AI agents and Obsidian plugins", topics: [["ai", 5], ["typescript", 3]], groups: ["producthunt"] }), files });
@@ -143,7 +143,7 @@ test("GitHub sign-up from an invite + group: referral, friend request to the inv
     if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"));
     if (u.includes("/repos?") || u.includes("/events")) return J([]);
     return J({}, 404); };
-  const h = createHub({ privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, limits: { newProfilesPerDay: 100 }, email: { send: async m => { mails.push(m); } } });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  privateModeSince: "2999-01-01T00:00:00Z", dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, limits: { newProfilesPerDay: 100 }, email: { send: async m => { mails.push(m); } } });
   const b = "http://127.0.0.1:" + await h.listen(0), mk = C.newIdentity();
   await fetch(b + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(mk, "profile.manifest", { name: "Mike", handle: "mike", boxKey: mk.boxPublic })) });
   const a = await fetch(b + "/auth/github?invite=mike&group=producthunt", { redirect: "manual" });

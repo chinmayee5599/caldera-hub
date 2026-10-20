@@ -328,7 +328,7 @@ export function createHub(opts: HubOptions) {
   const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
   // how each member's private repos show on their public city (privatemode.ts); enforced on every public page and feed below
-  const PM = privateModes(q as any, undefined, (opts as any).privateModeSince);
+  const PM = privateModes(q as any, undefined, (opts as any).privateModeSince, (opts as any).privateNamedSince);
   const alerts = alertsStore(q, crypto.createHash("sha256").update(PRIV_KEY).update("alerts").digest());
   const now = () => new Date().toISOString();
 
@@ -2086,6 +2086,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         return json(res, 200, { url: ownerLink(m[1]), expires_in: 300 });
       }
       // alerts: the bell's "seen" beacon (sandboxed pages carry no cookies, so a signed per-member token), and the plugin's feed
+      if (req.method === "GET" && p === "/v1/private-mode/named") {
+        const r = namedOneTap(String(url.searchParams.get("t") || ""));
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" });
+        return res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Private repos - Caldera</title></head><body><main class="wrap" style="max-width:640px;margin:0 auto;padding:40px 20px">`
+          + (r.ok ? `<h1>Done: your private repos show by name</h1><p class="lede">${r.hosted ? "Your city is rebuilding now; it's ready in a minute." : "Your city updates the next time Obsidian is open (within a few minutes)."} Code, links and descriptions stay private.</p><p><a href="/@${r.handle}/city.html">See your city</a> &middot; <a href="/settings#private-repos">Change it or keep some repos padlocked</a></p>`
+            : `<h1>That link has expired</h1><p class="lede">Choose how your private repos show in <a href="/settings#private-repos">Settings</a>.</p>`) + `</main></body></html>`));
+      }
       if (req.method === "GET" && p === "/v1/alerts/seen") {
         const tk = alerts.checkSeen(url.searchParams.get("t")); if (tk) alerts.markSeenUpTo(tk.owner, alertKind(tk.owner), tk.upTo);
         res.writeHead(200, { "content-type": "image/gif", "cache-control": "no-store", "cross-origin-resource-policy": "cross-origin" }); return res.end(PIXEL);
@@ -2095,7 +2102,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (authed(req) !== m[1]) return json(res, 401, { error: "sign in as this profile" });
         if (req.method === "POST" && m[2]) { const { ids } = await readBody(req) as { ids?: unknown }; alerts.markRead(m[1], Array.isArray(ids) ? ids.map(String) : []); return json(res, 200, { ok: true }); }
         const rows = alerts.forOwner(m[1], alertKind(m[1]), 30);
-        return json(res, 200, { unread: rows.filter(r => !r.read).length, url: `${PUB()}/alerts`, alerts: rows.map(r => ({ id: r.id, title: r.title, body: r.body, cta_label: r.cta_label, cta_url: r.cta_url, copy_label: r.copy_label, has_copy: !!r.copy_text, pinned: !!r.pinned, ts: r.ts, read: !!r.read })) });
+        return json(res, 200, { privateRepos: PM.web(m[1]) || undefined, unread: rows.filter(r => !r.read).length, url: `${PUB()}/alerts`, alerts: rows.map(r => ({ id: r.id, title: r.title, body: r.body, cta_label: r.cta_label, cta_url: r.cta_url, copy_label: r.copy_label, has_copy: !!r.copy_text, pinned: !!r.pinned, ts: r.ts, read: !!r.read })) });
       }
       if (req.method === "GET" && p === "/v1/own") {
         const c = url.searchParams.get("c") || "", row = c ? q("SELECT * FROM owner_links WHERE code_hash=?").get(hashToken(c)) as any : null;
@@ -2541,6 +2548,30 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
 
   // members who joined before the private-repos setting existed keep padlocked buildings until they choose; each one with
   // private work on their public city is asked once (a personal alert pointing at Settings > Privacy)
+  /** One tap from an alert: show my private repos by name. The link carries a signed, member-only token (30 days). */
+  const namedLink = (owner: string) => `${PUB()}/v1/private-mode/named?t=${encodeURIComponent(actToken(owner, "pm-named", 30 * DAY))}`;
+  function namedOneTap(t: string): { ok: boolean; handle?: string; hosted?: boolean } {
+    const a = readAct(t); if (!a || a.h !== "pm-named") return { ok: false };
+    const pr = profile(a.v); if (!pr?.handle || modOf(pr.handle, pr.id)) return { ok: false };
+    PM.set(pr.id, "named"); worldCache = null;
+    const acct = q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(pr.id) as any;
+    if (acct) void GH.build(acct).catch((e: any) => console.error("named rebuild", pr.handle, e?.message));   // GitHub pages rebuild now; Obsidian picks it up on its next check
+    try { alerts.markRead(pr.id, (q("SELECT id FROM alerts WHERE target=? AND dkey='private-named-offer'").all(pr.id) as any[]).map(r => r.id)); } catch { /* fine */ }
+    return { ok: true, handle: pr.handle, hosted: !!acct };
+  }
+  /** Members with padlocked private repos who haven't chosen names yet: one alert offering it in one tap (once each). */
+  function offerNamed() {
+    let n = 0;
+    for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]) {
+      if (modOf(pr.handle, pr.id) || PM.modeFor(pr) === "named") continue;
+      if (q("SELECT 1 FROM alerts WHERE target=? AND dkey='private-named-offer'").get(pr.id)) continue;
+      const c = publicCityOf(pr.handle); if (!c || !c.districts.some((d: any) => (d.repos || []).some((r: any) => r.locked))) continue;
+      alerts.post({ title: "Show your private repos by name?", target: pr.id, key: "private-named-offer", by: "privacy", ctaLabel: "Show them by name", ctaUrl: namedLink(pr.id),
+        body: "Your city shows private repos as grey padlocked buildings. With names on, it looks like your private view: each repo's name, language colour and activity, in its real project. Nobody can open the code, links or descriptions.\n\nOne tap turns it on. You can switch back or keep chosen repos padlocked any time in Settings > Private repos." });
+      n++;
+    }
+    return n;
+  }
   function promptPrivateChoice() {
     for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created < ?").all(PM.since) as any[]) {
       if (PM.chosen(pr) || modOf(pr.handle, pr.id)) continue;
@@ -2551,8 +2582,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     }
   }
   setTimeout(() => { try { promptPrivateChoice(); } catch (e: any) { console.error("private repos prompt", e?.message); } }, 15_000).unref?.();
+  setTimeout(() => { try { const n = offerNamed(); if (n) console.log("offered named private repos to", n); } catch (e: any) { console.error("named offer", e?.message); } }, 20_000).unref?.();
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, guide: GUIDE, digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, guide: GUIDE, offerNamed: () => offerNamed(), digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
