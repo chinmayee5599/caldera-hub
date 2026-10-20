@@ -86,7 +86,9 @@ test("Power up your map: the World page and every city page carry one copyable p
     assert.match(prompt, /AI agents on the map/); assert.match(prompt, /Live visitors on your city/); assert.match(prompt, /caldera\(&#39;signup&#39;\)/);
     assert.match(prompt, /http:\/\/hub\.test\/settings/); assert.doesNotMatch(prompt, /"secret"\s*:|data-site="[a-z0-9]{8,}"/i, "no member's keys in a public prompt");
     const city = await (await fetch(base + "/@pat/city.html", { headers: { "user-agent": "Mozilla/5.0" } })).text();
-    assert.match(city, /<details class="mp mp-float" id="power-up">[\s\S]*Power up this map/, "a pill on city pages");
+    assert.match(city, /<details class="mp mp-float" id="power-up">[\s\S]*Power up this map/, "a page without <main>: the pinned pill");
+    const city2 = await (await fetch(base + "/@pat/city.html", { headers: { "user-agent": "Mozilla/5.0" } })).text();
+    assert.equal(city2, city);
     assert.equal((city.match(/id="power-up"/g) || []).length, 1, "once");
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });

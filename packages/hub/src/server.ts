@@ -66,10 +66,13 @@ function withAppHead(html: string): string {
   const tags = /apple-touch-icon/.test(html) ? APP_HEAD.replace(/<link rel="apple-touch-icon"[^>]*>/, "") : APP_HEAD;   // keep a page's own icon
   return out.replace(/<\/head>/i, () => tags + "</head>");
 }
-/** City pages: the "Power up this map" pill (expands to a prompt anyone hands their AI), pinned bottom-left. */
+/** City pages: the "Power up your map" panel (expands to a prompt anyone hands their AI) under the map. */
 let MAP_HUB = "https://caldera.social";
 function withMapPanel(html: string, handle?: string): string {
   if (html.includes('id="power-up"')) return html;
+  // at the end of the page's main content, under the map; a page without one gets the pinned pill
+  const i = html.lastIndexOf("</main>");
+  if (i >= 0) return html.slice(0, i) + `<div style="margin:24px 0 8px">${mapPanel(MAP_HUB, { handle })}</div>` + html.slice(i);
   const panel = mapPanel(MAP_HUB, { floating: true, handle });
   return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, () => panel + "</body>") : html + panel;
 }
