@@ -72,7 +72,7 @@ function withMapPanel(html: string, handle?: string): string {
   if (html.includes('id="power-up"')) return html;
   // at the end of the page's main content, under the map; a page without one gets the pinned pill
   const i = html.lastIndexOf("</main>");
-  if (i >= 0) return html.slice(0, i) + `<style>.mp-wrap{margin:8px 32px 24px}@media (max-width:760px){.mp-wrap{margin:8px 16px 24px}}</style><div class="mp-wrap">${mapPanel(MAP_HUB, { handle })}</div>` + html.slice(i);
+  if (i >= 0) return html.slice(0, i) + `<style>.mp-wrap{margin:8px 20px 24px}@media (max-width:760px){.mp-wrap{margin:8px 16px 24px}}</style><div class="mp-wrap">${mapPanel(MAP_HUB, { handle })}</div>` + html.slice(i);
   const panel = mapPanel(MAP_HUB, { floating: true, handle });
   return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, () => panel + "</body>") : html + panel;
 }
