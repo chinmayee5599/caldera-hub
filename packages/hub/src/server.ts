@@ -1731,6 +1731,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   // Groups under Messages: a few hub-wide topics the founder sets; members post and reply in threads (badge only, no email)
   CHAT = chat({ q, now, profile, byHandle, body, modOf, memberOf, sameOrigin, readBody, json, tooMany, founder: opts.founder ? opts.founder.toLowerCase() : null,
     canPost: (id: string) => !q("SELECT 1 FROM msg_bans WHERE member=?").get(id),
+    elsewhere: (id: string) => ({ dms: MSG ? MSG.unreadFor(id) : 0, feed: FEED ? FEED.newFor(id) : 0 }),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "groups" }); },
     ui: { ...MSG.ui, shell: (t: string, i: string, cls: string) => MSG!.ui.shell(t, i, cls, CHAT_CSS, CHAT_JS) } });
   MSG.setGroups(id => CHAT ? CHAT.unreadTotal(id) : 0);

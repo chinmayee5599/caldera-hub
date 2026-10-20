@@ -20,6 +20,8 @@ export interface ChatCtx {
   founder: string | null;
   /** may this member post? (not banned from messaging) */
   canPost: (id: string) => boolean;
+  /** what's new elsewhere for this member, shown as alerts on the Groups home (unread DMs, new feed items) */
+  elsewhere?: (memberId: string) => { dms: number; feed: number };
   /** an alert in a member's bell (reports go to the founder) */
   notify?: (memberId: string, a: { title: string; body: string; ctaLabel?: string; ctaUrl?: string; key?: string }) => void;
   /** the Messages page shell and pieces, shared with direct messages */
@@ -141,6 +143,41 @@ export function chat(c: ChatCtx) {
     return `<section class="ms-list" aria-label="Groups">${c.ui.listHead(me, "groups")}`
       + (rows || `<div class="ms-empty"><b>No groups yet</b><span>${isFounder(me) ? "Make the first one below." : "Groups will show up here."}</span></div>`) + admin + `</section>`;
   }
+  /** The Groups home: what others posted (posts and replies) in every group since you last opened it, newest first, with
+   *  alerts for new direct messages and feed items. Opening it doesn't mark anything read: that happens per group. */
+  function newPosts(me: string, limit = 40) {
+    const out: (Post & { g: Group })[] = [];
+    for (const g of groups()) for (const p of q("SELECT * FROM chat_posts WHERE grp=? AND author<>? AND status='ok' AND ts > ? ORDER BY ts DESC LIMIT ?").all(g.id, me, readTs(me, g), limit) as Post[]) out.push({ ...p, g });
+    return out.sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, limit);
+  }
+  function recentPosts(limit = 12) {
+    const gs = new Map(groups().map(g => [g.id, g]));
+    return (q("SELECT * FROM chat_posts WHERE status='ok' ORDER BY ts DESC LIMIT ?").all(limit * 3) as Post[]).filter(p => gs.has(p.grp)).slice(0, limit).map(p => ({ ...p, g: gs.get(p.grp)! }));
+  }
+  const snippet = (t: string, n = 240) => { const x = String(t || "").replace(/\s+/g, " ").trim(); return esc(x.length > n ? x.slice(0, n - 1) + "\u2026" : x); };
+  function homeItem(me: string, p: Post & { g: Group }, isNew: boolean) {
+    const a = who(p.author); if (!a) return "";
+    const root = p.parent ? postOf(p.parent) : undefined;
+    const href = p.parent ? `/messages/groups/${p.g.id}/${p.parent}#p-${p.id}` : `/messages/groups/${p.g.id}#p-${p.id}`;
+    const ctx = root ? `replied in a thread${root.status === "ok" && who(root.author) ? `: <i>${snippet(root.body, 70)}</i>` : ""}` : "posted";
+    return `<a class="cg-h-item${isNew ? " is-new" : ""}" href="${href}">${avatarHtml({ avatar: a.avatar, name: a.name, handle: a.handle }, 36)}`
+      + `<span class="cg-m"><span class="cg-meta"><b>${esc(a.name)}</b><span class="ms-mut">${ctx}</span></span>`
+      + `<span class="cg-h-text">${snippet(p.body)}</span>`
+      + `<span class="cg-h-foot"><span class="cg-chip"># ${esc(p.g.name)}</span><time datetime="${esc(p.ts)}">${esc(ago(p.ts))}</time></span></span></a>`;
+  }
+  function homeView(me: string) {
+    const fresh = newPosts(me), ex = c.elsewhere ? c.elsewhere(me) : { dms: 0, feed: 0 };
+    const n = unreadTotal(me), alerts: string[] = [];
+    if (ex.dms) alerts.push(`<a class="cg-alert dm" href="/messages"><span class="cg-alert-n">${ex.dms > 99 ? "99+" : ex.dms}</span><span><b>Unread direct ${ex.dms === 1 ? "message" : "messages"}</b><span>Someone wrote to you.</span></span><span class="cg-go">Open</span></a>`);
+    if (ex.feed) alerts.push(`<a class="cg-alert feed" href="/feed"><span class="cg-alert-n">${ex.feed > 99 ? "99+" : ex.feed}</span><span><b>New in your feed</b><span>Posts and activity from people on Caldera.</span></span><span class="cg-go">Open</span></a>`);
+    const body = fresh.length
+      ? `<h2 class="cg-h-h">New posts <span class="cg-n">${n > 99 ? "99+" : n}</span></h2><div class="cg-h-list">${fresh.map(p => homeItem(me, p, true)).join("")}</div>`
+      : `<div class="cg-caught"><b>You're all caught up</b><span>Nothing new in your groups since your last visit.</span></div>`
+        + (() => { const r = recentPosts(); return r.length ? `<h2 class="cg-h-h">Recent in groups</h2><div class="cg-h-list">${r.map(p => homeItem(me, p, false)).join("")}</div>` : ""; })();
+    return `<section class="ms-thread cg-home" aria-label="What's new" data-unread="${n}"><div class="ms-th-h"><span class="ms-th-who"><b>What's new</b><span class="ms-mut">New posts and replies in your groups since your last visit</span></span></div>`
+      + `<div class="cg-h-body">${alerts.length ? `<div class="cg-alerts">${alerts.join("")}</div>` : ""}${body}</div>`
+      + `<div class="cg-live" hidden><button type="button" class="ms-btn small" data-reload>New posts &middot; Show</button></div></section>`;
+  }
   const backTo = (href: string, label: string) => `<a class="ms-back" href="${href}" aria-label="${esc(label)}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>`;
   function groupView(me: string, g: Group) {
     const since = readTs(me, g);
@@ -172,7 +209,7 @@ export function chat(c: ChatCtx) {
     if (req.method === "GET" && m) {
       if (!me) { res.writeHead(302, { location: `/signin?back=${encodeURIComponent(p.replace(/\/$/, ""))}`, "cache-control": "no-store" }); res.end(); return true; }
       const slug = m[1] || "", g = slug ? groupOf(slug) : undefined;
-      if (!slug) { c.ui.page(res, 200, c.ui.shell("Groups", groupsList(me, null) + `<section class="ms-thread ms-none"><div class="ms-empty"><b>Pick a group</b><span>Each group is one topic. Post in it, and reply in threads under any post.</span></div></section>`, "is-list")); return true; }
+      if (!slug) { c.ui.page(res, 200, c.ui.shell("Groups", groupsList(me, null) + homeView(me), "is-list cg-is-home")); return true; }
       if (!g || (g.archived && !isFounder(me))) { c.ui.page(res, 404, c.ui.shell("Groups", groupsList(me, null) + `<section class="ms-thread"><div class="ms-empty"><b>That group isn't here</b><span>It may have been archived.</span></div></section>`, "is-thread")); return true; }
       let view: string;
       if (m[2]) { const root = postOf(m[2]); if (!root || root.grp !== g.id || root.parent) { res.writeHead(302, { location: `/messages/groups/${g.id}` }); res.end(); return true; } view = threadView(me, g, root); }
@@ -234,9 +271,26 @@ export const CHAT_CSS = `.cg-row{align-items:center}.cg-hash{flex:none;width:44p
 .cg-more>summary{width:30px;height:30px;font-size:16px;border:0}.cg-p:not(:hover) .cg-more:not([open])>summary{opacity:.45}
 .cg-div{display:flex;align-items:center;gap:10px;margin:10px 0;color:#B9A6FF;font-size:12.5px;font-weight:600}.cg-div:before,.cg-div:after{content:"";flex:1;height:1px;background:#4A3A80}.cg-div.plain{color:var(--text-muted,#8a8a93);font-weight:500}.cg-div.plain:before,.cg-div.plain:after{background:var(--line,#2a2a2e)}
 .cg-root .cg-p{background:var(--bg-raised,#232327)}.cg-root .cg-text{font-size:16px}
-@media (max-width:760px){.cg-p{padding:10px 8px}.cg-more>summary{opacity:1!important}}`;
+@media (max-width:760px){.cg-p{padding:10px 8px}.cg-more>summary{opacity:1!important}}
+.cg-home .ms-th-h{border-bottom:1px solid var(--line,#2a2a2e)}.cg-h-body{padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px}
+.cg-alerts{display:flex;flex-direction:column;gap:8px}.cg-alert{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid #4A3A80;background:rgba(139,108,246,.08);color:inherit;text-decoration:none}.cg-alert:hover{background:rgba(139,108,246,.14);text-decoration:none}
+.cg-alert.dm{border-color:#6B2E2E;background:rgba(240,113,106,.08)}.cg-alert.dm:hover{background:rgba(240,113,106,.14)}
+.cg-alert>span:nth-child(2){flex:1;min-width:0;display:flex;flex-direction:column}.cg-alert b{color:var(--text-strong,#f2f2f5);font-size:14.5px}.cg-alert>span:nth-child(2) span{font-size:13px;color:var(--text-muted,#8a8a93)}
+.cg-alert-n{flex:none;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#8B6CF6;color:#fff;font:600 13px/30px 'IBM Plex Sans',Arial,sans-serif;text-align:center}.cg-alert.dm .cg-alert-n{background:#E5484D}
+.cg-go{flex:none;font-size:13px;font-weight:600;color:var(--accent-text,#b39dfa)}.cg-alert.dm .cg-go{color:#f0716a}
+.cg-h-h{margin:6px 0 0;display:flex;align-items:center;gap:8px;font:600 13px var(--font-body,'IBM Plex Sans',Arial,sans-serif);letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted,#8a8a93)}
+.cg-h-list{display:flex;flex-direction:column;gap:2px}.cg-h-item{display:flex;gap:12px;padding:12px;border-radius:12px;color:inherit;text-decoration:none}.cg-h-item:hover{background:var(--bg-raised,#232327);text-decoration:none}.cg-h-item.is-new{background:rgba(139,108,246,.07)}.cg-h-item.is-new:hover{background:rgba(139,108,246,.13)}
+.cg-h-item .cg-meta b{color:var(--text-strong,#f2f2f5)}.cg-h-item .cg-meta i{font-style:normal;color:var(--text,#dadadf)}
+.cg-h-text{font-size:14.5px;line-height:1.5;color:var(--text,#dadadf);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.cg-h-foot{display:flex;align-items:center;gap:10px;margin-top:2px}.cg-h-foot time{font-size:12px;color:var(--text-muted,#8a8a93)}.cg-chip{font:500 12px var(--font-mono,'IBM Plex Mono',monospace);color:var(--accent-text,#b39dfa);background:var(--accent-soft,rgba(139,108,246,.12));padding:2px 8px;border-radius:999px}
+.cg-caught{padding:18px;border:1px dashed var(--line-strong,#3a3a40);border-radius:14px;display:flex;flex-direction:column;gap:4px;text-align:center}.cg-caught b{color:var(--text-strong,#f2f2f5)}.cg-caught span{font-size:13.5px;color:var(--text-muted,#8a8a93)}
+.cg-live[hidden]{display:none}.cg-live{position:sticky;bottom:16px;display:flex;justify-content:center;pointer-events:none}.cg-live .ms-btn{pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+@media (max-width:760px){.ms.cg-is-home{flex-direction:column}.ms.cg-is-home .ms-list{padding-bottom:0;border-bottom:1px solid var(--line,#2a2a2e)}.cg-h-body{padding:12px 12px 24px}.cg-home .ms-th-h{padding:12px 16px}.cg-live{bottom:calc(76px + env(safe-area-inset-bottom,0px))}}`;
 
-export const CHAT_JS = `(function(){var V=document.querySelector('.cg-view');var box=document.getElementById('ms-msgs');
+export const CHAT_JS = `(function(){var H=document.querySelector('.cg-home');if(H){var base=+H.getAttribute('data-unread')||0,lv=H.querySelector('.cg-live');lv.querySelector('[data-reload]').addEventListener('click',function(){location.reload()});
+function chk(){if(document.hidden)return;fetch('/v1/groups',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.unread>base)lv.hidden=false},function(){})}
+setInterval(chk,30000);document.addEventListener('visibilitychange',chk)}})();
+(function(){var V=document.querySelector('.cg-view');var box=document.getElementById('ms-msgs');
 function tip(m){var t=document.createElement('div');t.className='ms-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
 function post(u,o){return fetch(u,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera. Check your connection.'}}})}
 document.querySelectorAll('form[data-save]').forEach(function(f){f.addEventListener('submit',function(e){e.preventDefault();var id=f.getAttribute('data-save');post('/v1/groups',{id:id||undefined,name:f.name.value,about:f.about.value}).then(function(x){if(!x.ok){tip(x.j.error||'Could not save.');return}location.href='/messages/groups/'+x.j.id})})});

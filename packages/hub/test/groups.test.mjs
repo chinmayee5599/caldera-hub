@@ -92,3 +92,26 @@ test("groups: only the founder makes them; members post, reply in threads, and u
     assert.equal(S.mails.length, 0, "groups never email");
   } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
 });
+
+test("groups home: shows new posts and replies across groups, with DM/feed alerts, without marking them read", async () => {
+  const S = await setup();
+  try {
+    await S.post("/v1/groups", { name: "Feedback on Caldera" }, S.as("ana"));
+    await S.post("/v1/groups", { name: "AI model discussion" }, S.as("ana"));
+    let h = await (await S.get("cy", "/messages/groups")).text();
+    assert.match(h, /You're all caught up/);
+    const p1 = await S.post("/v1/groups/feedback-on-caldera/post", { text: "Labels look great now" }, S.as("bo"));
+    await S.post("/v1/groups/ai-model-discussion/post", { text: "Opus vs Sonnet for agents?" }, S.as("ana"));
+    await S.post("/v1/groups/feedback-on-caldera/post", { text: "Agreed, much cleaner", parent: p1.body.id }, S.as("ana"));
+    h = await (await S.get("cy", "/messages/groups")).text();
+    assert.match(h, /New posts <span class="cg-n">3<\/span>/);
+    assert.match(h, /Opus vs Sonnet for agents\?/); assert.match(h, /replied in a thread: <i>Labels look great now<\/i>/);
+    assert.match(h, new RegExp(`href="/messages/groups/feedback-on-caldera/${p1.body.id}#p-`), "a reply links into its thread");
+    assert.match(h, /data-unread="3"/);
+    assert.equal((await S.groupsOf("cy")).unread, 3, "the home page doesn't mark anything read");
+    // opening one group clears just that group from the home page
+    await S.get("cy", "/messages/groups/ai-model-discussion");
+    h = await (await S.get("cy", "/messages/groups")).text();
+    assert.match(h, /New posts <span class="cg-n">2<\/span>/); assert.doesNotMatch(h, /cg-h-item is-new[^>]*ai-model/);
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
