@@ -124,7 +124,7 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-strip{padding:8px 44px 8px 12px;font-size:13.5px}.ch-right{gap:6px;margin-left:auto}
 .ch-menu{display:none}.ch .ch-msgs{display:none}.ch-brand span{display:inline}
 .ch-brand{min-height:44px}.ch-icon{width:44px;height:44px}.ch-acct{height:44px}.ch-av{width:34px;height:34px}
-.ch-text{display:inline-flex;align-items:center;min-height:44px;padding:0 8px}.ch-cta{height:44px;padding:0 16px}.ch-seg a{height:38px}
+.ch-text{display:inline-flex;align-items:center;min-height:44px;padding:0 8px}.ch-cta{height:44px;padding:0 16px}.ch-seg a{height:38px;min-width:44px;justify-content:center}
 .ch-bn{display:grid}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 .fd-tip,.ms-tip,.pc-tip{bottom:calc(76px + env(safe-area-inset-bottom,0px))!important}
 body:has(.ms.is-thread) .ch-bn{display:none}body:has(.ms.is-thread){padding-bottom:0}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
