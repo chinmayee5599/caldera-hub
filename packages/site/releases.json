@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.28.1",
+      "date": "2026-10-20",
+      "title": "Repo names by default",
+      "items": [
+        "New members show private repos by name on their city (never the code, links or descriptions). Change it any time under Private repos.",
+        "Choose on caldera.social and Obsidian follows: one tap from the alert turns names on everywhere."
+      ]
+    },
+    {
       "version": "0.28.0",
       "date": "2026-10-20",
       "title": "Show private repos by name",
