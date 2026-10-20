@@ -790,7 +790,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     const per = (q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]).filter(listed)
       .filter(pr => sitesOf(pr.id).length || q("SELECT 1 FROM agents WHERE owner=? LIMIT 1").get(pr.id))
       .map(pr => ({ handle: pr.handle as string, live: scrubPrivateLive(liveStats(pr.id, false, since), PM.modeFor(pr)) }));
-    return { ...foldLive(per, now()), lit: GIFTS ? GIFTS.litNow() : {} };
+    return { ...foldLive(per, now()), lit: GIFTS ? GIFTS.litNow() : {}, members: worldNow().members.length };   // members: the World page rebuilds when someone joins
   }
   /** THE site header (logo, How it works, People, World, Guide, What's new, FAQ, Sign in, Get started), taken from the site's
    *  guide.html so hub-rendered pages match the static ones; current = the nav href to mark (e.g. "/world"). */
