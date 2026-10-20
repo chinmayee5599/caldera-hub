@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.28.2",
+      "date": "2026-10-20",
+      "title": "Lights follow your visitors",
+      "items": [
+        "The more people on your site right now, the more windows light up in that district. As they leave, the lights dim to dark over about 30 minutes."
+      ]
+    },
+    {
       "version": "0.28.1",
       "date": "2026-10-20",
       "title": "Repo names by default",
