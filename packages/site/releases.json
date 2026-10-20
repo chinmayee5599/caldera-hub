@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.28.5",
+      "date": "2026-10-20",
+      "title": "Visitors in the right building",
+      "items": [
+        "People in the windows now stand only in the building that runs the site being visited. Caldera reads it from the website set on the GitHub repo, so set that and the right building fills up. Visits to a site no repo claims light the district a little but put no one in the windows."
+      ]
+    },
+    {
       "version": "0.28.4",
       "date": "2026-10-20",
       "title": "People where the visitors are",
