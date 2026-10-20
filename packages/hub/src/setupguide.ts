@@ -32,13 +32,13 @@ export function guideSteps(s: GuideState, hub: string): Step[] {
     text: `This is what makes a page rich: your notes, a daily journal and your AI usage. Install the plugin (https://community.obsidian.md/plugins/caldera), then open ${hub}/settings#connections and tap Connect next to Obsidian for a one-time code.` });
   const basics = s.missingBasics.filter(b => BASIC_LABEL[b]).map(b => BASIC_LABEL[b]);
   if (basics.length) out.push({ id: "basics", title: "Finish the basics",
-    text: `Add ${basics.length > 1 ? basics.slice(0, -1).join(", ") + " and " + basics[basics.length - 1] : basics[0]}: ${hub}/settings#finish` });
+    text: `Add ${basics.length > 1 ? basics.slice(0, -1).join(", ") + " and " + basics[basics.length - 1] : basics[0]}: ${hub}/settings#${s.hosted ? "finish" : "page"}` });
   if (!s.hosted && !s.richer) out.push({ id: "richer", title: "Let your AI fill your page",
     text: `Copy the "richer page" prompt (${hub}/guide#upgrade-prompt) into Claude or ChatGPT. It sets up your journal, topics, projects and AI usage, and shows you every change first.` });
   if (!s.agents || !s.live) out.push({ id: "power", title: "Bring your city to life",
     text: `Your coding agents as drones over your repos, and live visitors from your sites. One prompt does both: ${hub}/world#power-up` });
   if (!s.email) out.push({ id: "email", title: "Turn on the daily email",
-    text: `So you hear when someone visits, follows or messages you: ${hub}/settings` });
+    text: `So you hear when someone visits, follows or messages you: ${hub}/settings#notifications` });
   return out;
 }
 
