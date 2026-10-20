@@ -24,6 +24,8 @@ export interface ToolsCtx {
   fetch?: typeof fetch;
   /** something public changed (a listing went live or was removed): drop caches that show tools */
   changed?: () => void;
+  /** the latest Caldera plugin release, for the Downloads page */
+  plugin?: () => { version: string; date: string; title?: string } | null;
 }
 
 export const PLATFORMS: Record<string, string> = { mac: "Mac", windows: "Windows", linux: "Linux", web: "Web", ios: "iPhone", android: "Android", cli: "Command line", obsidian: "Obsidian plugin", chrome: "Chrome extension" };
@@ -198,6 +200,32 @@ ${filters}<div class="tl-grid">${list.map(t => card(t, { maker: true, viewer: me
     return c.navify(html, "/tools");
   }
 
+  /** /downloads: Caldera's own software first (the Obsidian plugin, the agent hook, the visitor snippet), then members' free tools */
+  function downloadsPage(me: string | null) {
+    const rel = c.plugin ? c.plugin() : null, ts = live().slice(0, 12);
+    const dl = (title: string, ver: string, body: string, acts: string) => `<article class="dl-card"><div class="dl-h"><b>${title}</b>${ver ? `<span class="tl-chip">${ver}</span>` : ""}</div>${body}<div class="tl-acts">${acts}</div></article>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Downloads - Caldera</title>
+<meta name="description" content="Download Caldera for Obsidian, set up your AI agents and live visitors on your map, and find free tools made by Caldera members."><style>${CSS}
+.dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:16px 0}.dl-card{display:flex;flex-direction:column;gap:8px;padding:18px;border:1px solid var(--line,#2a2a2e);border-radius:14px;background:var(--bg-raised,#1d1d21)}
+.dl-card.main{border-color:#7a58f0}.dl-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.dl-h b{font-size:17px;color:var(--text-strong,#f2f2f5)}.dl-card p{margin:0;font-size:14px;color:var(--text,#dadadf)}
+.dl-card ol{margin:2px 0 0;padding-left:18px;font-size:13.5px;color:var(--text-muted,#8a8a93)}.dl-card ol li{margin:3px 0}.dl-ghost{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong,#3a3a40);color:var(--text,#dadadf);font-size:14px;text-decoration:none}</style></head>
+<body><main class="wrap" style="max-width:1080px;margin:0 auto;padding:28px 20px 60px"><h1 style="margin:0">Downloads</h1>
+<p class="lede" style="max-width:68ch">Everything you can install for Caldera, and free software made by Caldera members. No install needed to start: <a href="${hub}/auth/github">sign up with GitHub</a> and your page and city build themselves.</p>
+<section class="tl-sec"><h2>Caldera</h2><div class="dl-grid">
+${dl("Caldera for Obsidian", rel ? `v${esc(rel.version)}` : "", `<p>Your vault becomes a living profile: notes, a daily journal, AI usage and your city, published and kept fresh while Obsidian is open.</p><ol><li>In Obsidian: Settings &gt; Community plugins &gt; Browse &gt; search <b>Caldera</b> &gt; Install &gt; Enable.</li><li>Or download the zip and unzip it into <code>.obsidian/plugins/</code> in your vault.</li></ol>${rel ? `<p class="tl-note">Latest: ${esc(rel.title || "")} (${esc(rel.date)}). <a href="${hub}/changelog">What's new</a></p>` : ""}`,
+  `<a class="tl-get" href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">Get it from Obsidian &#8599;</a><a class="dl-ghost" href="${hub}/download/caldera-latest.zip">Download zip</a>`).replace('class="dl-card"', 'class="dl-card main"')}
+${dl("AI agents on your map", "", `<p>Your coding agents (Claude Code, Codex and others) fly as drones over the repos they're working in. Only a state and a short task title are sent.</p><ol><li>Open Settings &gt; AI agents on the map &gt; Copy setup prompt.</li><li>Paste it into your coding agent; it installs a small hook on each computer.</li></ol>`,
+  `<a class="tl-get" href="${hub}/settings" >Get the setup prompt</a><a class="dl-ghost" href="${hub}/world#power-up">Power up your map</a>`)}
+${dl("Live visitors on your city", "", `<p>A tiny snippet for your websites: every visit arrives in your city in real time, with signup and sale celebrations. Counts only, no cookies.</p><ol><li>Open Settings &gt; Live visitors on your city.</li><li>Paste each district's line into that site's layout.</li></ol>`,
+  `<a class="tl-get" href="${hub}/settings">Get your snippets</a>`)}
+</div></section>
+<section class="tl-sec"><h2>Free tools from members</h2><p class="tl-note">Software Caldera members made and give away. Downloads come from each maker's own link.</p>
+<div class="tl-grid">${ts.map(t => card(t, { maker: true, viewer: me })).join("") || `<p class="tl-note">No tools listed yet.</p>`}</div>
+<p class="tl-note"><a href="${hub}/tools">All free tools &rarr;</a>${me ? ` &middot; <a href="${hub}/tools#list">List your own</a>` : ""}</p></section>
+</main><script>${JS}</script></body></html>`;
+    return c.navify(html, "/downloads");
+  }
+
   /** the "Free tools" section on a profile page (index.html), inserted by the hub */
   function profileBlock(ownerId: string): string {
     const ts = live(ownerId); if (!ts.length) return "";
@@ -213,6 +241,10 @@ ${filters}<div class="tl-grid">${list.map(t => card(t, { maker: true, viewer: me
   // ---------------------------------------------------------------- routes
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
     const me = c.memberOf(req);
+    if (req.method === "GET" && (p === "/downloads" || p === "/downloads/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: "Cookie" });
+      res.end(downloadsPage(me)); return true;
+    }
     if (req.method === "GET" && (p === "/tools" || p === "/tools/")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", vary: "Cookie" });
       res.end(page(me, String(url.searchParams.get("platform") || "").toLowerCase())); return true;

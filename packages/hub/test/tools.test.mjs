@@ -66,6 +66,11 @@ test("free tools: verified-only listing, founder review, profile + city + world 
     assert.equal(hub.db.prepare("SELECT gets FROM tools WHERE id=?").get(first.body.id).gets, 1);
     assert.equal(hub.db.prepare("SELECT COUNT(*) n FROM gravity WHERE sender=? AND recipient=?").get(ids.cy.id, ids.bo.id).n, 1);
 
+    // Downloads: Caldera's own installs plus members' free tools, and a Downloads item in the nav
+    const dl = await (await get(null, "/downloads")).text();
+    assert.match(dl, /Caldera for Obsidian/); assert.match(dl, /AI agents on your map/); assert.match(dl, /Dictate/);
+    assert.match(dl, /href="[^"]*\/downloads"[^>]*aria-current="page"/, "the Downloads nav item is current");
+    assert.match(await (await get(null, "/feed")).text(), /<span>Downloads<\/span>/, "Downloads is in the top nav");
     assert.equal((await post(`/v1/tools/${second.body.id}/report`, { reason: "broken link" }, as("cy"))).status, 200);
     assert.ok(hub.db.prepare("SELECT 1 FROM alerts WHERE target=? AND title LIKE 'Free tool reported%'").get(ids.ana.id));
     assert.equal((await post(`/v1/tools/${second.body.id}/delete`, {}, as("cy"))).status, 403, "only the maker or founder removes");
