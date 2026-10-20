@@ -7,7 +7,7 @@
  * appear. Live activity is the same coarse public projection a member's own public city gets, folded per member.
  */
 import { mapPanel } from "./mapprompt";
-import { CITY_CSS, CITY_JS, type CityData, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
+import { CITY_CSS, CITY_JS, cleanSites, type CityData, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 
 export interface WorldMemberIn {
   handle: string; name: string; headline: string; created: string; groups: string[]; friends: number;
@@ -32,15 +32,16 @@ export function cleanRepo(r: CityRepo, project: string): CityRepo {
   const url = typeof r.url === "string" && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(r.url) ? r.url : undefined;
   if (r.priv && !r.locked && r.name) {   // "named" private repo: name, language and activity, never a link or description
     return { name: str(r.name, 100), project, public: false, priv: true, language: str(r.language || "Other", 30), commits: Math.max(0, Math.round(Number(r.commits) || 0)),
-      weeks: (Array.isArray(r.weeks) ? r.weeks : []).slice(-12).map(w => Math.max(0, Math.round(Number(w) || 0))), week: Math.max(0, Math.round(Number(r.week) || 0)), today: 0 };
+      weeks: (Array.isArray(r.weeks) ? r.weeks : []).slice(-12).map(w => Math.max(0, Math.round(Number(w) || 0))), week: Math.max(0, Math.round(Number(r.week) || 0)), today: 0, ...siteList(r) };
   }
   if (r.locked || r.public !== true || !r.name) {
     return { name: "", project, public: false, locked: true, language: "Private", commits: Math.max(0, Math.round(Number(r.commits) || 0)), weeks: [], week: (Number(r.week) || 0) > 0 ? 1 : 0, today: 0 };
   }
   return { name: str(r.name, 100), project, public: true, language: str(r.language || "Other", 30), commits: Math.max(0, Math.round(Number(r.commits) || 0)),
     weeks: (Array.isArray(r.weeks) ? r.weeks : []).slice(-12).map(w => Math.max(0, Math.round(Number(w) || 0))), week: Math.max(0, Math.round(Number(r.week) || 0)), today: 0,
-    pushed: typeof r.pushed === "string" && Date.parse(r.pushed) ? new Date(r.pushed).toISOString() : undefined, url, description: r.description ? str(r.description, 200) : undefined };
+    pushed: typeof r.pushed === "string" && Date.parse(r.pushed) ? new Date(r.pushed).toISOString() : undefined, url, description: r.description ? str(r.description, 200) : undefined, ...siteList(r) };
 }
+const siteList = (r: CityRepo) => { const s = cleanSites(r.sites); return s ? { sites: s } : {}; };
 
 /** Lay out the world: members ordered so groups cluster together and the newest sit at the edge. */
 export function buildWorld(members: WorldMemberIn[], friendships: ([string, string] | [string, string, string?, string?])[], founder: string | null, hub: string, now = Date.now()): World {

@@ -947,12 +947,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   // events, from the owner's own feed with the site's secret. Visitors are a salted daily hash, like profile views.
   const sitesOf = (owner: string) => q("SELECT key, project, public FROM traffic_sites WHERE owner=?").all(owner) as { key: string; project: string; public: number }[];
   const keyBuckets = new Map<string, { n: number; reset: number }>();
-  /** The visited site as one word: "https://stash.mjonesone.com/x" -> "stash", "https://www.kitse.co" -> "kitse". */
+  /** The visited site's hostname: "https://www.kitse.co/x" -> "kitse.co" (matched to the repo that lists it as its website). */
   function siteToken(u: string) {
     let h = ""; try { h = new URL(u).hostname.toLowerCase(); } catch { return ""; }
-    if (!h || h === "localhost" || /^[\d.:]+$/.test(h)) return "";
-    const labels = h.split(".").filter(Boolean); while (labels.length > 2 && /^(www|app|m|my|go|get|beta|staging)$/.test(labels[0])) labels.shift();
-    return (labels[0] || "").replace(/[^a-z0-9-]/g, "").slice(0, 40);
+    if (!h || h === "localhost" || /^[\d.:]+$/.test(h) || !h.includes(".")) return "";
+    return h.replace(/^www\./, "").slice(0, 120);
   }
   function record(key: string, kind: string, visitor: string, ts = now(), host = "") {
     const t = Date.now(); let b = keyBuckets.get(key);

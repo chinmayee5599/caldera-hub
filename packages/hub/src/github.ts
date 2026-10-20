@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as C from "@caldera/core";
 import { renderProfile, type ProfileData, type DailyEntry } from "../../../../caldera/packages/plugin/src/render";
-import { cityData, publicCity, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
+import { cityData, publicCity, cleanSites, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
 import { cleanImage } from "./images";
 import { connectionsPanel, settingsNav, sectionHead, SETTINGS_CSS, type Conn } from "./settings";
 import { alertItem, ALERT_CSS, ALERT_JS, type AlertRow } from "./alerts";
@@ -317,7 +317,7 @@ export function github(ctx: GhCtx) {
     }));
     const cityRepos: CityRepo[] = repos.map(r => { const s = stats[r.full_name] || { weeks: [], commits: 0, week: 0 };
       return { name: r.name, project: r.language || "Other", public: !r.private, language: r.language || "Other", commits: s.commits || (r.size ? 1 : 0), weeks: s.weeks, week: s.week, today: 0,
-        pushed: r.pushed_at, created: r.created_at, size: r.size, url: r.private ? undefined : r.html_url, description: r.private ? undefined : (r.description || "").slice(0, 200) }; });
+        pushed: r.pushed_at, created: r.created_at, size: r.size, url: r.private ? undefined : r.html_url, description: r.private ? undefined : (r.description || "").slice(0, 200), sites: cleanSites(r.homepage) }; });
     // daily activity from public events (pushes, PRs, issues, reviews), last 30 days
     const days: Record<string, number> = {};
     try { for (let pg = 1; pg <= 3; pg++) { const ev = await gh(token, `/users/${encodeURIComponent(me.login)}/events?per_page=100&page=${pg}`) as any[];
