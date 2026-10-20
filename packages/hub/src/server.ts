@@ -1291,7 +1291,21 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
     return { handle: pr.handle, name: pr.name || "", avatar: av ? `${PUB()}/@${pr.handle}/${String(av).replace(/^\.?\//, "")}` : undefined,
       conn: cn ? { github: cn.github.on, obsidian: cn.obsidian.on } : undefined, unread: rows.filter(a => !a.read).length,
       alerts: rows.map(a => ({ title: a.title, when: ago(a.ts), read: !!a.read, pinned: !!a.pinned, href: `${PUB()}/alerts#a-${a.id}` })),
-      seenUrl: upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(pr.id, upTo))}` : undefined };
+      seenUrl: upTo ? `${PUB()}/v1/alerts/seen?t=${encodeURIComponent(alerts.seenToken(pr.id, upTo))}` : undefined,
+      msgs: unreadMsgs(pr.id), badgeToken: badgeToken(pr.id) };
+  }
+  /** One badge token per member, reused for 6 of its 12 hours: the header reads the same on every page. */
+  const badgeToks = new Map<string, { t: string; until: number }>();
+  function badgeToken(id: string): string {
+    const c0 = badgeToks.get(id); if (c0 && c0.until - Date.now() > 6 * 3600_000) return c0.t;
+    const t = actToken(id, "badges", 12 * 3600_000); badgeToks.set(id, { t, until: Date.now() + 12 * 3600_000 });
+    if (badgeToks.size > 5000) for (const [k, v] of badgeToks) if (v.until < Date.now() + 6 * 3600_000) badgeToks.delete(k);
+    return t;
+  }
+  /** Unread direct messages and the first few senders: the header badge and strip, and /v1/me/badges. */
+  function unreadMsgs(id: string): { unread: number; from: string[] } {
+    if (!MSG) return { unread: 0, from: [] };
+    const n = MSG.unreadFor(id); return { unread: n, from: n ? MSG.inbox(id).filter((x: any) => x.unread && x.handle).slice(0, 3).map((x: any) => x.handle) : [] };
   }
   /** THE header for one request on the public site: who is looking, and whether this is their own profile or city. */
   function headerFor(req: http.IncomingMessage, pathname: string): { header: string; signedIn: boolean } {
@@ -1708,6 +1722,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
+      if (req.method === "GET" && p === "/v1/me/badges") {   // the signed-in header polls this: unread messages + alerts, nothing else
+        // the cookie on hub pages; the header's short-lived token on sandboxed pages (profiles, cities), which send no cookie
+        const tk = readAct(url.searchParams.get("t")), me = memberOf(req) || (tk && tk.h === "badges" && profile(tk.v) ? tk.v : null);
+        res.setHeader("cache-control", "no-store"); res.setHeader("vary", "Cookie");
+        if (!me) return json(res, 401, { error: "signed out" });
+        const m = unreadMsgs(me), al = alerts.forOwner(me, alertKind(me), 20).filter((a: any) => !a.read).length;
+        return json(res, 200, { messages: m.unread, from: m.from, alerts: al });
+      }
       if (/^\/(start(\/confirm)?|settings(\/page)?|me)$/.test(p) && await EMP!.route(req, res, url, p)) return;   // email pages (falls through for everyone else)
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;

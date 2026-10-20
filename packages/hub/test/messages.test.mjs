@@ -186,3 +186,47 @@ test("a new message emails the recipient once (summary or GitHub-verified addres
     assert.equal(await hub.messages.sweepAlerts(0), 0, "turned off");
   } finally { hub.server.close(); }
 });
+
+test("unread messages show in the header on every page: badge, a strip under the nav, live counts for the tab title", async () => {
+  const { hub, d, send, get, friends } = await setup();
+  try {
+    friends("ana", "bo");
+    const badges = async (h) => { const r = await get(h, "/v1/me/badges"); return { status: r.status, cc: r.headers.get("cache-control"), j: await r.json() }; };
+    assert.equal((await badges(null)).status, 401, "signed out: nothing");
+    let b = await badges("bo"); assert.equal(b.j.messages, 0); assert.equal(b.cc, "no-store");
+    assert.equal((await send("ana", "bo", "hey, great talk")).status, 200);
+    b = await badges("bo"); assert.equal(b.j.messages, 1); assert.deepEqual(b.j.from, ["ana"]); assert.equal(typeof b.j.alerts, "number");
+    // any page bo opens: the Messages badge, and a strip under the nav naming the sender
+    for (const p of ["/feed", "/@cy/"]) {
+      const html = await (await get("bo", p)).text();
+      assert.match(html, /class="ch-icon ch-msgs"[^>]*aria-label="Messages, 1 unread"/, p + ": badge");
+      assert.match(html, /<div class="ch-strip" id="ch-strip" role="status" data-cur="[a-z]*">/, p + ": strip shown");
+      assert.match(html, /<b>1 unread message<\/b> from @ana/, p);
+      assert.match(html, /data-m="1"/); assert.match(html, /\/v1\/me\/badges/, p + ": counts refresh live");
+    }
+    // on Messages itself the strip stays out of the way
+    assert.match(await (await get("bo", "/messages")).text(), /<div class="ch-strip" id="ch-strip" role="status" data-cur="[a-z]*" hidden>/);
+    // reading the conversation clears it everywhere
+    await get("bo", "/messages/@ana"); await get("bo", "/v1/messages/thread/ana");
+    assert.equal((await badges("bo")).j.messages, 0);
+    const after = await (await get("bo", "/feed")).text();
+    assert.match(after, /<div class="ch-strip" id="ch-strip" role="status" data-cur="[a-z]*" hidden>/); assert.match(after, /data-m="0"/);
+    // the sender never sees their own message as unread
+    assert.equal((await badges("ana")).j.messages, 0);
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test("sandboxed pages (profiles, cities) refresh the header counts with the header's token, not the cookie", async () => {
+  const { hub, d, send, get, friends, base } = await setup();
+  try {
+    friends("ana", "bo"); await send("ana", "bo", "hi");
+    const html = await (await get("bo", "/@cy/")).text(), bt = html.match(/data-bt="([^"]+)"/)?.[1];
+    assert.ok(bt, "the header carries a token");
+    const r = await fetch(base + "/v1/me/badges?t=" + encodeURIComponent(bt.replace(/&amp;/g, "&")));
+    assert.equal(r.status, 200); assert.equal(r.headers.get("access-control-allow-origin"), "*"); assert.equal((await r.json()).messages, 1);
+    assert.equal((await fetch(base + "/v1/me/badges?t=nope.nope")).status, 401, "a bad token gets nothing");
+    const [p, sig] = bt.split("."); const forged = Buffer.from(JSON.stringify({ v: "x", h: "badges", x: Date.now() + 1e7 })).toString("base64url") + "." + sig;
+    assert.equal((await fetch(base + "/v1/me/badges?t=" + encodeURIComponent(forged))).status, 401, "a forged token gets nothing");
+    assert.equal((await get("bo", "/feed").then(r => r.text())).match(/data-bt="([^"]+)"/)?.[1], bt, "same token on every page for a while");
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});

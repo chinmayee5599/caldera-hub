@@ -17,6 +17,8 @@ export interface HeaderViewer {
   unread: number;
   alerts: { title: string; when: string; read: boolean; pinned?: boolean; href?: string }[];
   seenUrl?: string;           // image beacon that marks the shown alerts read
+  msgs?: { unread: number; from: string[] };   // unread direct messages (and from whom), for the strip under the nav
+  badgeToken?: string;        // lets sandboxed pages (profiles, cities) refresh the counts without the cookie
 }
 
 export interface HeaderOwnView {
@@ -29,7 +31,7 @@ export interface HeaderOwnView {
 
 export interface HeaderOpts {
   hub: string;
-  current?: "feed" | "people" | "world" | "guide" | "settings" | "alerts" | "profile" | "";
+  current?: "feed" | "people" | "world" | "guide" | "settings" | "alerts" | "messages" | "profile" | "";
   viewer?: HeaderViewer | null;
   own?: HeaderOwnView | null;
   signinHref?: string;        // signed out: where Sign in goes (a profile's owner sign-in, or /signin)
@@ -58,6 +60,7 @@ export const ICON: Record<string, string> = {
   out: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>`,
   menu: `<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>`,
   chevron: `<path d="m6 9 6 6 6-6"/>`,
+  message: `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,
   ext: `<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>`,
   pin: `<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>`,
 };
@@ -104,11 +107,35 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-al-i b{display:block;font-size:14px;color:var(--ch-strong);font-weight:600;line-height:1.35}.ch-al-i small{display:block;margin-top:3px;color:var(--ch-muted);font-size:12.5px}
 .ch-al-empty{padding:12px 8px;color:var(--ch-muted);font-size:13.5px}
 .ch-menu{display:none}
+.ch-strip{position:relative;z-index:59;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:9px 44px 9px 24px;background:#2A1F4A;border-bottom:1px solid #4A3A80;color:#ECE7FF;font:500 14px/1.35 'IBM Plex Sans',Arial,sans-serif;text-align:left}
+.ch-strip[hidden]{display:none}.ch-strip .ch-i{color:#B9A6FF}.ch-strip b{color:#fff;font-weight:600}.ch-strip span{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.ch-strip a.ch-go{display:inline-flex;align-items:center;height:30px;padding:0 14px;border-radius:999px;background:#8B6CF6;color:#fff!important;font-weight:600;text-decoration:none;white-space:nowrap}.ch-strip a.ch-go:hover{filter:brightness(1.1)}
+.ch-strip button{all:unset;cursor:pointer;position:absolute;right:12px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:28px;height:28px;border-radius:8px;color:#B8B8C2;font-size:18px;line-height:1}.ch-strip button:hover{color:#fff;background:#3A2F5C}.ch-strip button:focus-visible,.ch-strip a:focus-visible{outline:2px solid #B9A6FF;outline-offset:2px}
 .ch a:focus-visible,.ch summary:focus-visible{outline:2px solid var(--ch-accent);outline-offset:2px}
 @media (max-width:760px){.ch{--ch-h:52px;gap:8px;padding:0 12px}.ch-nav{display:none}.ch-menu{display:block}.ch-brand span{display:none}
 .ch-seg a span{display:none}.ch-seg a{padding:0 9px}.ch-acct{padding:0 3px}.ch-acct .ch-hd,.ch-acct .ch-i{display:none}.ch-text{font-size:14px}.ch-cta{height:34px;padding:0 13px;font-size:14px}.ch-stale{display:none}
-.ch-right{gap:6px;margin-left:auto}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
+.ch-strip{padding:8px 44px 8px 12px;font-size:13.5px}.ch-right{gap:6px;margin-left:auto}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
 </style>`;
+
+/** Live unread counts for the signed-in header: badges, the messages strip, "(3)" in the tab title and a dot on the
+ *  favicon, refreshed every 30s while the tab is visible and right away when it comes back. On the hub's own pages the
+ *  cookie rides along; sandboxed pages (profiles, cities) have no cookie, so they send the short-lived token instead. */
+const FAV_DOT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#8B6CF6"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/><circle cx="25" cy="8" r="7" fill="#E5484D" stroke="#141416" stroke-width="2"/></svg>`;
+const BADGE_JS = `var S=document.getElementById('ch-strip'),hub=h.getAttribute('data-hub')||'',cur=S&&S.getAttribute('data-cur');
+var base=document.title.replace(/^\\(\\d+\\+?\\) /,''),fl=document.querySelector('link[rel~="icon"]'),f0=fl&&fl.getAttribute('href'),dot='data:image/svg+xml,'+encodeURIComponent(${JSON.stringify(FAV_DOT)});
+function badge(el,n,label){if(!el)return;var b=el.querySelector('.ch-badge');if(n>0){if(!b){b=document.createElement('span');b.className='ch-badge';el.appendChild(b)}b.textContent=n>9?'9+':String(n)}else if(b)b.remove();el.setAttribute('aria-label',label+(n>0?', '+n+' unread':''))}
+function key(m,f){return m+'|'+f}
+function strip(m,f){if(!S)return;var hid=null;try{hid=sessionStorage.getItem('ch-strip-x')}catch(e){}
+if(!m||cur==='messages'||hid===key(m,f)){S.hidden=true;return}
+var t=S.querySelector('span>span');t.innerHTML='';var b=document.createElement('b');b.textContent=m+' unread message'+(m===1?'':'s');t.appendChild(b);if(f)t.appendChild(document.createTextNode(' from '+f));
+S.querySelector('a.ch-go').textContent=m===1?'Read it':'Read them';S.hidden=false}
+function show(m,a,f){badge(h.querySelector('.ch-msgs'),m,'Messages');var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
+var n=m+a;document.title=(n?'('+(n>9?'9+':n)+') ':'')+base;if(!fl&&n){fl=document.createElement('link');fl.rel='icon';f0='/favicon.svg';(document.head||document.documentElement).appendChild(fl)}if(fl)fl.setAttribute('href',n?dot:f0);h.setAttribute('data-m',m);h.setAttribute('data-a',a);h.setAttribute('data-from',f)}
+if(S){S.querySelector('button').addEventListener('click',function(){S.hidden=true;try{sessionStorage.setItem('ch-strip-x',key(h.getAttribute('data-m'),h.getAttribute('data-from')))}catch(e){}})}
+show(+h.getAttribute('data-m')||0,+h.getAttribute('data-a')||0,h.getAttribute('data-from')||'');
+var bt=h.getAttribute('data-bt'),same=false;try{same=!!hub&&new URL(hub).origin===location.origin&&self.origin!=='null'}catch(e){}
+var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '))},function(){busy=0})}
+if(same||(hub&&bt)){setInterval(tick,30000);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});window.addEventListener('focus',tick)}`;
 
 /** The header for one request's viewer. Same markup and CSS everywhere: the regression test compares these. */
 export function appHeader(o: HeaderOpts): string {
@@ -146,13 +173,17 @@ export function appHeader(o: HeaderOpts): string {
     + `<div class="ch-sep"></div>` + mi("out", "Sign out", `${hub}/signout?h=${encodeURIComponent(v.handle)}`, ' style="color:var(--ch-muted)"')
     + `</div></details>`;
   const items = (o.items || []).join("");
+  // unread messages get a strip under the nav on every page but Messages itself: the badge alone is easy to miss
+  const mu = v.msgs?.unread || 0, from = (v.msgs?.from || []).map(x => "@" + x);
+  const strip = `<div class="ch-strip" id="ch-strip" role="status" data-cur="${e(cur)}"${mu && cur !== "messages" ? "" : " hidden"}><span>${icon("message", 18)}<span><b>${mu} unread message${mu === 1 ? "" : "s"}</b>${from.length ? ` from ${e(from.join(", "))}` : ""}</span></span><a class="ch-go" href="${e(hub)}/messages">Read ${mu === 1 ? "it" : "them"}</a><button type="button" aria-label="Hide until a new message arrives">&times;</button></div>`;
   const js = `<script>(function(){var h=document.getElementById('caldera-bar');if(!h||h.dataset.wired)return;h.dataset.wired='1';var ds=h.querySelectorAll('details');
 ds.forEach(function(d){d.addEventListener('toggle',function(){if(!d.open)return;ds.forEach(function(x){if(x!==d)x.open=false});
 if(d.classList.contains('ch-bell')&&!d.dataset.done){d.dataset.done='1';var u=d.getAttribute('data-seen');if(u){var i=new Image();i.src=u}var b=d.querySelector('.ch-badge');if(b)b.remove()}})});
 document.addEventListener('click',function(ev){ds.forEach(function(d){if(d.open&&!d.contains(ev.target))d.open=false})});
-document.addEventListener('keydown',function(ev){if(ev.key==='Escape')ds.forEach(function(d){d.open=false})})})()</script>`;
-  return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
-    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${js}`;
+document.addEventListener('keydown',function(ev){if(ev.key==='Escape')ds.forEach(function(d){d.open=false})});
+${BADGE_JS}})()</script>`;
+  return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}" data-hub="${e(hub)}"${v.badgeToken ? ` data-bt="${e(v.badgeToken)}"` : ""} data-m="${mu}" data-a="${v.unread}" data-from="${e(from.join(", "))}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
+    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${js}`;
 }
 
 /** Which nav item a path belongs to. */
@@ -163,6 +194,7 @@ export function currentFor(pathname: string): HeaderOpts["current"] {
   if (/^\/(guide|learn|changelog)/.test(pathname)) return "guide";
   if (/^\/(settings|me)(\/|$)/.test(pathname)) return "settings";
   if (/^\/alerts(\/|$)/.test(pathname)) return "alerts";
+  if (/^\/messages(\/|$)/.test(pathname)) return "messages";
   if (/^\/@/.test(pathname)) return "profile";
   return "";
 }
