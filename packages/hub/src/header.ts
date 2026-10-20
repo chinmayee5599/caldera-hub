@@ -108,7 +108,7 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-al-empty{padding:12px 8px;color:var(--ch-muted);font-size:13.5px}
 .ch-menu{display:none}
 .ch-bn{display:none;position:fixed;left:0;right:0;bottom:0;z-index:70;box-sizing:border-box;height:calc(64px + env(safe-area-inset-bottom,0px));padding:0 4px env(safe-area-inset-bottom,0px);background:rgba(20,20,22,.97);border-top:1px solid #2A2A2E;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.ch-bn a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;color:#8A8A93;font:500 11.5px/1 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.ch-bn a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;color:#8A8A93;font:500 12px/1 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;text-decoration:none;-webkit-tap-highlight-color:transparent}
 .ch-bn a .ch-bi{position:relative;display:grid;place-items:center;width:44px;height:28px;border-radius:14px}
 .ch-bn a[aria-current="page"]{color:#F2F2F5;font-weight:600}.ch-bn a[aria-current="page"] .ch-bi{background:#2A2440;color:#B9A6FF}
 .ch-bn a:active .ch-bi{background:#26232F}.ch-bn a:focus-visible{outline:2px solid #8B6CF6;outline-offset:-4px;border-radius:12px}
@@ -123,6 +123,8 @@ font:500 15px/1.2 'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;color:var(--
 .ch-seg a span{display:none}.ch-seg a{padding:0 9px}.ch-acct{padding:0 3px}.ch-acct .ch-hd,.ch-acct .ch-i{display:none}.ch-text{font-size:14px}.ch-cta{height:34px;padding:0 13px;font-size:14px}.ch-stale{display:none}
 .ch-strip{padding:8px 44px 8px 12px;font-size:13.5px}.ch-right{gap:6px;margin-left:auto}
 .ch-menu{display:none}.ch .ch-msgs{display:none}.ch-brand span{display:inline}
+.ch-brand{min-height:44px}.ch-icon{width:44px;height:44px}.ch-acct{height:44px}.ch-av{width:34px;height:34px}
+.ch-text{display:inline-flex;align-items:center;min-height:44px;padding:0 8px}.ch-cta{height:44px;padding:0 16px}.ch-seg a{height:38px}
 .ch-bn{display:grid}body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 .fd-tip,.ms-tip,.pc-tip{bottom:calc(76px + env(safe-area-inset-bottom,0px))!important}
 body:has(.ms.is-thread) .ch-bn{display:none}body:has(.ms.is-thread){padding-bottom:0}.ch-pop{position:fixed;left:12px;right:12px;top:58px;min-width:0}.ch-al{width:auto}}
