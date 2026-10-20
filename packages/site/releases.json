@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.26.0",
+      "date": "2026-10-20",
+      "title": "Topics from your own tags",
+      "items": [
+        "Pick your public topics from the tags you actually use: Caldera lists your most used tags with note counts, and only the ones you pick are ever shown. Run \"Pick my public topics from my tags\", or tap Topics in Finish your page.",
+        "Pages that show no topics yet get a one-time offer to pick some.",
+        "No headline yet? Finish your page suggests one from your public GitHub bio, for you to edit or clear."
+      ]
+    },
+    {
       "version": "0.25.13",
       "date": "2026-10-19",
       "title": "New repos show up within minutes",
