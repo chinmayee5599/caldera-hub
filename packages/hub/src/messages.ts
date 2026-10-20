@@ -375,7 +375,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-sec{padding:14px 16px 6px;font:600 11.5px var(--font-mono,'IBM Plex Mono',monospace);letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#8a8a93)}.ms-sec.wait{color:#B9A6FF}
 .ms-unread{flex:none;align-self:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#E5484D;color:#fff;font:700 12px/22px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
 .ms-reply{flex:none;align-self:center;font:600 11px 'IBM Plex Sans',Arial,sans-serif;color:#B9A6FF;border:1px solid #4A3A80;border-radius:999px;padding:2px 8px}
-@media (min-width:761px){.ms-list{position:sticky;top:0;align-self:flex-start;max-height:calc(100vh - 80px);overflow-y:auto;scrollbar-width:thin}.ms-thread{position:sticky;top:0;align-self:flex-start}}
+@media (min-width:761px){.ms-list{position:sticky;top:0;align-self:flex-start;max-height:calc(100vh - 80px);overflow-y:auto;scrollbar-width:thin}.ms-thread{position:sticky;top:0;align-self:flex-start;height:calc(100vh - 80px)}.ms-msgs{max-height:none;min-height:0}}
 .ms-av{flex:none;border-radius:999px;object-fit:cover;background:#3a2f66}.ms-ini{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:600}
 .ms-pref{display:flex;gap:8px;align-items:center;margin-top:auto;padding:16px;font-size:13px;color:var(--text-muted,#8a8a93)}
 .ms-thread{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -401,7 +401,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-row-btns{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.ms-row-btns .ms-btn{height:38px;font-size:14px}
 .ms-tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9;padding:9px 14px;border-radius:10px;background:#18171D;border:1px solid #2E2A40;color:#E6E6EA;font-size:13.5px}
 @media (max-width:760px){.ms{padding:0;min-height:calc(100vh - 120px)}.ms-list{width:100%;border-right:0}.ms.is-thread .ms-list,.ms.is-list .ms-none{display:none}.ms-back{display:inline-flex}.hide-sm{display:none}
-.ms-th-h{padding:8px 8px 8px 4px}.ms-msgs{padding:16px;max-height:none}.ms-compose{padding:10px 12px 8px}.ms-note,.ms-wait{margin:0 12px 12px}.ms-b{max-width:85%}}
+.ms-th-h{padding:8px 8px 8px 4px}.ms-msgs{padding:16px;max-height:none}.ms-compose{padding:10px 12px 8px;position:sticky;bottom:0;z-index:2;background:var(--bg,#161618)}.ms-note,.ms-wait{margin:0 12px 12px}.ms-b{max-width:85%}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}`;
 
 const JS = `(function(){var T=document.querySelector('.ms-thread[data-h]');var box=document.getElementById('ms-msgs');
