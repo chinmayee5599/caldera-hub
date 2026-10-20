@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.28.0",
+      "date": "2026-10-20",
+      "title": "Show private repos by name",
+      "items": [
+        "New choice for private repos: Show with names. Your public city and the World look like your private view (repo names, language colours, activity, real projects) while the code, links and descriptions stay private.",
+        "Keep any repo a nameless padlock anyway with hideRepos in Caldera/profile.md.",
+        "Set it in Obsidian (Settings > Caldera > Private repos on my city) or on caldera.social/settings."
+      ]
+    },
+    {
       "version": "0.27.1",
       "date": "2026-10-20",
       "title": "Workshop placement",
