@@ -1736,7 +1736,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
-      if (req.method === "GET" && p === "/manifest.webmanifest") { res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" }); return res.end(MANIFEST); }
+      if (req.method === "GET" && p === "/manifest.webmanifest") { res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" }); return res.end(MANIFEST); }   // * : sandboxed profile pages fetch it from an opaque origin
       if (req.method === "GET" && p === "/v1/me/badges") {   // the signed-in header polls this: unread messages + alerts, nothing else
         // the cookie on hub pages; the header's short-lived token on sandboxed pages (profiles, cities), which send no cookie
         const tk = readAct(url.searchParams.get("t")), me = memberOf(req) || (tk && tk.h === "badges" && profile(tk.v) ? tk.v : null);

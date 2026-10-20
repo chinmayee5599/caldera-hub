@@ -59,7 +59,7 @@ test("Home Screen app: every page with the header links one site-wide manifest, 
   try {
     const base = "http://127.0.0.1:" + await hub.listen(0);
     const m = await fetch(base + "/manifest.webmanifest");
-    assert.equal(m.status, 200); assert.match(m.headers.get("content-type"), /manifest\+json/);
+    assert.equal(m.status, 200); assert.match(m.headers.get("content-type"), /manifest\+json/); assert.equal(m.headers.get("access-control-allow-origin"), "*", "sandboxed profile pages can read it");
     const j = await m.json(); assert.equal(j.scope, "/"); assert.equal(j.display, "standalone"); assert.ok(j.start_url.startsWith("/"));
     assert.ok(j.icons.some(i => i.sizes === "512x512"));
     const feed = await (await fetch(base + "/feed")).text();
