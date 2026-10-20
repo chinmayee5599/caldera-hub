@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.26.1",
+      "date": "2026-10-20",
+      "title": "Better topic suggestions",
+      "items": [
+        "Topic suggestions leave out tags that describe what a note is rather than what it is about (entity, pdf, email-attachment, daily-digest) and paperwork like contracts.",
+        "The topic picker counts the topics you already show, so nothing you added by hand goes missing."
+      ]
+    },
+    {
       "version": "0.26.0",
       "date": "2026-10-20",
       "title": "Topics from your own tags",
