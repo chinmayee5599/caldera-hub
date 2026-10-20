@@ -95,3 +95,25 @@ test("threaded comments: post, reply, nest, notify, delete, moderate", async () 
   const pd = await as("ana", `/v1/posts/${pid}/delete`, {}); assert.equal(pd.status, 200, JSON.stringify(pd.body));
   assert.equal((await fetch(`${base}/v1/posts/${pid}/comments`)).status, 404);
 });
+
+test("@mentions: comments and posts link real members, alert them once, and the picker finds people", async () => {
+  const p = await as("cy", "/v1/posts", { type: "someone", text: "someone to review a trading bot, ask @bo maybe" });
+  assert.equal(p.status, 200); const pid = p.body.post.id;
+  const c1 = await as("ana", `/v1/posts/${pid}/comments`, { text: "@bo and @mike can do this. Not @nobody, not @hid, mail me at x@ana.dev" });
+  assert.equal(c1.status, 200);
+  assert.match(c1.body.html, /<a class="mention" href="\/@bo">@bo<\/a>/, "a member's handle links to their page");
+  assert.match(c1.body.html, /<a class="mention" href="\/@mike">@mike<\/a>/);
+  assert.doesNotMatch(c1.body.html, /href="\/@nobody"|href="\/@hid"|href="\/@ana"/, "unknown or unlisted handles and emails stay plain text");
+  const alertsOf = async w => (await (await fetch(`${base}/v1/owner/${ids[w].id}/alerts`, { headers: { authorization: "Bearer " + await login(ids[w]) } })).json()).alerts;
+  assert.ok((await alertsOf("mike")).some(a => /@ana mentioned you in a comment/.test(a.title)), "mentioned member is alerted");
+  assert.ok((await alertsOf("bo")).some(a => /@cy mentioned you in a post/.test(a.title)), "a mention in a post alerts too");
+  assert.ok(!(await alertsOf("hid")).some(a => /mentioned you/.test(a.title)), "unlisted members are not alerted");
+  // the picker: signed-in only, by handle or name, never yourself or unlisted members
+  assert.equal((await fetch(base + "/v1/mentions?q=b")).status, 401);
+  const pick = await (await fetch(base + "/v1/mentions?q=b", { headers: { cookie: await ownerCookie("ana") } })).json();
+  assert.deepEqual(pick.people.map(x => x.handle), ["bo"]);
+  const none = await (await fetch(base + "/v1/mentions?q=hid", { headers: { cookie: await ownerCookie("ana") } })).json();
+  assert.equal(none.people.length, 0);
+  const self = await (await fetch(base + "/v1/mentions?q=ana", { headers: { cookie: await ownerCookie("ana") } })).json();
+  assert.equal(self.people.length, 0);
+});

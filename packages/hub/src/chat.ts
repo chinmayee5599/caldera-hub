@@ -9,6 +9,7 @@
 import type http from "node:http";
 import crypto from "node:crypto";
 import { cleanText, renderText } from "./messages.js";
+import { linkMentions, tellMentioned, MENTION_CSS, MENTION_JS } from "./mentions.js";
 
 export interface ChatCtx {
   q: (sql: string) => any; now: () => string;
@@ -56,6 +57,7 @@ export function chat(c: ChatCtx) {
   const postOf = (id: string) => q("SELECT * FROM chat_posts WHERE id=?").get(id) as Post | undefined;
   const who = (id: string) => { const pr = c.profile(id); if (!pr?.handle || c.modOf(pr.handle, pr.id)) return null;
     const b = c.body(pr); return { handle: pr.handle as string, name: (pr.name || pr.handle) as string, avatar: b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null }; };
+  const isMember = (h: string) => { const pr = c.byHandle(h); return !!pr && !!who(pr.id); };   // @mentions link only to real members
 
   // ---------------------------------------------------------------- unread
   const readTs = (me: string, g: Group) => (q("SELECT ts FROM chat_reads WHERE member=? AND grp=?").get(me, g.id) as any)?.ts || g.created;
@@ -82,6 +84,8 @@ export function chat(c: ChatCtx) {
     q("INSERT INTO chat_posts (id, grp, parent, author, body, ts, status, replies, last_reply) VALUES (?,?,?,?,?,?,?,?,?)").run(id, g.id, parent ? parent.id : null, me, text, ts, "ok", 0, null);
     if (parent) q("UPDATE chat_posts SET replies=replies+1, last_reply=? WHERE id=?").run(ts, parent.id);
     markRead(me, g);   // posting means you've seen the group
+    const meP = who(me), url = `/messages/groups/${g.id}/${parent ? parent.id : id}#p-${id}`;
+    if (meP) tellMentioned({ text, author: me, byHandle: c.byHandle, canSee: (pr: any) => !!who(pr.id) && !c.modOf(pr.handle, pr.id), tell: (to, a) => c.notify?.(to, a), authorHandle: meP.handle, where: `in ${g.name}`, url, key: `mn:${id}` });
     return { status: 200, body: { ok: true, id, ts, html: postHtml(me, g, postOf(id)!, !!parent) } };
   }
   /** delete: the author or the founder. A post with replies keeps its place ("deleted") so the thread still reads. */
@@ -126,7 +130,7 @@ export function chat(c: ChatCtx) {
     const mine = p.author === me, isNew = since && p.author !== me && p.ts > since;
     return `<article class="cg-p${isNew ? " is-new" : ""}" id="p-${p.id}" data-ts="${esc(p.ts)}">${avatarHtml({ avatar: a.avatar, name: a.name, handle: a.handle }, 36)}`
       + `<div class="cg-m"><div class="cg-meta"><a class="cg-who" href="/@${esc(a.handle)}/"><b>${esc(a.name)}</b></a><span class="ms-mut">@${esc(a.handle)}</span><time datetime="${esc(p.ts)}">${esc(ago(p.ts))}</time></div>`
-      + `<div class="cg-text">${renderText(p.body)}</div><div class="cg-acts">`
+      + `<div class="cg-text">${linkMentions(renderText(p.body), isMember)}</div><div class="cg-acts">`
       + (inThread ? "" : `<a class="cg-replies${p.replies ? "" : " none"}" href="/messages/groups/${g.id}/${p.id}" data-rid="${p.id}">${replyLabel(p)}</a>`)
       + `<details class="ms-more cg-more"><summary aria-label="More">&#8943;</summary><span class="ms-menu">${mine || isFounder(me) ? `<button type="button" class="danger" data-del="${p.id}">Delete</button>` : ""}${mine ? "" : `<button type="button" data-rep="${p.id}">Report</button>`}<a href="/@${esc(a.handle)}/">View @${esc(a.handle)}</a></span></details>`
       + `</div></div></article>`;
@@ -190,7 +194,7 @@ export function chat(c: ChatCtx) {
     return `<section class="ms-thread cg-view" aria-label="${esc(g.name)}" data-g="${g.id}" data-mode="group"><div class="ms-th-h">${backTo("/messages/groups", "Back to groups")}<span class="cg-hash big" aria-hidden="true">#</span>`
       + `<span class="ms-th-who"><b>${esc(g.name)}</b><span class="ms-mut">${esc(g.about || "")}</span></span><span class="ms-grow"></span>${edit}</div>`
       + `<div class="ms-msgs cg-posts" id="ms-msgs" aria-live="polite">${list || `<div class="ms-empty"><b>Start ${esc(g.name)}</b><span>Post the first thing. Anyone can reply in a thread under it.</span></div>`}</div>`
-      + `<form class="ms-compose" id="cg-form"><label for="ms-text" class="sr">Post to ${esc(g.name)}</label><textarea id="ms-text" rows="2" maxlength="2000" placeholder="Post to ${esc(g.name)}. Enter to send, Shift+Enter for a new line."></textarea><button type="submit" class="ms-btn">Post</button></form>`
+      + `<form class="ms-compose" id="cg-form"><label for="ms-text" class="sr">Post to ${esc(g.name)}</label><textarea id="ms-text" data-mention rows="2" maxlength="2000" placeholder="Post to ${esc(g.name)}. Type @ to mention someone. Enter to send."></textarea><button type="submit" class="ms-btn">Post</button></form>`
       + `<p class="ms-note">Every Caldera member can read and reply here. Text only.</p></section>`;
   }
   function threadView(me: string, g: Group, root: Post) {
@@ -198,7 +202,7 @@ export function chat(c: ChatCtx) {
     return `<section class="ms-thread cg-view" aria-label="Thread in ${esc(g.name)}" data-g="${g.id}" data-root="${root.id}" data-mode="thread"><div class="ms-th-h">${backTo(`/messages/groups/${g.id}`, "Back to " + g.name)}`
       + `<span class="ms-th-who"><b>Thread</b><a href="/messages/groups/${g.id}"># ${esc(g.name)}</a></span><span class="ms-grow"></span></div>`
       + `<div class="ms-msgs cg-posts" id="ms-msgs" aria-live="polite"><div class="cg-root">${postHtml(me, g, root, true)}</div><div class="cg-div plain" role="separator"><span>${root.replies ? `${root.replies} ${root.replies === 1 ? "reply" : "replies"}` : "No replies yet"}</span></div>${replies.map(p => postHtml(me, g, p, true)).join("")}</div>`
-      + (root.status === "ok" ? `<form class="ms-compose" id="cg-form"><label for="ms-text" class="sr">Reply</label><textarea id="ms-text" rows="2" maxlength="2000" placeholder="Reply in this thread. Enter to send, Shift+Enter for a new line."></textarea><button type="submit" class="ms-btn">Reply</button></form>` : "")
+      + (root.status === "ok" ? `<form class="ms-compose" id="cg-form"><label for="ms-text" class="sr">Reply</label><textarea id="ms-text" data-mention rows="2" maxlength="2000" placeholder="Reply in this thread. Type @ to mention someone. Enter to send."></textarea><button type="submit" class="ms-btn">Reply</button></form>` : "")
       + `</section>`;
   }
 
@@ -256,7 +260,7 @@ export function chat(c: ChatCtx) {
   return { route, unreadTotal, nameOf, erase, saveGroup, post, groups };
 }
 
-export const CHAT_CSS = `.cg-row{align-items:center}.cg-hash{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft,rgba(139,108,246,.12));color:var(--accent-text,#b39dfa);font:600 20px var(--font-mono,'IBM Plex Mono',monospace)}
+export const CHAT_CSS = MENTION_CSS + `.cg-row{align-items:center}.cg-hash{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft,rgba(139,108,246,.12));color:var(--accent-text,#b39dfa);font:600 20px var(--font-mono,'IBM Plex Mono',monospace)}
 .cg-hash.big{width:36px;height:36px;font-size:17px;border-radius:10px}
 .cg-n{flex:none;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#8B6CF6;color:#fff;font:600 12px/22px 'IBM Plex Sans',Arial,sans-serif;text-align:center}
 .cg-admin{margin:12px 16px 0;padding:12px;border:1px dashed var(--line-strong,#3a3a40);border-radius:12px}.cg-admin>summary{cursor:pointer;color:var(--accent-text,#b39dfa);font-weight:600;font-size:14px}
@@ -287,7 +291,7 @@ export const CHAT_CSS = `.cg-row{align-items:center}.cg-hash{flex:none;width:44p
 .cg-live[hidden]{display:none}.cg-live{position:sticky;bottom:16px;display:flex;justify-content:center;pointer-events:none}.cg-live .ms-btn{pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 @media (max-width:760px){.ms.cg-is-home{flex-direction:column}.ms.cg-is-home .ms-list{padding-bottom:0;border-bottom:1px solid var(--line,#2a2a2e)}.cg-h-body{padding:12px 12px 24px}.cg-home .ms-th-h{padding:12px 16px}.cg-live{bottom:calc(76px + env(safe-area-inset-bottom,0px))}}`;
 
-export const CHAT_JS = `(function(){var H=document.querySelector('.cg-home');if(H){var base=+H.getAttribute('data-unread')||0,lv=H.querySelector('.cg-live');lv.querySelector('[data-reload]').addEventListener('click',function(){location.reload()});
+export const CHAT_JS = MENTION_JS + `(function(){var H=document.querySelector('.cg-home');if(H){var base=+H.getAttribute('data-unread')||0,lv=H.querySelector('.cg-live');lv.querySelector('[data-reload]').addEventListener('click',function(){location.reload()});
 function chk(){if(document.hidden)return;fetch('/v1/groups',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.unread>base)lv.hidden=false},function(){})}
 setInterval(chk,30000);document.addEventListener('visibilitychange',chk)}})();
 (function(){var V=document.querySelector('.cg-view');var box=document.getElementById('ms-msgs');

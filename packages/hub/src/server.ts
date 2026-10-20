@@ -36,6 +36,7 @@ export { tagLinks } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
 import { citySnapshot, applyPrivateMode, rewriteCityPage, type CityData } from "../../../../caldera/packages/plugin/src/city";
+import { mentionSearch } from "./mentions.js";
 import { privateModes, scrubPrivateLive } from "./privatemode";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
@@ -2109,6 +2110,15 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         return res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Private repos - Caldera</title></head><body><main class="wrap" style="max-width:640px;margin:0 auto;padding:40px 20px">`
           + (r.ok ? `<h1>Done: your private repos show by name</h1><p class="lede">${r.hosted ? "Your city is rebuilding now; it's ready in a minute." : "Your city updates the next time Obsidian is open (within a few minutes)."} Code, links and descriptions stay private.</p><p><a href="/@${r.handle}/city.html">See your city</a> &middot; <a href="/settings#private-repos">Change it or keep some repos padlocked</a></p>`
             : `<h1>That link has expired</h1><p class="lede">Choose how your private repos show in <a href="/settings#private-repos">Settings</a>.</p>`) + `</main></body></html>`));
+      }
+      // the "@" picker in comments, posts and group chat: listed members by handle or name (signed-in members only)
+      if (req.method === "GET" && p === "/v1/mentions") {
+        const me = memberOf(req); if (!me) return json(res, 401, { error: "sign in" });
+        const qv = String(url.searchParams.get("q") || "").toLowerCase().replace(/[^a-z0-9 _-]/g, "").slice(0, 40);
+        const rows = (qv ? q("SELECT * FROM profiles WHERE handle IS NOT NULL AND (handle LIKE ? OR lower(name) LIKE ?) LIMIT 300").all(`%${qv}%`, `%${qv}%`)
+          : q("SELECT p.* FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND p.handle IS NOT NULL LIMIT 50").all(me)) as any[];
+        const people = mentionSearch(rows.filter(pr => pr.id !== me && listed(pr)), qv, pr => { const b = body(pr); return b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null; });
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" }); return res.end(JSON.stringify({ people }));
       }
       if (req.method === "GET" && p === "/v1/alerts/seen") {
         const tk = alerts.checkSeen(url.searchParams.get("t")); if (tk) alerts.markSeenUpTo(tk.owner, alertKind(tk.owner), tk.upTo);

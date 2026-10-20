@@ -129,3 +129,17 @@ test("direct messages: anything waiting on you (unread, unanswered, requests) is
     assert.doesNotMatch(ana, /Waiting on you/, "your own last word is not waiting on you");
   } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
 });
+
+test("group chat @mentions: linked, alerted once, picker on the box", async () => {
+  const S = await setup();
+  try {
+    await S.post("/v1/groups", { name: "Feedback on Caldera" }, S.as("ana"));
+    const p = await S.post("/v1/groups/feedback-on-caldera/post", { text: "@cy what do you think? cc @nobody" }, S.as("bo"));
+    assert.equal(p.status, 200);
+    assert.match(p.body.html, /<a class="mention" href="\/@cy">@cy<\/a>/);
+    assert.doesNotMatch(p.body.html, /href="\/@nobody"/);
+    assert.ok(S.hub.db.prepare("SELECT 1 FROM alerts WHERE target=? AND title LIKE '@bo mentioned you in %'").get(S.ids.cy.id), "cy is told");
+    const page = await (await S.get("cy", "/messages/groups/feedback-on-caldera")).text();
+    assert.match(page, /<textarea id="ms-text" data-mention/, "the box has the @ picker");
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});

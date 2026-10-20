@@ -12,6 +12,7 @@
  */
 import http from "node:http";
 import crypto from "node:crypto";
+import { linkMentions, tellMentioned, MENTION_CSS, MENTION_JS } from "./mentions.js";
 
 const DAY = 86_400_000;
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -231,6 +232,7 @@ export function feed(c: FeedCtx) {
   const hub = c.hub.replace(/\/$/, "");
   const vocab = () => (c.vocab && c.vocab.length ? c.vocab : VOCAB);
   const visible = (pr: any) => !!pr?.handle && c.listed(pr) && !c.modOf(pr.handle, pr.id);
+  const isMember = (h: string) => visible(c.byHandle(h));   // an @mention links only to a real, listed member
   const avatarOf = (pr: any) => { const b = c.body(pr); return b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null; };
   const fieldsOf = (row: any): PostFields => { try { return JSON.parse(row.fields); } catch { return { type: "other" }; } };
   const tell = (to: string, a: { title: string; body: string; ctaLabel?: string; ctaUrl?: string; key?: string }) => { try { c.notify?.(to, a); } catch { /* a failed alert never breaks the action */ } };
@@ -251,6 +253,7 @@ export function feed(c: FeedCtx) {
     const id = crypto.randomBytes(6).toString("hex"), ts = c.now();
     q("INSERT INTO posts VALUES (?,?,?,?,?,?,?,?,?)").run(id, meId, v.p.type, JSON.stringify(v.p), v.p.detail || "", JSON.stringify(postTags(v.p)), "open", ts, null);
     cache = null;
+    if (v.p.detail) tellMentioned({ text: String(v.p.detail), author: meId, byHandle: c.byHandle, canSee: visible, tell, authorHandle: me.handle, where: "in a post", url: `/feed/p/${id}`, key: `mn:${id}` });
     if (v.p.type === "recommend") {
       const gh = v.p.link && v.p.rec === "repo" ? v.p.link.match(/^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/) : null;
       if (gh) void repoFacts(id, gh[1], gh[2]);
@@ -329,6 +332,8 @@ export function feed(c: FeedCtx) {
     const snip = text.length > 160 ? text.slice(0, 157) + "..." : text, url = `/feed/p/${postId}#c-${id}`, told = new Set<string>([meId]);
     if (parent && !told.has(parent.author)) { told.add(parent.author); tell(parent.author, { title: `@${me.handle} replied to your comment`, body: snip, ctaLabel: "Reply", ctaUrl: url, key: `cr:${parent.id}` }); }
     if (!told.has(row.author)) tell(row.author, { title: `@${me.handle} commented on your post`, body: snip, ctaLabel: "See the thread", ctaUrl: url, key: `cm:${postId}` });
+    told.add(row.author);
+    tellMentioned({ text, author: meId, skip: told, byHandle: c.byHandle, canSee: visible, tell, authorHandle: me.handle, where: "in a comment", url, key: `mn:${id}` });
     return { status: 200, body: { ok: true, id, parent: parent?.id || null, count: commentCount(postId), html: commentHtml(viewOf(cmRow(id)), [], meId, row.author, depthOf(id)) } };
   }
   /** take a comment away: a stub stays while others' replies hang off it; an empty stub chain is cleaned up */
@@ -641,7 +646,7 @@ var t=document.createElement('div');t.className='fd-tip';t.setAttribute('role','
     return `<article class="fd-card fd-post" data-post="${esc(v.id)}" data-url="${esc(v.url)}" data-text="${esc(v.text)}">
 <div class="fd-top">${avatarHtml(v.author)}<div style="min-width:0;flex:1"><div class="sent"><a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a> ${sent}${/[.!?]$/.test(v.sentence.map((x: any) => x[0]).join("")) ? "" : "."}</div>
 <div class="fd-meta"><span>@${esc(v.author.handle)}</span><a href="/feed/p/${esc(v.id)}"${standalone ? ' aria-current="page"' : ""}><time datetime="${esc(v.ts)}">${ago(v.ts)}</time></a>${v.status === "closed" ? "<span>closed</span>" : ""}</div></div></div>
-${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec || f.simple ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div>${standalone ? commentsHtml(v.id, viewer, row0(v.id)) : ""}</article>`;
+${v.detail && !f.simple ? `<p class="det">${linkMentions(linkify(v.detail), isMember)}</p>` : ""}${rec || f.simple ? linkCard(f) : ""}${chipsOf(f)}<div class="fd-acts">${actions}</div><div class="fd-matches" hidden></div>${standalone ? commentsHtml(v.id, viewer, row0(v.id)) : ""}</article>`;
   }
   const row0 = (id: string) => postRow(id)?.author || "";
   function commentHtml(v: any, replies: any[], viewer: string | null, postAuthor: string, depth: number): string {
@@ -651,12 +656,12 @@ ${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec |
     const acts = [viewer ? `<button type="button" data-creply>Reply</button>` : "",
       canDel ? `<button type="button" data-cdel>${mine ? "Delete" : "Remove"}</button>` : "", viewer && !mine ? `<button type="button" data-crep>Report</button>` : ""].join("");
     return `<li class="fd-c${v.author.id === postAuthor ? " op" : ""}" id="c-${esc(v.id)}" data-c="${esc(v.id)}"><div class="fd-c-h">${avatarHtml(v.author)}<a class="who" href="/@${esc(v.author.handle)}/">${esc(v.author.name)}</a>${v.author.id === postAuthor ? `<span class="op-t">author</span>` : ""}<a class="t" href="#c-${esc(v.id)}"><time datetime="${esc(v.ts)}">${ago(v.ts)}</time></a></div>`
-      + `<div class="fd-c-b">${linkify(v.body).replace(/\n/g, "<br>")}</div><div class="fd-c-a">${acts}</div>${kids}</li>`;
+      + `<div class="fd-c-b">${linkMentions(linkify(v.body), isMember).replace(/\n/g, "<br>")}</div><div class="fd-c-a">${acts}</div>${kids}</li>`;
   }
   /** the thread under a post: the composer first, then every comment (signed-out readers see it all, and a way in) */
   function commentsHtml(postId: string, viewer: string | null, postAuthor: string): string {
     const t = threadOf(postId), n = commentCount(postId);
-    const form = viewer ? `<div class="fd-c-form"><label class="fd-sr" for="cm-${esc(postId)}">Add a comment</label><textarea id="cm-${esc(postId)}" maxlength="1000" rows="2" placeholder="Add a comment"></textarea><div class="fd-c-f"><span class="fd-count">Text only. Links are fine.</span><button type="button" class="fd-btn pri" data-csend>Comment</button></div></div>`
+    const form = viewer ? `<div class="fd-c-form"><label class="fd-sr" for="cm-${esc(postId)}">Add a comment</label><textarea id="cm-${esc(postId)}" data-mention maxlength="1000" rows="2" placeholder="Add a comment. Type @ to mention someone"></textarea><div class="fd-c-f"><span class="fd-count">Text only. Links are fine.</span><button type="button" class="fd-btn pri" data-csend>Comment</button></div></div>`
       : `<p class="fd-c-in"><a href="/auth/github?back=${encodeURIComponent("/feed/p/" + postId)}">Sign in with GitHub</a> to comment.</p>`;
     return `<section class="fd-cm" id="comments" data-cm="${esc(postId)}" aria-label="Comments"><h2 class="fd-c-n">${n ? `${n} comment${n === 1 ? "" : "s"}` : "Comments"}</h2>${form}<ol class="fd-thread fd-top-t">${t.map(v => commentHtml(v, v.replies, viewer, postAuthor, 0)).join("")}</ol></section>`;
   }
@@ -692,12 +697,12 @@ ${v.detail && !f.simple ? `<p class="det">${linkify(v.detail)}</p>` : ""}${rec |
     return `<section class="fd-card fd-comp" aria-label="Post to the network">
 <div class="fd-big" role="group" aria-label="What kind of post"><button type="button" data-fam="ask" aria-pressed="false"><b>\u{1F64B}</b><span>I need...</span></button><button type="button" data-fam="rec" aria-pressed="false"><b>\u{1F4A1}</b><span>I recommend...</span></button></div>
 ${chips("ask", ASK_CHIPS)}${chips("rec", REC_CHIPS)}
-<div class="fd-write" data-write hidden><label class="fd-sr" for="fd-text">Your post</label><textarea id="fd-text" data-text maxlength="280" rows="3" placeholder="Say it in your own words"></textarea>
+<div class="fd-write" data-write hidden><label class="fd-sr" for="fd-text">Your post</label><textarea id="fd-text" data-text data-mention maxlength="280" rows="3" placeholder="Say it in your own words"></textarea>
 <div class="fd-row2"><span class="fd-count" data-count>0 / 280</span><span class="fd-hint" data-hint hidden>Add a link (https://...) so people can find it.</span></div>
 <div class="fd-prev" data-prev hidden></div><p class="fd-err" data-err hidden></p>
 <div class="fd-foot" data-foot><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri fd-postbtn" data-post-it>Post</button></div></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
   }
-  const SCRIPT = (me: string | null, invite: string) => `<script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
+  const SCRIPT = (me: string | null, invite: string) => `<style>${MENTION_CSS}</style><script>${MENTION_JS}</script><script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
 ${sentence.toString()}
 function $(s,r){return (r||document).querySelector(s)}function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
 function tip(m){var t=document.createElement('div');t.className='fd-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},2600)}
