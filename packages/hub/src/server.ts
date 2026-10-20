@@ -27,6 +27,7 @@ import { emailPages } from "./emailpages";
 import { messages } from "./messages";
 import { chat, CHAT_CSS, CHAT_JS } from "./chat";
 import { setupGuide } from "./setupguide";
+import { tools } from "./tools";
 import { mapPanel } from "./mapprompt";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -828,12 +829,13 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   MAP_HUB = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
+  let TOOLS: ReturnType<typeof tools> | null = null;   // free tools members give away
   let GUIDE: ReturnType<typeof setupGuide> | null = null;   // the setup-guide DMs
   let CHAT: ReturnType<typeof chat> | null = null;   // Groups under Messages (same)
   let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
   let EMP: ReturnType<typeof emailPages> | null = null;   // pages made by email + an AI (no GitHub, no Obsidian)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GUIDE?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
+    FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GUIDE?.erase(id); TOOLS?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -915,6 +917,15 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       const hubBase = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), w = `<a class="tree-row toc-row page-row" href="${hubBase}/world?focus=${encodeURIComponent(handle)}">World</a>`;
       const city = html.match(/<a class="tree-row toc-row page-row[^"]*" href="[^"]*city\.html"/);
       html = city ? html.replace(city[0], w + city[0]) : html.replace(/(<a class="tree-row toc-row page-row[^>]*>[^<]*<\/a>)(?![\s\S]*<a class="tree-row toc-row page-row(?! friend-row))/, "$1" + w);
+    }
+    if (TOOLS && (rel === "index.html" || rel === "city.html")) {   // free tools: a section on the profile, a Workshop in the city
+      const prT = byHandle(handle);
+      if (prT && rel === "index.html" && !html.includes("<!--caldera:tools-->")) {
+        const blk = TOOLS.profileBlock(prT.id);
+        if (blk) { const at = ['<h2 id="projects"', '<h2 id="elsewhere"', "</main>"].find(k => html.includes(k)); if (at) html = html.replace(at, blk + at); }
+      }
+      if (prT && rel === "city.html") { const td = TOOLS.mapData(prT.id);
+        if (td.length) html = html.replace(/<head>/i, h => `${h}<script>window.CALDERA_TOOLS=${JSON.stringify(td).replace(/</g, "\\u003c")};window.CALDERA_TOOLS_HUB=${JSON.stringify(PUB())};</script>`); }
     }
     if (!C.gardenEnabled()) html = stripGarden(html);
     const note = C.gardenEnabled() ? rel.match(/^n\/([a-z0-9-]+)\.html$/) : null;
@@ -1717,7 +1728,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "gifts" }); },
     onChange: () => FEED?.invalidate() });
   FEED = feed({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, listed, modOf, areFriends, befriend: (a, b, kind, ts, why) => { befriend(a, b, kind, ts, why); worldCache = null; },
-    memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags,
+    memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags, toolItems: () => TOOLS ? TOOLS.feedItems() : [],
     tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, stackVocab: ext.tagVocab().stack, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "feed" }); },
     dropNotices: (postId) => { const like = [`%${postId}%`, `%/feed/p/${postId}%`];
@@ -1742,6 +1753,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "groups" }); },
     ui: { ...MSG.ui, shell: (t: string, i: string, cls: string) => MSG!.ui.shell(t, i, cls, CHAT_CSS, CHAT_JS) } });
   MSG.setGroups(id => CHAT ? CHAT.unreadTotal(id) : 0);
+  // free tools: listings on profiles, a Workshop in the maker's city, a Market on the World map, /tools (links only, never hosted)
+  TOOLS = tools({ q, now, hub: PUB(), profile, byHandle, body, modOf, memberOf, sameOrigin, readBody, json, navify, tooMany,
+    founder: () => (opts.founder ? byHandle(String(opts.founder).toLowerCase())?.id : null) || null,
+    verified: id => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? LIMIT 1").get(id) || !!q("SELECT 1 FROM gh_links WHERE profile_id=? LIMIT 1").get(id),
+    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "tools" }); },
+    gravity: (from, to, reason) => { try { q("INSERT INTO gravity VALUES (?,?,?,?,?)").run(from, to, now(), reason, null); } catch { /* never blocks a download */ } },
+    fetch: globalThis.fetch, changed: () => { (FEED as any)?.bust?.(); } });
   // the setup guide: a DM from the founder with what's still missing on a member's page (welcome + two follow-ups)
   GUIDE = opts.founder ? setupGuide({ q, now, hub: PUB(), founder: () => byHandle(String(opts.founder).toLowerCase())?.id || null,
     send: (f, t, text) => MSG ? MSG.system(f, t, text) : false, nameOf: id => String(profile(id)?.name || profile(id)?.handle || ""),
@@ -1802,6 +1820,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
       if (/^\/(messages\/groups|v1\/groups)(\/|$)/.test(p) && CHAT && await CHAT.route(req, res, url, p)) return;
+      if (/^\/(tools|v1\/tools)(\/|$)/.test(p) && TOOLS && await TOOLS.route(req, res, url, p)) return;
       // founder only: send the setup guide to members who joined before it existed ({dry:true} previews it)
       if (p === "/v1/admin/setup-guide" && req.method === "POST" && GUIDE) {
         const me = memberOf(req), f = opts.founder ? byHandle(String(opts.founder).toLowerCase()) : null;
@@ -1832,7 +1851,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "GET" && (p === "/world" || p === "/world/")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache",
           "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
-        return res.end(worldPage(worldNow(), { hub: opts.publicUrl || "https://caldera.social", nav: worldNav() }));
+        return res.end(worldPage(worldNow(), { hub: opts.publicUrl || "https://caldera.social", nav: worldNav(), tools: TOOLS ? TOOLS.mapData() : [] }));
       }
       if (req.method === "GET" && /^\/gh\/[A-Za-z0-9-]+\/?$/.test(p)) FUNNEL.track(req, "preview");
       if ((p === "/gh" || p.startsWith("/gh/")) && await GHP.route(req, res, url, p)) return;

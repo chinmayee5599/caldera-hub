@@ -115,7 +115,7 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&a
 const safeJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
 /** The world page: the city renderer in world mode, with the site's own look around it. */
-export function worldPage(w: World, o: { hub: string; nav: string }): string {
+export function worldPage(w: World, o: { hub: string; nav: string; tools?: unknown[] }): string {
   const hub = o.hub.replace(/\/$/, ""), n = w.members.length, b = w.city.districts.reduce((s, d) => s + d.repos.length, 0);
   const data = { ...w.city, openBase: "", world: { m: Object.fromEntries(w.members.map(m => ["@" + m.handle, m])), links: w.links, start: w.start, topics: w.topics || [] } };
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -140,7 +140,7 @@ ${o.nav}
 <div class="w-foot"><span class="w-legend"><i></i>Friendships are rays of light</span><span class="w-legend w-legend-stack"><i></i>Dashed coral: builds with a similar stack</span><span>&#128274; Padlocked buildings are private repos: size only, never names.</span><span>Only people listed in <a href="/people">People</a> appear.</span><a href="/#start">Add your city &rarr;</a></div>
 ${mapPanel(hub)}
 </main><footer class="footer"><span>&copy; 2026 mjonesone, LLC</span><span><a href="/guide">Guide</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></span></footer>
-<script>window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })};window.CALDERA_GIFTS=${safeJson({ url: "/v1/gifts" })}</script>
+<script>window.CALDERA_TOOLS=${safeJson(o.tools || [])};window.CALDERA_TOOLS_HUB=${safeJson(hub)};window.CALDERA_LIVE=${safeJson({ url: "/v1/world/live", mode: "public" })};window.CALDERA_EXTRAS=${safeJson({ weather: `${hub}/v1/weather` })};window.CALDERA_GIFTS=${safeJson({ url: "/v1/gifts" })}</script>
 <script type="application/json" id="city-data">${safeJson(data)}</script>
 <script>${CITY_JS}</script></body></html>`;
 }
