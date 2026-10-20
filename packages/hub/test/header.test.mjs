@@ -51,3 +51,21 @@ test("one header: same markup for the same viewer on site pages, hub pages, prof
   assert.match((await grab("/@ana/", anon)).hd, /\/\?invite=ana#install/, "profiles invite to their owner");
   h.server.close();
 });
+
+test("Home Screen app: every page with the header links one site-wide manifest, so saved links stay full screen", async () => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const { createHub } = await import("../dist/server.js");
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-app-")), hub = createHub({ dataDir: d, publicUrl: "http://hub.test" });
+  try {
+    const base = "http://127.0.0.1:" + await hub.listen(0);
+    const m = await fetch(base + "/manifest.webmanifest");
+    assert.equal(m.status, 200); assert.match(m.headers.get("content-type"), /manifest\+json/);
+    const j = await m.json(); assert.equal(j.scope, "/"); assert.equal(j.display, "standalone"); assert.ok(j.start_url.startsWith("/"));
+    assert.ok(j.icons.some(i => i.sizes === "512x512"));
+    const feed = await (await fetch(base + "/feed")).text();
+    assert.match(feed, /<link rel="manifest" href="\/manifest\.webmanifest">[\s\S]*<\/head>/, "in the head");
+    assert.match(feed, /apple-mobile-web-app-capable" content="yes"/);
+    assert.match(feed, /<meta name="viewport" content="[^"]*viewport-fit=cover"/);
+    assert.equal((feed.match(/rel="manifest"/g) || []).length, 1, "once");
+  } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});

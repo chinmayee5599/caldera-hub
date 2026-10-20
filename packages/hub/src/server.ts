@@ -51,10 +51,22 @@ const MAX_BODY = 12 * 1024 * 1024;
 const RESERVED = new Set(["admin", "api", "www", "caldera", "help", "support", "root", "hub", "v1", "about", "login", "settings", "official", "team", "security", "obsidian", "me", "auth", "setup"]);
 const SECURITY_HEADERS = { "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin", "x-frame-options": "DENY" };
 // User-uploaded profile pages run in a sandbox: unique origin, no access to the hub's origin, no forms, no top navigation.
-const PROFILE_CSP = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+const PROFILE_CSP = "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; manifest-src 'self'; base-uri 'none'; form-action 'none'";
 // The city page may also poll the hub for live traffic on the owner's sites (same hub only).
 const cityCsp = (...origins: string[]) => PROFILE_CSP + `; connect-src 'self' ${origins.filter(Boolean).join(" ")}`.trimEnd();
 const originOf = (u?: string) => { try { return u ? new URL(u).origin : ""; } catch { return ""; } };
+/** Home Screen app: the whole site is one app (scope "/"), so following a link from a saved page stays full screen
+ *  instead of opening iOS's in-app browser sheet; viewport-fit=cover lets the phone tab bar clear the home indicator. */
+const APP_HEAD = `<link rel="manifest" href="/manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Caldera"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="theme-color" content="#141416"><link rel="apple-touch-icon" href="/apple-touch-icon.png">`;
+function withAppHead(html: string): string {
+  if (html.includes('rel="manifest"') || !/<\/head>/i.test(html)) return html;
+  const out = html.replace(/<meta name="viewport" content="([^"]*)"/i, (m, c) => /viewport-fit/.test(c) ? m : `<meta name="viewport" content="${c}, viewport-fit=cover"`);
+  const tags = /apple-touch-icon/.test(html) ? APP_HEAD.replace(/<link rel="apple-touch-icon"[^>]*>/, "") : APP_HEAD;   // keep a page's own icon
+  return out.replace(/<\/head>/i, () => tags + "</head>");
+}
+export const MANIFEST = JSON.stringify({ name: "Caldera", short_name: "Caldera", id: "/", start_url: "/feed?src=homescreen", scope: "/", display: "standalone",
+  background_color: "#141416", theme_color: "#141416", description: "The social layer for what you build",
+  icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png", sizes: "512x512", type: "image/png" }, { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] });
 const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
 const DAY = 86_400_000;
 
@@ -1641,7 +1653,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (hdr && (out.includes(HEADER_MARK) || out.includes('<header class="nav"'))) {
           try {
             const r = hdr(), swapped = swapHeader(out, r.header);
-            if (swapped !== null) { out = swapFooter(swapped);
+            if (swapped !== null) { out = withAppHead(swapFooter(swapped));
               // public pages built without a footer (Feed, GitHub city previews, groups) get THE footer too
               if (!/<footer class="footer/.test(out) && /^\/(feed|gh|g\/)/.test(String(req.url || ""))) out = out.replace(/<\/body>/i, () => swapFooter('<footer class="footer"></footer>') + "</body>");
               const h0 = held ? held.find((x: any) => x && typeof x === "object" && !Array.isArray(x)) : null;
@@ -1724,6 +1736,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       // ids arrive percent-encoded ("cal%3A...") when a proxy passes the raw URI through; API routes match the decoded form
       const p = url.pathname.startsWith("/v1/") ? url.pathname.replace(/%3A/gi, ":") : url.pathname;
       if (req.method === "OPTIONS") return json(res, 204, {});
+      if (req.method === "GET" && p === "/manifest.webmanifest") { res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" }); return res.end(MANIFEST); }
       if (req.method === "GET" && p === "/v1/me/badges") {   // the signed-in header polls this: unread messages + alerts, nothing else
         // the cookie on hub pages; the header's short-lived token on sandboxed pages (profiles, cities), which send no cookie
         const tk = readAct(url.searchParams.get("t")), me = memberOf(req) || (tk && tk.h === "badges" && profile(tk.v) ? tk.v : null);
