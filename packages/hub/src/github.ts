@@ -219,6 +219,19 @@ export function github(ctx: GhCtx) {
     privMemo.set(acct.gh_id, { at: Date.now(), repos }); if (privMemo.size > 5000) privMemo.clear();
     return repos;
   }
+  /** Every private repo the app can read, across all installations, each with its installation token (for the circle
+   *  job's private-project matching; the names stay server-side). Capped per installation and overall. */
+  async function appPrivateRepos(): Promise<{ full: string; token: string }[]> {
+    if (!app()) return [];
+    const out: { full: string; token: string }[] = [];
+    for (const inst of await appInstallations()) {
+      if (inst.suspended_at) continue;
+      try { for (const r of (await installationRepos(String(inst.id))).filter(r => r.private && !r.archived).slice(0, 150)) out.push({ full: r.full_name, token: r._token }); }
+      catch (e: any) { console.error("app private repos", inst.id, e.message); }
+      if (out.length >= 600) break;
+    }
+    return out.slice(0, 600);
+  }
   // app-level JWT (for listing an installation's repos)
   const appJwt = () => { const a = app()!, now = Math.floor(Date.now() / 1000), b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
     const head = b64({ alg: "RS256", typ: "JWT" }), body = b64({ iat: now - 60, exp: now + 540, iss: a.id });
@@ -897,5 +910,5 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
     const acct = q("SELECT * FROM gh_accounts WHERE profile_id=? AND claimed IS NULL AND token_sealed<>''").get(profileId) as any;
     if (!acct) return null; try { return await tokenFor(acct); } catch { return null; }
   }
-  return { route, privateRoute, build, freshen, account, ghLoginsOf, signOut, anyToken, tokenOf, configured: () => !!app() };
+  return { route, privateRoute, build, freshen, account, ghLoginsOf, signOut, anyToken, tokenOf, appPrivateRepos, configured: () => !!app() };
 }
