@@ -2400,13 +2400,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         const site = q("SELECT secret FROM traffic_sites WHERE key=?").get(m[1]) as any;
         const given = Buffer.from(String(req.headers.authorization || "").replace(/^Bearer /, "")), want = Buffer.from(String(site?.secret || "x"));
         if (!site || given.length !== want.length || !crypto.timingSafeEqual(given, want)) return json(res, 401, { error: "bad site key or secret" });
-        const { events } = await readBody(req) as { events?: { k?: string; ts?: string; v?: string }[] };
+        const { events } = await readBody(req) as { events?: { k?: string; ts?: string; v?: string; h?: string }[] };
         if (!Array.isArray(events) || events.length > 1000) return json(res, 400, { error: "send up to 1000 events" });
         const lo = Date.now() - DAY, hi = Date.now() + 60_000, day = new Date().toISOString().slice(0, 10); let n = 0;
         for (const e of events) {
           const t = Date.parse(String(e.ts || "")); if (!(t > lo && t < hi)) continue;
           const kind = ["view", "signup", "buy"].includes(String(e.k)) ? String(e.k) : "view";
-          if (record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + String(e.v || "")).digest("hex").slice(0, 16), new Date(t).toISOString())) n++;
+          const h = typeof e.h === "string" && /^[a-z0-9.-]{1,253}$/i.test(e.h) ? siteToken("https://" + e.h) : "";   // which site, when the feed says
+          if (record(m[1], kind, crypto.createHash("sha256").update(VIEW_SALT + day + String(e.v || "")).digest("hex").slice(0, 16), new Date(t).toISOString(), h)) n++;
         }
         return json(res, 200, { ok: true, recorded: n });
       }

@@ -103,5 +103,10 @@ test("window glow: recent visitors light a district, and it fades over 30 minute
     assert.equal(r.status, 200);
     const sites = (await (await fetch(base + "/v1/live/gil")).json()).districts.Shop.sites;
     assert.ok(sites && sites.stash > 0, `the visit is counted for the stash site (${JSON.stringify(sites)})`);
+    // the owner's server-side feed can name the host too
+    const fr = await fetch(base + "/v1/t/kshopsite0001/events", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer s2" }, body: JSON.stringify({ events: [{ k: "view", ts: new Date().toISOString(), v: "x1", h: "relay.example.com" }, { k: "view", ts: new Date().toISOString(), v: "x2", h: "bad host!" }] }) });
+    assert.equal((await fr.json()).recorded, 2);
+    const s2 = (await (await fetch(base + "/v1/live/gil")).json()).districts.Shop.sites;
+    assert.ok(s2.relay > 0 && Object.keys(s2).length === 2, `feed hosts are counted, junk ignored (${JSON.stringify(s2)})`);
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });
