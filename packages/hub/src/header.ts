@@ -17,7 +17,7 @@ export interface HeaderViewer {
   unread: number;
   alerts: { title: string; when: string; read: boolean; pinned?: boolean; href?: string }[];
   seenUrl?: string;           // image beacon that marks the shown alerts read
-  msgs?: { unread: number; from: string[] };   // unread direct messages (and from whom), for the strip under the nav
+  msgs?: { unread: number; from: string[]; groups?: number };   // unread direct messages (and from whom), for the strip under the nav
   feedNew?: number;           // feed items since they last opened the feed (a violet count on Feed: new, not urgent)
   badgeToken?: string;        // lets sandboxed pages (profiles, cities) refresh the counts without the cookie
 }
@@ -144,13 +144,13 @@ function strip(m,f){if(!S)return;var hid=null;try{hid=sessionStorage.getItem('ch
 if(!m||cur==='messages'||hid===key(m,f)){S.hidden=true;return}
 var t=S.querySelector('span>span');t.innerHTML='';var b=document.createElement('b');b.textContent=m+' unread message'+(m===1?'':'s');t.appendChild(b);if(f)t.appendChild(document.createTextNode(' from '+f));
 S.querySelector('a.ch-go').textContent=m===1?'Read it':'Read them';S.hidden=false}
-function show(m,a,f,fd){badge(h.querySelector('.ch-msgs'),m,'Messages');var bm=document.querySelector('.ch-bn-msgs .ch-bi');if(bm){badge(bm,m,'Messages');bm.removeAttribute('aria-label');bm.parentNode.setAttribute('aria-label','Messages'+(m>0?', '+m+' unread':''))}var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
+function show(m,a,f,fd,gr){gr=gr||0;var tm=h.querySelector('.ch-msgs'),bm=document.querySelector('.ch-bn-msgs .ch-bi');[tm,bm].forEach(function(el){if(!el)return;badge(el,m+gr,'Messages');var b=el.querySelector('.ch-badge');if(b)b.classList.toggle('ch-new',!m)});if(bm){bm.removeAttribute('aria-label');bm.parentNode.setAttribute('aria-label','Messages'+(m+gr>0?', '+(m+gr)+' unread':''))}var bl=h.querySelector('.ch-bell');if(!(bl&&bl.open))badge(bl&&bl.querySelector('summary'),a,'Alerts');strip(m,f);
 if(typeof fd==='number'&&cur!=='feed'){var fl2=[h.querySelector('.ch-feed'),document.querySelector('.ch-bn-feed .ch-bi')];fl2.forEach(function(el){if(!el)return;var b=el.querySelector('.ch-badge');if(fd>0){if(!b){b=document.createElement('span');b.className='ch-badge ch-new';el.appendChild(b)}b.textContent=fd>99?'99+':String(fd)}else if(b)b.remove()})}
 var n=m+a;document.title=(n?'('+(n>9?'9+':n)+') ':'')+base;if(!fl&&n){fl=document.createElement('link');fl.rel='icon';f0='/favicon.svg';(document.head||document.documentElement).appendChild(fl)}if(fl)fl.setAttribute('href',n?dot:f0);h.setAttribute('data-m',m);h.setAttribute('data-a',a);h.setAttribute('data-from',f)}
 if(S){S.querySelector('button').addEventListener('click',function(){S.hidden=true;try{sessionStorage.setItem('ch-strip-x',key(h.getAttribute('data-m'),h.getAttribute('data-from')))}catch(e){}})}
-show(+h.getAttribute('data-m')||0,+h.getAttribute('data-a')||0,h.getAttribute('data-from')||'');
+show(+h.getAttribute('data-m')||0,+h.getAttribute('data-a')||0,h.getAttribute('data-from')||'',undefined,+h.getAttribute('data-g')||0);
 var bt=h.getAttribute('data-bt'),same=false;try{same=!!hub&&new URL(hub).origin===location.origin&&self.origin!=='null'}catch(e){}
-var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '),j.feed)},function(){busy=0})}
+var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '),j.feed,j.groups||0)},function(){busy=0})}
 if(same||(hub&&bt)){setInterval(tick,30000);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});window.addEventListener('focus',tick)}`;
 
 /** The header for one request's viewer. Same markup and CSS everywhere: the regression test compares these. */
@@ -197,11 +197,11 @@ export function appHeader(o: HeaderOpts): string {
     + `</div></details>`;
   const items = (o.items || []).join("");
   // unread messages get a strip under the nav on every page but Messages itself: the badge alone is easy to miss
-  const mu = v.msgs?.unread || 0, from = (v.msgs?.from || []).map(x => "@" + x);
+  const mu = v.msgs?.unread || 0, mg = v.msgs?.groups || 0, from = (v.msgs?.from || []).map(x => "@" + x);
   const meOn = !!own || (cur === "settings");
   const bav = `<span class="ch-bav">${v.avatar ? `<img src="${e(v.avatar)}" alt="">` : e((v.name || v.handle).charAt(0).toUpperCase())}</span>`;
   const bottom = tabs([...base3,
-    tab("messages", "Messages", `${hub}/messages`, `${icon("message", 22)}${mu ? `<span class="ch-badge">${mu > 9 ? "9+" : mu}</span>` : ""}`, cur === "messages", "ch-bn-msgs"),
+    tab("messages", "Messages", `${hub}/messages${mu || !mg ? "" : "/groups"}`, `${icon("message", 22)}${mu + mg ? `<span class="ch-badge${mu ? "" : " ch-new"}">${mu + mg > 9 ? "9+" : mu + mg}</span>` : ""}`, cur === "messages", "ch-bn-msgs"),
     tab("me", "Me", `${hub}/@${v.handle}/`, bav, meOn)]);
   const strip = `<div class="ch-strip" id="ch-strip" role="status" data-cur="${e(cur)}"${mu && cur !== "messages" ? "" : " hidden"}><span>${icon("message", 18)}<span><b>${mu} unread message${mu === 1 ? "" : "s"}</b>${from.length ? ` from ${e(from.join(", "))}` : ""}</span></span><a class="ch-go" href="${e(hub)}/messages">Read ${mu === 1 ? "it" : "them"}</a><button type="button" aria-label="Hide until a new message arrives">&times;</button></div>`;
   const js = `<script>(function(){var h=document.getElementById('caldera-bar');if(!h||h.dataset.wired)return;h.dataset.wired='1';var ds=h.querySelectorAll('details');
@@ -210,7 +210,7 @@ if(d.classList.contains('ch-bell')&&!d.dataset.done){d.dataset.done='1';var u=d.
 document.addEventListener('click',function(ev){ds.forEach(function(d){if(d.open&&!d.contains(ev.target))d.open=false})});
 document.addEventListener('keydown',function(ev){if(ev.key==='Escape')ds.forEach(function(d){d.open=false})});
 ${BADGE_JS}})()</script>`;
-  return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}" data-hub="${e(hub)}"${v.badgeToken ? ` data-bt="${e(v.badgeToken)}"` : ""} data-m="${mu}" data-a="${v.unread}" data-from="${e(from.join(", "))}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
+  return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}" data-hub="${e(hub)}"${v.badgeToken ? ` data-bt="${e(v.badgeToken)}"` : ""} data-m="${mu}" data-g="${mg}" data-a="${v.unread}" data-from="${e(from.join(", "))}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
     + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${bottom}${js}`;
 }
 

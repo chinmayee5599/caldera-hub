@@ -25,6 +25,7 @@ import { gifts } from "./gifts";
 import { funnel } from "./funnel";
 import { emailPages } from "./emailpages";
 import { messages } from "./messages";
+import { chat, CHAT_CSS, CHAT_JS } from "./chat";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
 import { emailer, type Mail } from "./email";
@@ -814,10 +815,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
 
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
+  let CHAT: ReturnType<typeof chat> | null = null;   // Groups under Messages (same)
   let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
   let EMP: ReturnType<typeof emailPages> | null = null;   // pages made by email + an AI (no GitHub, no Obsidian)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
+    FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -1317,9 +1319,10 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
     return t;
   }
   /** Unread direct messages and the first few senders: the header badge and strip, and /v1/me/badges. */
-  function unreadMsgs(id: string): { unread: number; from: string[] } {
-    if (!MSG) return { unread: 0, from: [] };
-    const n = MSG.unreadFor(id); return { unread: n, from: n ? MSG.inbox(id).filter((x: any) => x.unread && x.handle).slice(0, 3).map((x: any) => x.handle) : [] };
+  function unreadMsgs(id: string): { unread: number; from: string[]; groups: number } {
+    const groups = CHAT ? CHAT.unreadTotal(id) : 0;
+    if (!MSG) return { unread: 0, from: [], groups };
+    const n = MSG.unreadFor(id); return { unread: n, from: n ? MSG.inbox(id).filter((x: any) => x.unread && x.handle).slice(0, 3).map((x: any) => x.handle) : [], groups };
   }
   /** THE header for one request on the public site: who is looking, and whether this is their own profile or city. */
   function headerFor(req: http.IncomingMessage, pathname: string): { header: string; signedIn: boolean } {
@@ -1594,9 +1597,18 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
   }
   /** /signin with no page: GitHub first, then how to sign in to a page made in Obsidian. */
   function signinGeneral(res: http.ServerResponse, back = "") {
-    const bq = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world|@[a-z0-9-]+\/|me\/building|settings|alerts)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
+    const bq = /^\/(messages|messages\/@[a-z0-9-]+|messages\/groups(?:\/[a-z0-9-]+(?:\/[0-9a-f]{16})?)?|feed|people|world|@[a-z0-9-]+\/|me\/building|settings|alerts)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     // "Message" on someone's page, signed out: say why, offer sign-up first (credited to them), and land in the conversation after
     const mh = back.match(/^\/messages\/@([a-z0-9-]+)$/)?.[1] || "", them = mh ? byHandle(mh) : null;
+    // a group link, signed out: same idea, "Sign up to join <group>", back into the group after
+    const gs = back.match(/^\/messages\/groups\/([a-z0-9-]+)/)?.[1] || "", gname = gs && CHAT ? CHAT.nameOf(gs) : null;
+    if (gname) {
+      const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)), q2 = `back=${encodeURIComponent(back)}`;
+      signinPage(res, 200, `Join ${gname}`, `<h1>Sign up to join ${e(gname)}</h1><p class="lede">Groups are where Caldera members talk shop. You need a free page first. It takes about a minute, then you land right in the conversation.</p>
+<div class="card"><h2>Sign up</h2><p class="mut">No GitHub needed: ChatGPT or Claude writes your page, you confirm your email. Use GitHub? Your repos become your city.</p><div class="row"><a class="btn" href="/start?${q2}">Sign up with email</a><a class="btn ghost" href="/auth/github?${q2}">Sign up with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
+<div class="card"><h2>Already on Caldera?</h2><div class="row"><a class="btn small ghost" href="/auth/github${bq}">Sign in with GitHub</a><a class="btn small ghost" href="/start${bq}">Email me a sign-in link</a></div></div>`);
+      return;
+    }
     if (them && !modOf(them.handle, them.id)) {
       const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
       const h = them.handle as string, who = String(body(them).name || "").trim() || `@${h}`, q2 = `back=${encodeURIComponent(back)}&invite=${encodeURIComponent(h)}`;
@@ -1704,7 +1716,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     // a new message emails the recipient (summary address, else their GitHub-verified one) when email is set up on this hub
     mailAlert: (opts.email?.send || opts.email?.resendKey) ? (to, a) => mail.messageAlert(to, a) : undefined,
     sign: (s: string) => crypto.createHmac("sha256", PRIV_KEY).update(s).digest("hex") });
-  headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge, left of the bell in THE header
+  // Groups under Messages: a few hub-wide topics the founder sets; members post and reply in threads (badge only, no email)
+  CHAT = chat({ q, now, profile, byHandle, body, modOf, memberOf, sameOrigin, readBody, json, tooMany, founder: opts.founder ? opts.founder.toLowerCase() : null,
+    canPost: (id: string) => !q("SELECT 1 FROM msg_bans WHERE member=?").get(id),
+    notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "groups" }); },
+    ui: { ...MSG.ui, shell: (t: string, i: string, cls: string) => MSG!.ui.shell(t, i, cls, CHAT_CSS, CHAT_JS) } });
+  MSG.setGroups(id => CHAT ? CHAT.unreadTotal(id) : 0);
+  headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge (DMs + groups), left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
   // caldera.social/gh/<login>: anyone's public GitHub as a city (and README badges for previews and members)
@@ -1745,12 +1763,13 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         res.setHeader("cache-control", "no-store"); res.setHeader("vary", "Cookie");
         if (!me) return json(res, 401, { error: "signed out" });
         const m = unreadMsgs(me), al = alerts.forOwner(me, alertKind(me), 20).filter((a: any) => !a.read).length;
-        return json(res, 200, { messages: m.unread, from: m.from, alerts: al, feed: FEED ? FEED.newFor(me) : 0 });
+        return json(res, 200, { messages: m.unread, from: m.from, groups: m.groups, alerts: al, feed: FEED ? FEED.newFor(me) : 0 });
       }
       if (/^\/(start(\/confirm)?|settings(\/page)?|me)$/.test(p) && await EMP!.route(req, res, url, p)) return;   // email pages (falls through for everyone else)
       if (/^\/(auth\/github|me$|me\/upload$|settings$|settings\/(status|claim)$|alerts$|v1\/github\/)/.test(p) && await GH.route(req, res, url)) return;
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
+      if (/^\/(messages\/groups|v1\/groups)(\/|$)/.test(p) && CHAT && await CHAT.route(req, res, url, p)) return;
       if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
       if (/^\/(me\/building\/?|v1\/tags|v1\/people\/[a-z0-9-]+\/similar-stack$|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 

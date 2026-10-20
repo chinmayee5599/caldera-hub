@@ -238,14 +238,19 @@ export function messages(c: MsgCtx) {
     ? `<img class="ms-av" src="${esc(x.avatar)}" alt="" width="${size}" height="${size}" style="width:${size}px;height:${size}px">`
     : `<span class="ms-av ms-ini" style="width:${size}px;height:${size}px" aria-hidden="true">${esc((x.name || x.handle || "?").replace(/^@/, "").slice(0, 1).toUpperCase())}</span>`;
   const ago = (iso: string) => { const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : s < 7 * 86400 ? `${Math.floor(s / 86400)}d` : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+  let groupsUnread: (me: string) => number = () => 0;   // set by the Groups module once it exists
+  /** Messages title + the Direct messages / Groups switch, each with its unread count (DMs red, groups violet) */
+  function listHead(me: string, which: "dm" | "groups") {
+    const dm = inbox(me).reduce((a, x) => a + (x.unread ? 1 : 0), 0), g = groupsUnread(me), n = (v: number, cls = "") => v ? ` <i${cls}>${v > 99 ? "99+" : v}</i>` : "";
+    return `<div class="ms-list-h"><h1>Messages</h1></div><nav class="ms-sw" aria-label="Messages"><a href="/messages"${which === "dm" ? ' aria-current="page"' : ""}>Direct${n(dm)}</a><a href="/messages/groups"${which === "groups" ? ' aria-current="page"' : ""}>Groups${n(g, ' class="new"')}</a></nav>`;
+  }
   function listHtml(me: string, current: string | null, tab: string) {
     const all = inbox(me), reqs = all.filter(x => x.state === "request"), rows = tab === "requests" ? reqs : all;
     const items = rows.map(x => `<a class="ms-row${x.handle === current ? " is-on" : ""}${x.unread ? " is-unread" : ""}" href="/messages/@${esc(x.handle || "")}"${x.handle ? "" : ' aria-disabled="true"'}>${avatarHtml(x, 44)}`
       + `<span class="ms-row-m"><span class="ms-row-top"><b>${esc(x.name)}</b><time datetime="${esc(x.last?.ts || x.updated)}">${esc(ago(x.last?.ts || x.updated))}</time></span>`
       + `<span class="ms-row-last">${x.state === "request" ? "Wants to message you" : x.state === "pending" ? "Request sent" + (x.last ? `: ${esc(x.last.text)}` : "") : x.last ? (x.last.mine ? "You: " : "") + esc(x.last.text) : ""}</span></span>`
       + `${x.unread ? '<span class="ms-dot" aria-label="Unread"></span>' : ""}</a>`).join("");
-    const unread = all.reduce((a, x) => a + (x.unread ? 1 : 0), 0);
-    return `<section class="ms-list" aria-label="Conversations"><div class="ms-list-h"><h1>Messages</h1>${unread ? `<span class="ms-mut">${unread} unread</span>` : ""}</div>`
+    return `<section class="ms-list" aria-label="Conversations">${listHead(me, "dm")}`
       + `<div class="ms-tabs" role="tablist"><a role="tab" href="/messages${current ? "/@" + esc(current) : ""}" aria-selected="${tab !== "requests"}">All</a><a role="tab" href="/messages?tab=requests" aria-selected="${tab === "requests"}">Requests${reqs.length ? ` &middot; ${reqs.length}` : ""}</a></div>`
       + (items || `<div class="ms-empty"><b>${tab === "requests" ? "No requests" : "No messages yet"}</b><span>${tab === "requests" ? "When someone who isn't a friend writes to you, it waits here until you accept." : "Open someone's profile and tap Message. Friends get it right away; anyone else gets a request first."}</span>${tab === "requests" ? "" : '<a class="ms-btn ghost" href="/people">Find people</a>'}</div>`)
       + `<label class="ms-pref"><input type="checkbox" id="ms-email"${emailOff(me) ? "" : " checked"}> Email me when someone messages me</label></section>`;
@@ -274,10 +279,10 @@ export function messages(c: MsgCtx) {
     }
     return `<section class="ms-thread" aria-label="Conversation with @${esc(h)}" data-h="${esc(h)}" data-id="${esc(th.id || "")}" data-state="${esc(th.state)}">${head}<div class="ms-msgs" id="ms-msgs" aria-live="polite">${body}</div>${foot}</section>`;
   }
-  function shell(title: string, inner: string, cls: string) {
+  function shell(title: string, inner: string, cls: string, css = "", js = "") {
     return c.navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} - Caldera</title><meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>${CSS}</style></head><body><main class="ms ${cls}">${inner}</main><script>${JS}</script></body></html>`, "/messages");
+<link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css"><style>${CSS}${css}</style></head><body><main class="ms ${cls}">${inner}</main><script>${JS}${js}</script></body></html>`, "/messages");
   }
   const page = (res: http.ServerResponse, status: number, html: string) => { res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", vary: "Cookie" }); res.end(html); };
 
@@ -328,11 +333,12 @@ export function messages(c: MsgCtx) {
   /** The Messages link with its unread badge: `header` styles it for THE header (ch-icon), otherwise the older bars. */
   function iconFor(me: string | null | undefined, header = false): string {
     if (!me) return "";
-    const n = unreadFor(me);
-    if (header) return `<a class="ch-icon ch-msgs" href="${hub}/messages" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span class="ch-badge">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
+    const dm = unreadFor(me), n = dm + (header ? groupsUnread(me) : 0);
+    if (header) return `<a class="ch-icon ch-msgs" href="${hub}/messages${dm || !n ? "" : "/groups"}" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span class="ch-badge${dm ? "" : " ch-new"}">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
     return `<a class="cb-msgs" href="${hub}/messages" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;border-radius:999px;color:#D6D6DC;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span style="position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:var(--danger,#F0716A);color:#fff;font:600 10.5px/16px 'IBM Plex Sans',Arial,sans-serif;text-align:center">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
   }
-  return { route, send, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail, sweepAlerts };
+  const ui = { shell, page, listHead, avatarHtml, ago };
+  return { route, send, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail, sweepAlerts, ui, setGroups: (f: (me: string) => number) => { groupsUnread = f; } };
 }
 
 // ---------------------------------------------------------------------------------------------------- page styles + script
@@ -341,6 +347,10 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-list{width:340px;flex:none;border-right:1px solid var(--line,#2a2a2e);display:flex;flex-direction:column;padding-bottom:12px}
 .ms-list-h{display:flex;align-items:baseline;justify-content:space-between;padding:20px 16px 10px}.ms-list-h h1{margin:0;font:600 26px var(--font-display,'Source Serif 4',Georgia,serif);color:var(--text-strong,#f2f2f5)}
 .ms-mut{color:var(--text-muted,#8a8a93);font-size:13px}
+.ms-sw{display:flex;margin:0 12px 10px;padding:3px;border-radius:12px;background:var(--bg,#1c1c1f);border:1px solid var(--line,#2a2a2e)}
+.ms-sw a{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border-radius:9px;color:var(--text-muted,#8a8a93);font:500 14px var(--font-body,'IBM Plex Sans',Arial,sans-serif);text-decoration:none}
+.ms-sw a[aria-current="page"]{background:var(--bg-raised,#232327);color:var(--text-strong,#f2f2f5);font-weight:600}.ms-sw a:hover{color:var(--text-strong,#f2f2f5);text-decoration:none}
+.ms-sw i{font-style:normal;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#E5484D;color:#fff;font:600 11.5px/20px 'IBM Plex Sans',Arial,sans-serif;text-align:center}.ms-sw i.new{background:#8B6CF6}
 .ms-tabs{display:flex;gap:6px;padding:0 12px 8px}.ms-tabs a{padding:5px 12px;border-radius:999px;color:var(--text-muted,#8a8a93);font-size:13px;text-decoration:none}.ms-tabs a[aria-selected="true"]{background:var(--accent-soft,rgba(139,108,246,.1));color:var(--accent-text,#b39dfa);font-weight:600}
 .ms-row{display:flex;gap:12px;padding:12px 16px;color:inherit;text-decoration:none;align-items:flex-start}.ms-row:hover{background:var(--bg-raised,#232327);text-decoration:none}.ms-row.is-on{background:var(--bg-raised,#232327)}
 .ms-row-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.ms-row-top{display:flex;justify-content:space-between;gap:8px}.ms-row-top b{color:var(--text-strong,#f2f2f5);font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ms-row.is-unread .ms-row-top b{font-weight:600}

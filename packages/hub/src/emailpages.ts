@@ -235,7 +235,7 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
   const ipKey = (req: http.IncomingMessage) => String(req.headers["x-real-ip"] || req.socket.remoteAddress || "?");
 
   // where to land after confirming (e.g. the conversation that asked for sign-up) and whose invite brought them
-  const okBack = (v: unknown) => { const s0 = String(v || ""); return /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world)$/.test(s0) ? s0 : ""; };
+  const okBack = (v: unknown) => { const s0 = String(v || ""); return /^\/(messages|messages\/@[a-z0-9-]+|messages\/groups(?:\/[a-z0-9-]+(?:\/[0-9a-f]{16})?)?|feed|people|world)$/.test(s0) ? s0 : ""; };
   const okInv = (v: unknown) => String(v || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
   const carry = (back: string, inv: string) => `${back ? `&back=${encodeURIComponent(back)}` : ""}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}`;
 
