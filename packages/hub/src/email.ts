@@ -115,11 +115,24 @@ export function emailer(ctx: EmailCtx) {
     const m: Mail = m0.src ? { ...m0, html: tagLinks(m0.html, hub, m0.src, true), text: tagLinks(m0.text, hub, m0.src, false) } : m0;
     if (ctx.send) return ctx.send(m);
     if (!ctx.resendKey) throw new Error("email is not set up on this hub");
-    const r = await fetch("https://api.resend.com/emails", { method: "POST",
-      headers: { authorization: "Bearer " + ctx.resendKey, "content-type": "application/json", "user-agent": "Mozilla/5.0 (caldera-hub)" },
-      body: JSON.stringify({ from: ctx.from || "Caldera <hello@caldera.social>", reply_to: ctx.replyTo || "hello@caldera.social", to: [m.to], subject: m.subject, html: m.html, text: m.text, headers: m.headers }) });
-    if (!r.ok) throw new Error(`email send failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+    // Resend allows 10 requests a second: sends go out one at a time at most ~8 a second, and a 429 waits and retries
+    const turn = sendChain.then(async () => {
+      const wait = lastSend + 125 - Date.now(); if (wait > 0) await sleep(wait);
+      for (let attempt = 0; ; attempt++) {
+        lastSend = Date.now();
+        const r = await fetch("https://api.resend.com/emails", { method: "POST",
+          headers: { authorization: "Bearer " + ctx.resendKey, "content-type": "application/json", "user-agent": "Mozilla/5.0 (caldera-hub)" },
+          body: JSON.stringify({ from: ctx.from || "Caldera <hello@caldera.social>", reply_to: ctx.replyTo || "hello@caldera.social", to: [m.to], subject: m.subject, html: m.html, text: m.text, headers: m.headers }) });
+        if (r.ok) return;
+        if (r.status === 429 && attempt < 4) { await sleep(Math.max(1000 * (Number(r.headers.get("retry-after")) || 0), 500 * 2 ** attempt)); continue; }
+        throw new Error(`email send failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
+      }
+    });
+    sendChain = turn.catch(() => {});
+    return turn;
   }
+  let sendChain: Promise<void> = Promise.resolve(), lastSend = 0;
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
   const shell = (title: string, inner: string, unsub?: string) => `<!doctype html><html><body style="margin:0;background:#F4F3F8;padding:24px 12px;font:15px/1.55 -apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#24222B">
 <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border:1px solid #E4E1EE;border-radius:12px;overflow:hidden">
