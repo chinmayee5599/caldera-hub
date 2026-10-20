@@ -26,6 +26,7 @@ import { funnel } from "./funnel";
 import { emailPages } from "./emailpages";
 import { messages } from "./messages";
 import { chat, CHAT_CSS, CHAT_JS } from "./chat";
+import { setupGuide } from "./setupguide";
 import { mapPanel } from "./mapprompt";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -827,11 +828,12 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   MAP_HUB = (opts.publicUrl || "https://caldera.social").replace(/\/$/, "");
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
+  let GUIDE: ReturnType<typeof setupGuide> | null = null;   // the setup-guide DMs
   let CHAT: ReturnType<typeof chat> | null = null;   // Groups under Messages (same)
   let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
   let EMP: ReturnType<typeof emailPages> | null = null;   // pages made by email + an AI (no GitHub, no Obsidian)
   function erase(id: string) {
-    FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
+    FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GUIDE?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
     q("DELETE FROM alerts WHERE target=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
@@ -1735,6 +1737,18 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "groups" }); },
     ui: { ...MSG.ui, shell: (t: string, i: string, cls: string) => MSG!.ui.shell(t, i, cls, CHAT_CSS, CHAT_JS) } });
   MSG.setGroups(id => CHAT ? CHAT.unreadTotal(id) : 0);
+  // the setup guide: a DM from the founder with what's still missing on a member's page (welcome + two follow-ups)
+  GUIDE = opts.founder ? setupGuide({ q, now, hub: PUB(), founder: () => byHandle(String(opts.founder).toLowerCase())?.id || null,
+    send: (f, t, text) => MSG ? MSG.system(f, t, text) : false, nameOf: id => String(profile(id)?.name || profile(id)?.handle || ""),
+    stateOf: id => {
+      const st = pageStateFor(id), u = unlockStateFor(id), pr = profile(id); if (!st || !u || !pr) return null;
+      const b = body(pr), hosted = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(id);
+      const daily: any[] = Array.isArray(b.daily) ? b.daily : [];
+      return { hosted, missingBasics: C.pageChecklist(st).filter(i => !i.done && ["photo", "headline", "links"].includes(i.id)).map(i => i.id),
+        richer: daily.some(d => d.headline) || (Array.isArray(b.topics) && b.topics.length >= 3), agents: !!u.agents, live: !!u.live, email: st.email,
+        grouped: !!q("SELECT 1 FROM chat_posts WHERE author=? LIMIT 1").get(id) };
+    } }) : null;
+  if (GUIDE) { const g = GUIDE; const t = setInterval(() => { try { g.tick(); } catch (e: any) { console.error("setup guide", e?.message); } }, 10 * 60_000); t.unref?.(); }
   headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge (DMs + groups), left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
@@ -1783,6 +1797,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (/^\/(feed(\/|$)|v1\/feed$|v1\/posts|v1\/comments\/|v1\/me\/notices$)/.test(p) && await FEED!.route(req, res, url, p)) return;
       if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
       if (/^\/(messages\/groups|v1\/groups)(\/|$)/.test(p) && CHAT && await CHAT.route(req, res, url, p)) return;
+      // founder only: send the setup guide to members who joined before it existed ({dry:true} previews it)
+      if (p === "/v1/admin/setup-guide" && req.method === "POST" && GUIDE) {
+        const me = memberOf(req), f = opts.founder ? byHandle(String(opts.founder).toLowerCase()) : null;
+        if (!me || !f || me !== f.id) return json(res, 403, { error: "founder only" });
+        if (!sameOrigin(req)) return json(res, 403, { error: "cross-site request refused" });
+        const b = await readBody(req).catch(() => ({}));
+        return json(res, 200, { results: GUIDE.backfill(!!b?.dry) });
+      }
       if (/^\/(messages(\/|$)|v1\/messages\/)/.test(p) && await MSG!.route(req, res, url, p)) return;
       if (/^\/(me\/building\/?|v1\/tags|v1\/people\/[a-z0-9-]+\/similar-stack$|v1\/intro\/|v1\/me\/intro-state|v1\/owner\/cal:[^/]+\/intros)/.test(p) && await B.route(req, res, url, p)) return;
 
@@ -2505,7 +2527,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   }
   setTimeout(() => { try { promptPrivateChoice(); } catch (e: any) { console.error("private repos prompt", e?.message); } }, 15_000).unref?.();
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, guide: GUIDE, digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
@@ -2565,3 +2587,4 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
   hub.listen().then(p => console.log(`Caldera Hub listening on :${p}`));
   if (process.env.CALDERA_PRIVATE_PORT) hub.listenPrivate().then(p => console.log(`Caldera private owner address on 127.0.0.1:${p}`));
 }
+export { guideSteps, welcomeText } from "./setupguide";

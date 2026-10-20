@@ -357,7 +357,7 @@ export function github(ctx: GhCtx) {
     for (const [k, v] of Object.entries(renderProfile(p))) files[k] = v;
     const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity;
     const manifest = C.sign(id, "profile.manifest", { name, handle, boxKey: id.boxPublic, headline: p.headline, photos: { avatar, banner }, links, sections: Object.keys(p.sections).filter(k => p.sections[k]),
-      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: [], asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs, ...(edits.autoConnectRepos === false ? { autoConnectRepos: false } : {}) });
+      stats: p.stats, daily: daily.map(d => ({ date: d.date, score: C.activityScore(d.counts), headline: "", counts: d.counts })), topics: auto.topics.slice(0, 12), asks: [], offers: [], listed: edits.listed !== false, page: "index.html", updated: p.updated, hosted: "github", groups: groupsFrom((edits.groups || []).join(",")), languages: langs, ...(edits.autoConnectRepos === false ? { autoConnectRepos: false } : {}) });
     const r = ctx.accept(manifest); if (r.status !== 200) throw new Error(r.body?.error || "couldn't publish");
     const dir = path.join(ctx.dataDir, "profiles", handle);
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(path.join(dir, "img"), { recursive: true }); fs.mkdirSync(path.join(dir, "assets"), { recursive: true });

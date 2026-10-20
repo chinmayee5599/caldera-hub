@@ -47,7 +47,7 @@ const CSS = `.mp{box-sizing:border-box;margin:18px 0 0;border:1px solid #2E2A40;
 .mp-float[open]{width:min(560px,calc(100vw - 24px))}.mp-float[open] pre{max-height:min(38vh,320px)}
 @media (max-width:760px){.mp-float{bottom:calc(76px + env(safe-area-inset-bottom,0px))}}`;
 
-const JS = `(function(){document.querySelectorAll('.mp').forEach(function(d){if(d.dataset.w)return;d.dataset.w='1';var b=d.querySelector('.mp-copy'),pre=d.querySelector('pre'),note=d.querySelector('.mp-done');
+const JS = `(function(){document.querySelectorAll('.mp').forEach(function(d){if(d.dataset.w)return;d.dataset.w='1';if(location.hash==='#'+d.id){d.open=true;setTimeout(function(){d.scrollIntoView({block:'start'})},300)}var b=d.querySelector('.mp-copy'),pre=d.querySelector('pre'),note=d.querySelector('.mp-done');
 function sel(){var r=document.createRange();r.selectNodeContents(pre);var s=getSelection();s.removeAllRanges();s.addRange(r)}
 function ok(m){if(note){note.textContent=m;note.hidden=false}b.textContent='Copied';setTimeout(function(){b.textContent='Copy prompt'},2200)}
 b.addEventListener('click',function(){var t=pre.textContent;try{navigator.clipboard.writeText(t).then(function(){ok('Copied. Paste it into Claude, ChatGPT or your coding agent.')},function(){sel();ok('Selected: press Cmd+C (or Ctrl+C) to copy.')})}catch(e){sel();ok('Selected: press Cmd+C (or Ctrl+C) to copy.')}})})})();`;

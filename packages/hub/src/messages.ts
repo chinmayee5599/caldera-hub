@@ -105,6 +105,18 @@ export function messages(c: MsgCtx) {
     if (isRequest) tell(to.id, { title: `@${mp.handle} wants to message you`, body: `${text.slice(0, 120)}${text.length > 120 ? "..." : ""}\n\nAccept to reply, or ignore it. They won't be told which.`, ctaLabel: "See the request", ctaUrl: `/messages/@${mp.handle}`, key: "msgreq:" + me });
     return { status: 200, body: { ok: true, state: isRequest ? "requested" : "sent", message: { id, mine: true, html: renderText(text), ts } } };
   }
+  /** A message from the hub itself, sent as the founder (the setup guide): opens the conversation without a request, skips
+   *  the rate limits, and lands like any other DM (badge, strip, email digest). Never reaches someone who blocked the sender. */
+  function system(from: string, to: string, text: string): boolean {
+    const fp = c.profile(from), tp = c.profile(to); if (!usable(fp) || !usable(tp) || from === to || blocked(to, from)) return false;
+    const body = cleanText(text); if (!body) return false;
+    const ts = c.now(); let t = threadOf(from, to);
+    if (!t) { const [a, b] = pair(from, to); q("INSERT INTO msg_threads VALUES (?,?,?,?,?,?,?,?)").run(crypto.randomBytes(8).toString("hex"), a, b, "open", null, ts, ts, null); t = threadOf(from, to)!; }
+    else if (t.status !== "open") q("UPDATE msg_threads SET status='open', requested_by=NULL, ignored_at=NULL WHERE id=?").run(t.id);
+    q("INSERT INTO msg_messages VALUES (?,?,?,?,?,?)").run(crypto.randomBytes(8).toString("hex"), t.id, from, c.seal(body), ts, null);
+    q("UPDATE msg_threads SET updated=? WHERE id=?").run(ts, t.id);
+    return true;
+  }
   function decide(me: string, threadId: string, action: string, reason = ""): { status: number; body: any } {
     const t = threadById(threadId); if (!t || (t.a !== me && t.b !== me)) return { status: 404, body: { error: "not found" } };
     const them = other(t, me), ts = c.now();
@@ -338,7 +350,7 @@ export function messages(c: MsgCtx) {
     return `<a class="cb-msgs" href="${hub}/messages" aria-label="Messages${n ? `, ${n} unread` : ""}" title="Messages" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;border-radius:999px;color:#D6D6DC;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${n ? `<span style="position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:var(--danger,#F0716A);color:#fff;font:600 10.5px/16px 'IBM Plex Sans',Arial,sans-serif;text-align:center">${n > 9 ? "9+" : n}</span>` : ""}</a>`;
   }
   const ui = { shell, page, listHead, avatarHtml, ago };
-  return { route, send, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail, sweepAlerts, ui, setGroups: (f: (me: string) => number) => { groupsUnread = f; } };
+  return { route, send, system, decide, inbox, thread, unreadFor, digestFor, erase, admin, iconFor, setEmail, sweepAlerts, ui, setGroups: (f: (me: string) => number) => { groupsUnread = f; } };
 }
 
 // ---------------------------------------------------------------------------------------------------- page styles + script
