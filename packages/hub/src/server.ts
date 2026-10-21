@@ -807,6 +807,15 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function worldNav(): string { return siteHeader("/world") + `<script src="/assets/site.js" defer></script>`; }
   /** Give a hub-rendered page the site header: replaces its own header (or the old ".top" link row), adds the site styles
    *  ahead of the page's own (so the page keeps its look) and the script that turns "Sign in" into the account menu. */
+  /** Any page that isn't here: the site header plus a way on (back, home and the main sections), never a bare error. */
+  function notFoundPage(title = "This page isn't here", why = "The link may be old, or the page was moved or deleted."): string {
+    const e = (x: string) => x.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
+    return navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Not here - Caldera</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">`
+      + `<style>.nf{max-width:640px;margin:0 auto;padding:64px 16px 80px;text-align:center}.nf .code{font:600 12px var(--font-mono,'IBM Plex Mono',monospace);letter-spacing:.12em;color:var(--accent,#8b6cf6);margin:0 0 10px}.nf h1{font-family:var(--font-display,'Source Serif 4',Georgia,serif);font-size:2rem;margin:0 0 10px;color:var(--text-strong);text-wrap:balance}.nf p{color:var(--text-muted);margin:0 0 24px}.nf .row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}.nf .go{margin-top:28px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:center;font-size:14px}.nf .go a{color:var(--text-muted)}.nf .go a:hover{color:var(--text-strong)}</style></head>`
+      + `<body><main class="nf"><p class="code">404</p><h1>${e(title)}</h1><p>${e(why)}</p><div class="row"><a class="btn" href="/" data-back>Go back</a><a class="btn ghost" href="/feed">Open the feed</a></div>`
+      + `<nav class="go" aria-label="Where to go"><a href="/">Home</a><a href="/messages">Messages</a><a href="/people">People</a><a href="/world">World</a><a href="/downloads">Downloads</a><a href="/settings">Settings</a></nav></main>`
+      + `<script>(function(){var b=document.querySelector('[data-back]');try{if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){b.addEventListener('click',function(e){e.preventDefault();history.back()})}else{b.textContent='Go home'}}catch(_){b.textContent='Go home'}})()</script></body></html>`);
+  }
   function navify(html: string, current = ""): string {
     const head = siteHeader(current);
     if (/<header class="nav"[\s\S]*?<\/header>/.test(html)) html = html.replace(/<header class="nav"[\s\S]*?<\/header>/, head);
@@ -2497,6 +2506,9 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (req.method === "GET" && m) {
         const rows = q("SELECT f.b AS id, p.handle, p.name, p.box_key, COALESCE(f.kind,'request') AS kind, f.why FROM friends f LEFT JOIN profiles p ON p.id=f.b WHERE f.a=?").all(m[1]);
         return json(res, 200, { friends: rows });
+      }
+      if ((req.method === "GET" || req.method === "HEAD") && !p.startsWith("/v1/") && /text\/html|\*\/\*/.test(String(req.headers.accept || "")) && !/\.(js|css|png|jpe?g|gif|svg|webp|ico|json|xml|txt|zip|woff2?)$/i.test(p)) {
+        res.writeHead(404, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "x-robots-tag": "noindex" }); return res.end(notFoundPage());
       }
       json(res, 404, { error: "not found" });
     } catch (err: any) {

@@ -260,7 +260,7 @@ export function messages(c: MsgCtx) {
     const all = inbox(me), reqs = all.filter(x => x.state === "request"), rows = tab === "requests" ? reqs : all;
     // waiting on you: unread, or their message is the last word (unanswered), or a request to answer; newest first, on top
     const waiting = (x: typeof all[number]) => x.state === "request" || x.unread > 0 || (x.state === "open" && !!x.last && !x.last.mine);
-    const row = (x: typeof all[number]) => `<a class="ms-row${x.handle === current ? " is-on" : ""}${x.unread ? " is-unread" : ""}" href="/messages/@${esc(x.handle || "")}"${x.handle ? "" : ' aria-disabled="true"'}>${avatarHtml(x, 44)}`
+    const row = (x: typeof all[number]) => `<a class="ms-row${x.handle === current ? " is-on" : ""}${x.unread ? " is-unread" : ""}" href="${x.handle ? `/messages/@${esc(x.handle)}` : `/messages/t/${esc(x.id)}`}">${avatarHtml(x, 44)}`
       + `<span class="ms-row-m"><span class="ms-row-top"><b>${esc(x.name)}</b><time datetime="${esc(x.last?.ts || x.updated)}">${esc(ago(x.last?.ts || x.updated))}</time></span>`
       + `<span class="ms-row-last">${x.state === "request" ? "Wants to message you" : x.state === "pending" ? "Request sent" + (x.last ? `: ${esc(x.last.text)}` : "") : x.last ? (x.last.mine ? "You: " : "") + esc(x.last.text) : ""}</span></span>`
       + `${x.unread ? `<span class="ms-unread" aria-label="${x.unread} unread">${x.unread > 99 ? "99+" : x.unread}</span>` : waiting(x) ? '<span class="ms-reply" title="Waiting for your reply">Reply</span>' : ""}</a>`;
@@ -271,6 +271,19 @@ export function messages(c: MsgCtx) {
       + (items || `<div class="ms-empty"><b>${tab === "requests" ? "No requests" : "No messages yet"}</b><span>${tab === "requests" ? "When someone who isn't a friend writes to you, it waits here until you accept." : "Open someone's profile and tap Message. Friends get it right away; anyone else gets a request first."}</span>${tab === "requests" ? "" : '<a class="ms-btn ghost" href="/people">Find people</a>'}</div>`)
       + `<label class="ms-pref"><input type="checkbox" id="ms-email"${emailOff(me) ? "" : " checked"}> Email me when someone messages me</label></section>`;
   }
+  /** a conversation with someone who deleted their account: read it, delete it, and a clear way back (never a dead end) */
+  function goneThreadHtml(me: string, t: Thread) {
+    const msgs = q("SELECT sender, body, ts FROM msg_messages WHERE thread=? ORDER BY ts ASC LIMIT 500").all(t.id) as any[];
+    q("UPDATE msg_messages SET read_at=? WHERE thread=? AND sender<>? AND read_at IS NULL").run(c.now(), t.id, me);   // nothing left to answer: clear the badge
+    const back = `<a class="ms-back" href="/messages" aria-label="Back to messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>`;
+    const head = `<div class="ms-th-h">${back}${avatarHtml({ avatar: null, name: "Deleted user", handle: "" }, 36)}<span class="ms-th-who"><b>Deleted user</b><span class="ms-mut">This account was deleted</span></span><span class="ms-grow"></span>`
+      + `<details class="ms-more"><summary aria-label="More: delete">&#8943;</summary><span class="ms-menu"><button type="button" data-act="delete" class="danger">Delete conversation</button></span></details></div>`;
+    const bubbles = msgs.map(m => `<div class="ms-b ${m.sender === me ? "me" : "them"}" data-ts="${esc(m.ts)}">${renderText(open(m.body))}</div>`).join("");
+    const foot = `<div class="ms-gone"><p>This person deleted their Caldera account, so you can't reply. You can keep this conversation or delete it.</p><div class="ms-row-btns"><a class="ms-btn ghost" href="/messages">Back to Messages</a><button type="button" class="ms-link danger" data-act="delete">Delete conversation</button></div></div>`;
+    return `<section class="ms-thread" aria-label="Conversation with a deleted user" data-h="" data-id="${esc(t.id)}" data-state="gone">${head}<div class="ms-msgs" id="ms-msgs">${bubbles || `<div class="ms-empty"><b>No messages</b></div>`}</div>${foot}</section>`;
+  }
+  const goneEmpty = (title: string, why: string) => `<section class="ms-thread"><div class="ms-th-h"><a class="ms-back" href="/messages" aria-label="Back to messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a><b>${title}</b></div>`
+    + `<div class="ms-empty"><b>${title}</b><span>${why}</span><span class="ms-row-btns" style="justify-content:center;margin-top:14px"><a class="ms-btn" href="/messages">Back to Messages</a><a class="ms-btn ghost" href="/people">Find people</a></span></div></section>`;
   function threadHtml(me: string, th: NonNullable<ReturnType<typeof thread>>) {
     const h = th.them.handle as string;
     const head = `<div class="ms-th-h"><a class="ms-back" href="/messages" aria-label="Back to messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>${avatarHtml({ avatar: th.them.avatar, name: th.them.name, handle: h }, 36)}`
@@ -305,13 +318,23 @@ export function messages(c: MsgCtx) {
   // ---------------------------------------------------------------- routes
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
     const me = c.memberOf(req);
+    // a conversation by its id: used for someone who deleted their account (no handle to link to any more)
+    const mt = p.match(/^\/messages\/t\/([0-9a-f]{16})\/?$/);
+    if (req.method === "GET" && mt) {
+      if (!me) { res.writeHead(302, { location: `/signin?back=${encodeURIComponent("/messages")}`, "cache-control": "no-store" }); res.end(); return true; }
+      const t = threadById(mt[1]);
+      if (!t || (t.a !== me && t.b !== me)) { page(res, 404, shell("Messages", listHtml(me, null, "all") + goneEmpty("This conversation isn't here", "It may have been deleted."), "is-thread")); return true; }
+      const them = c.profile(other(t, me));
+      if (usable(them)) { res.writeHead(302, { location: `/messages/@${them.handle}` }); res.end(); return true; }
+      page(res, 200, shell("Messages", listHtml(me, null, "all") + goneThreadHtml(me, t), "is-thread")); return true;
+    }
     if (req.method === "GET" && (p === "/messages" || p === "/messages/" || /^\/messages\/@[A-Za-z0-9-]+\/?$/.test(p))) {
       const h = (p.match(/^\/messages\/@([A-Za-z0-9-]+)/)?.[1] || "").toLowerCase();
       if (!me) { res.writeHead(302, { location: `/signin?back=${encodeURIComponent(h ? `/messages/@${h}` : "/messages")}`, "cache-control": "no-store" }); res.end(); return true; }
       const tab = url.searchParams.get("tab") === "requests" ? "requests" : "all";
       if (!h) { page(res, 200, shell("Messages", listHtml(me, null, tab) + `<section class="ms-thread ms-none"><div class="ms-empty"><b>Pick a conversation</b><span>Or open someone's profile and tap Message.</span></div></section>`, "is-list")); return true; }
       const them = c.byHandle(h);
-      if (!usable(them)) { page(res, 404, shell("Messages", listHtml(me, null, tab) + `<section class="ms-thread"><div class="ms-empty"><b>@${esc(h)} isn't on Caldera</b><span>The account may have been deleted.</span></div></section>`, "is-thread")); return true; }
+      if (!usable(them)) { page(res, 404, shell("Messages", listHtml(me, null, tab) + goneEmpty(`@${esc(h)} isn't on Caldera`, "The account may have been deleted, or the link is old."), "is-thread")); return true; }
       if (them.id === me) { res.writeHead(302, { location: "/messages" }); res.end(); return true; }
       const th = thread(me, h)!;
       // "Message" on a feed post: start the reply with a quote of the post, so the author knows what it's about
@@ -396,6 +419,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-note,.ms-wait{margin:0 20px 14px;font-size:12px;color:var(--text-muted,#8a8a93)}.ms-wait{font-size:13.5px;color:var(--text,#dadadf)}
 .ms-empty{margin:auto;max-width:420px;padding:24px;border:1px dashed var(--line-strong,#3a3a40);border-radius:var(--radius-lg,14px);text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}.ms-empty b{color:var(--text-strong,#f2f2f5)}.ms-empty span{font-size:13.5px;color:var(--text-muted,#8a8a93)}
 .ms-list .ms-empty{margin:12px 16px}
+.ms-gone{padding:12px 20px 14px;border-top:1px solid var(--line,#2a2a2e)}.ms-gone p{margin:0 0 10px;color:var(--text-mut,#9a9aa3);font-size:14px}.ms-gone .ms-row-btns{display:flex;gap:12px;align-items:center}
 .ms-req{margin:auto;width:min(560px,100%);padding:24px;border-radius:var(--radius-lg,14px);background:var(--bg-raised,#232327);border:1px solid var(--line,#2a2a2e);display:flex;flex-direction:column;gap:14px}
 .ms-req-who{display:flex;gap:12px;align-items:center}.ms-req-who>span{display:flex;flex-direction:column}.ms-req-who b{color:var(--text-strong,#f2f2f5);font-size:17px}.ms-req-msgs{display:flex;flex-direction:column;gap:8px}.ms-req .ms-b.them{background:var(--bg,#1c1c1f)}
 .ms-row-btns{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.ms-row-btns .ms-btn{height:38px;font-size:14px}

@@ -143,3 +143,30 @@ test("group chat @mentions: linked, alerted once, picker on the box", async () =
     assert.match(page, /<textarea id="ms-text" data-mention/, "the box has the @ picker");
   } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
 });
+
+test("a deleted member's conversation opens read-only with a way back; any missing page is a 404 with navigation", async () => {
+  const S = await setup();
+  try {
+    const sent = await S.post("/v1/messages/send", { to: "bo", text: "hey bo, want to pair on the map?" }, S.as("cy"));
+    assert.equal(sent.status, 200);
+    const tid = S.hub.db.prepare("SELECT id FROM msg_threads LIMIT 1").get().id;
+    S.hub.db.prepare("DELETE FROM profiles WHERE handle='bo'").run();   // bo deletes their account
+    const list = await (await S.get("cy", "/messages")).text();
+    assert.match(list, new RegExp(`href="/messages/t/${tid}"`), "the row opens the conversation by id, not a dead /messages/@ link");
+    assert.doesNotMatch(list, /href="\/messages\/@"/);
+    const r = await S.get("cy", `/messages/t/${tid}`); const page = await r.text();
+    assert.equal(r.status, 200);
+    assert.match(page, /Deleted user/); assert.match(page, /want to pair on the map/, "the history is still readable");
+    assert.match(page, /href="\/messages">Back to Messages</); assert.match(page, /data-act="delete"/);
+    assert.doesNotMatch(page, /id="ms-text"/, "no reply box");
+    assert.equal((await S.get("ana", `/messages/t/${tid}`)).status, 404, "someone else's conversation isn't shown");
+    const gone = await (await S.get("cy", "/messages/@bo")).text();
+    assert.match(gone, /@bo isn't on Caldera/); assert.match(gone, /href="\/messages">Back to Messages</);
+    // the root: any missing page is a real page with the header and a way on; the API still answers JSON
+    const nf = await fetch(S.base + "/no/such/page", { headers: { accept: "text/html" } });
+    assert.equal(nf.status, 404); const nh = await nf.text();
+    assert.match(nh, /This page isn(&#39;|')t here/); assert.match(nh, /href="\/feed"/); assert.match(nh, /href="\/messages"/);
+    const api = await fetch(S.base + "/v1/no-such-thing", { headers: { accept: "text/html" } });
+    assert.equal(api.status, 404); assert.deepEqual(await api.json(), { error: "not found" });
+  } finally { S.hub.server.close(); fs.rmSync(S.d, { recursive: true, force: true }); }
+});
