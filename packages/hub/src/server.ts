@@ -236,15 +236,20 @@ function watchPage(name: string, src: string): string {
 <title>${e(name)}'s city</title><meta name="robots" content="noindex"><style>${FRAME_CSS}
 body{font:12px/1.4 ui-monospace,'IBM Plex Mono',Menlo,monospace;color:#BFF8FF}
 #pin{position:fixed;top:6px;left:6px;z-index:5;padding:3px 10px;border-radius:999px;border:1px solid rgba(61,242,255,.5);background:rgba(2,6,12,.88);color:#BFF8FF;font:inherit;cursor:pointer;opacity:.0;transition:opacity .2s}
-body:hover #pin,#pin:focus{opacity:1}
+body:hover #pin,#pin:focus,body.hint #pin{opacity:1}
+#tap{position:fixed;inset:0;z-index:4;background:transparent;border:0;cursor:pointer}
 #away{display:none;position:fixed;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:8px;text-align:center;padding:16px}
 #away button{padding:4px 12px;border-radius:999px;border:1px solid rgba(61,242,255,.5);background:transparent;color:#BFF8FF;font:inherit;cursor:pointer}
 body.floating #away{display:flex}body.floating #pin{display:none}</style></head><body>
 <iframe id="c" src="${e(src)}" title="${e(name)}'s city"></iframe>
-<button id="pin" type="button" hidden title="Float the city in a small window that stays on top of everything">&#128204; Keep on top</button>
+<button id="tap" type="button" hidden aria-label="Float the city on top"></button>
+<button id="pin" type="button" hidden title="Float the city in a small window that stays on top of everything, with no address bar">&#128204; Click anywhere to keep on top</button>
 <div id="away"><div>Your city is floating on top.</div><div style="opacity:.7">Minimize this window but keep it open: closing it closes the floating city too.</div><button id="back" type="button">Bring it back here</button></div>
 <script>(function(){var d=window.documentPictureInPicture,f=document.getElementById('c'),pin=document.getElementById('pin'),pw=null;
 if(!d)return;pin.hidden=false;
+// Chrome needs one real click before it opens the floating window, so the first click anywhere floats it
+var tap=document.getElementById('tap');tap.hidden=false;document.body.classList.add('hint');setTimeout(function(){document.body.classList.remove('hint')},6000);
+tap.onclick=function(){tap.hidden=true;pin.textContent='\u{1F4CC} Keep on top';pin.onclick()};
 pin.onclick=function(){d.requestWindow({width:420,height:260}).then(function(w){pw=w;var s=w.document.createElement('style');s.textContent=${JSON.stringify(FRAME_CSS)};w.document.head.appendChild(s);w.document.title=document.title;
   w.document.body.appendChild(f);document.body.classList.add('floating');
   w.addEventListener('pagehide',function(){document.body.insertBefore(f,document.body.firstChild);document.body.classList.remove('floating');pw=null})}).catch(function(){})};
