@@ -1537,9 +1537,10 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
   }
   /** One-time "get your daily summary" strip on the owner's own page (until they subscribe or say not now). The page is
    *  sandboxed, so it acts through /v1/act with an owner token, like inline kudos. */
-  function welcomeBanner(handle: string): string {
+  function welcomeBanner(handle: string, city = true): string {
     return `<div id="cb-wel" style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:9px 40px 9px 16px;background:#1A1530;border-bottom:1px solid #3A2F5C;font:500 13.5px/1.35 'IBM Plex Sans',Arial,sans-serif;color:#E6E1F5">`
-      + `<span><b style="color:#fff">You're in. This is your city.</b> Each building is a repo, taller with more commits. Your page is already filled in; change anything later in Settings.</span>`
+      + (city ? `<span><b style="color:#fff">You're in. This is your city.</b> Each building is a repo, taller with more commits. Your page is already filled in; change anything later in Settings.</span>`
+        : `<span><b style="color:#fff">You're in. This is your page.</b> Push a public repo to GitHub and your city appears here within 6 hours. Change anything later in Settings.</span>`)
       + `<span style="display:inline-flex;gap:12px"><a href="/@${handle}/" style="color:#C9B8FF">Your page</a><a href="/world" style="color:#C9B8FF">Fly over other cities</a><a href="/settings" style="color:#C9B8FF">Settings</a></span>`
       + `<button type="button" aria-label="Close" onclick="this.parentNode.remove()" style="all:unset;cursor:pointer;position:absolute;top:8px;right:10px;padding:2px 6px;color:#9A93B5;font-size:18px;line-height:1">&times;</button></div>`;
   }
@@ -2022,7 +2023,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             const stack = rel === "index.html" && prS ? B.stackCard(PUB(), prS) : "";
             html = html.replace(rowAt, h => h + socialRow(opts.publicUrl || "https://caldera.social", hd, soc, `/@${hd}/${rel === "index.html" ? "" : rel}`) + build + card + stack); }
           // just claimed (from /settings?welcome=1): one short line on the city, nothing else competing with it
-          const welcome = own && prS && rel === "city.html" && url.searchParams.get("welcome") ? welcomeBanner(m[1]) : "";
+          const welcome = own && prS && (rel === "city.html" || rel === "index.html") && url.searchParams.get("welcome") ? welcomeBanner(m[1], rel === "city.html") : "";
           if (welcome) FUNNEL.track(req, "landed");
           const sum = welcome || (own && prS && (rel === "index.html" || rel === "city.html") && memberOf(req) === prS.id ? summaryBanner(prS.id, m[1]) : "");
           const out = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, b => b + bar + sum) : bar + sum + html;

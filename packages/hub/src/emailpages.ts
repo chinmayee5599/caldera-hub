@@ -295,7 +295,8 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
         const inviter = c.recordReferral?.(acct.profile_id, inv, "email");
         if (inviter) c.accept(C.sign(JSON.parse(c.unseal(acct.key_sealed)), "friend.request", { to: inviter, note: "I joined Caldera from your invite." }));
       } catch { /* best effort */ }
-      res.writeHead(302, { location: back || `/@${acct.handle}/city.html?welcome=1`, "set-cookie": c.startOwner(acct.profile_id), "cache-control": "no-store" }); res.end(); return true;
+      const hasCity = fs.existsSync(path.join(c.dataDir, "profiles", acct.handle, "city.html"));   // no repos yet: their page, not a 404
+      res.writeHead(302, { location: back || `/@${acct.handle}/${hasCity ? "city.html" : ""}?welcome=1`, "set-cookie": c.startOwner(acct.profile_id), "cache-control": "no-store" }); res.end(); return true;
     }
     if (p === "/settings/page" || ((p === "/settings" || p === "/me") && req.method === "GET")) {
       const acct = acctOf(c.memberOf(req));

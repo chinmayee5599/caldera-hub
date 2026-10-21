@@ -93,5 +93,5 @@ test("signed out, tapping Message: sign-up page says why, GitHub first (no email
   // a forged back on confirm can't send them off-site
   await form("/start", { text: "name: Bo Test\nheadline: x", email: "bo@example.com" });
   const t3 = new URL(mails[mails.length - 1].text.match(/https?:\/\/\S+start\/confirm\?\S+/)[0]).searchParams.get("t");
-  assert.equal((await form("/start/confirm", { t: t3, back: "//evil.example" })).headers.get("location"), "/@bo-test/city.html?welcome=1");
+  assert.equal((await form("/start/confirm", { t: t3, back: "//evil.example" })).headers.get("location"), "/@bo-test/?welcome=1");   // no repos, no city: their page, never a 404
 });
