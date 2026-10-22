@@ -10,6 +10,7 @@
 import crypto from "node:crypto";
 
 /** `src` = which email this is (e.g. "email-digest"): every link back to our own site gets ?src=<it> so visits from email are attributable */
+import type { NewsItem } from "./news";
 export interface Mail { to: string; subject: string; html: string; text: string; headers?: Record<string, string>; src?: string }
 export interface DigestData {
   handle: string; name: string; hosted: boolean;
@@ -38,6 +39,17 @@ export interface DigestData {
   recommends?: { handle: string; name: string; sentence: string; why: string; link: string; url: string }[];
   /** unread direct messages (who from, how many, a 120-character preview); absent when the member turned these emails off */
   messages?: { unread: number; from: { handle: string; name: string; count: number; preview: string; request: boolean }[]; url: string };
+  /** what happened on Caldera since the last email (the same for everyone), and the day's AI news */
+  network?: Network; news?: NewsItem[];
+  /** false when nothing happened to this member personally (the subject then leads with the network) */
+  personal?: boolean;
+}
+export interface Network {
+  joinedNew: number; joinedWeek: number; members: { handle: string; name: string; headline: string }[];
+  cities: number; citiesNew: number; newCities: { handle: string; url: string }[];
+  tools: { name: string; pitch: string; platforms: string[]; url: string; by: string }[]; toolsNew: number;
+  boards: { group: string; groupName: string; by: string; text: string; replies: number; url: string }[];
+  posts: { by: string; text: string; tags: string[]; comments: number; url: string }[];
 }
 export interface EmailCtx {
   q: (sql: string) => any; seal: (s: string) => string; unseal: (s: string) => string; hub: string;
@@ -45,6 +57,8 @@ export interface EmailCtx {
   pepper: Buffer;
   send?: (m: Mail) => Promise<void>; resendKey?: string; from?: string; replyTo?: string;
   digest: (owner: string, since: string) => DigestData | null;
+  /** the network half of the daily email, and the day's AI news (left out when absent, e.g. in tests) */
+  network?: (owner: string, since: string) => Network; news?: () => Promise<NewsItem[]>;
   /** open-core hooks: is today worth an email, and its subject line (the hub passes its loaded extensions) */
   rank?: { active(d: DigestData): boolean; subject(d: DigestData): string };
 }
@@ -185,70 +199,113 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
   function compose(d: DigestData, unsub: string, quiet: boolean): Mail | null {
     const page = `${hub}/@${d.handle}/`, at = (h: string) => `${hub}/@${encodeURIComponent(h)}/`;
     const pl = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
-    const cons = d.friends;
-    const subject = ascii(rank.subject(d));
+    const cons = d.friends, net = d.network, news = d.news || [];
+    const subject = ascii(d.personal === false && net ? netSubject(d) : rank.subject(d)).replace(/ {2,}/g, " ").replace(/ +$/, "");
+    // GitHub-style boxes: a gray header bar (an <h2>) over rows. Tables and inline styles only, so Gmail and Outlook render it.
+    const F = "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif", M = "ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace";
+    const INK = "#1f2328", MUT = "#59636e", LINE = "#d0d7de", ROWL = "#d8dee4", BG = "#f6f8fa", LINK = "#0969da", ACC = "#6e4fe0";
     const H: string[] = [], T: string[] = [];
-    const sec = (title: string, html: string, text: string) => { H.push(`<h2 style="margin:22px 0 8px;font:600 13px/1.3 -apple-system,Helvetica,Arial,sans-serif;color:#55525E;text-transform:uppercase;letter-spacing:.06em">${title}</h2>${html}`); T.push(`${title.toUpperCase()}\n${text}`); };
-    const who = (h: string, n: string) => `<a href="${esc(at(h))}" style="color:#6E4FE0;text-decoration:none;font-weight:600">${esc(n || "@" + h)}</a> <span style="color:#8A8794">@${esc(h)}</span>`;
-    const btn = (href: string, label: string, ghost = false) => `<a href="${esc(href)}" style="display:inline-block;margin:6px 6px 0 0;padding:7px 14px;border-radius:999px;${ghost ? "border:1px solid #D9D4EA;color:#24222B" : "background:#6E4FE0;color:#fff"};text-decoration:none;font-weight:600;font-size:13px">${esc(label)}</a>`;
-    const row = (inner: string) => `<div style="margin:0 0 10px;padding:10px 12px;border:1px solid #ECEAF2;border-radius:10px">${inner}</div>`;
-    // 0. unread messages (a short preview only; the conversation itself stays on Caldera)
-    if (d.messages?.unread) sec(`Messages: ${pl(d.messages.unread, "unread")}`, d.messages.from.map(m => row(`${who(m.handle, m.name)}${m.request ? ` <span style="color:#55525E">&middot; wants to message you</span>` : m.count > 1 ? ` <span style="color:#55525E">&middot; ${m.count} messages</span>` : ""}<br><span style="color:#55525E">"${esc(m.preview)}"</span><br>${btn(`${hub}/messages/@${encodeURIComponent(m.handle)}`, m.request ? "See the request" : "Reply")}`)).join(""),
+    const a = (href: string, label: string, bold = false) => `<a href="${esc(href)}" style="color:${LINK};text-decoration:none${bold ? ";font-weight:600" : ""}">${label}</a>`;
+    const who = (h: string, n?: string) => `${a(at(h), `@${esc(h)}`, true)}${n && n.toLowerCase() !== h.toLowerCase() ? ` <span style="color:${MUT}">${esc(n)}</span>` : ""}`;
+    const btn = (href: string, label: string, kind: "plain" | "green" | "accent" = "plain") => `<a href="${esc(href)}" style="display:inline-block;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap;${kind === "green" ? "background:#1f883d;border:1px solid #1a7f37;color:#ffffff" : kind === "accent" ? `background:${ACC};border:1px solid ${ACC};color:#ffffff` : `background:${BG};border:1px solid ${LINE};color:${INK}`}">${esc(label)}</a>`;
+    const mut = (s: string) => `<div style="color:${MUT};font-size:13px;margin-top:2px">${s}</div>`;
+    const row = (inner: string, action = "", last = false) => `<tr><td style="padding:10px 14px;${last ? "" : `border-bottom:1px solid ${ROWL};`}font-size:14px;line-height:1.45;vertical-align:top">${inner}</td>${action ? `<td style="padding:10px 14px 10px 0;${last ? "" : `border-bottom:1px solid ${ROWL};`}text-align:right;vertical-align:top;white-space:nowrap">${action}</td>` : `<td style="${last ? "" : `border-bottom:1px solid ${ROWL};`}"></td>`}</tr>`;
+    const rows = (xs: [string, string?][]) => xs.map((x, i) => row(x[0], x[1] || "", i === xs.length - 1)).join("");
+    const box = (title: string, right: string, body: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${LINE};border-radius:6px;border-collapse:separate;margin:0 0 16px">
+<tr><td colspan="2" style="background:${BG};padding:8px 14px;border-bottom:1px solid ${LINE};border-radius:6px 6px 0 0;font-size:13px"><h2 style="display:inline;margin:0;font:600 13px ${F};color:${INK}">${title}</h2>${right ? `<span style="float:right;color:${MUT};font-size:12px">${right}</span>` : ""}</td></tr>${body}</table>`;
+    const sec = (title: string, right: string, xs: [string, string?][], text: string) => { H.push(box(title, right, rows(xs))); T.push(`${title.replace(/&amp;/g, "&").toUpperCase()}\n${text}`); };
+    const pill = (t: string) => `<span style="display:inline-block;margin:4px 4px 0 0;padding:1px 9px;border-radius:999px;background:#ddf4ff;color:#0550ae;font-size:12px">${esc(t)}</span>`;
+    const chip = (t: string) => `<span style="display:inline-block;margin:4px 4px 0 0;padding:1px 8px;border:1px solid ${LINE};border-radius:999px;color:${MUT};font-size:12px">${esc(t)}</span>`;
+
+    // Inbox: unread messages (a short preview only; the conversation itself stays on Caldera)
+    if (d.messages?.unread) sec("Inbox", pl(d.messages.unread, "unread"), d.messages.from.map(m => [`<span style="color:${ACC}">&#9679;</span> ${who(m.handle, m.name)} <span style="color:${MUT}">&middot; ${m.request ? "wants to message you" : pl(m.count, "message")}</span>${mut(`"${esc(m.preview)}"`)}`, btn(`${hub}/messages/@${encodeURIComponent(m.handle)}`, m.request ? "See request" : "Reply", "accent")] as [string, string]),
       d.messages.from.map(m => `@${m.handle}${m.request ? " wants to message you" : ""}: "${m.preview}" - reply: ${hub}/messages/@${m.handle}`).join("\n"));
-    // 1. kudos
-    if (d.kudos?.length) sec("Kudos", d.kudos.map(k => row(`<span style="font-size:20px">${esc(k.emoji)}</span> ${who(k.handle, k.name)} sent you kudos<br>${btn(at(k.handle), "Send one back", true)}`)).join(""),
-      d.kudos.map(k => `@${k.handle} sent you ${k.emoji} - send one back: ${at(k.handle)}`).join("\n"));
-    if (d.postKudos?.length) sec("Kudos on your posts", d.postKudos.slice(0, 6).map(k => row(`<span style="font-size:20px">${esc(k.emoji)}</span> ${who(k.handle, k.name)} on your post<br>${btn(k.url, "See the post", true)}`)).join(""),
-      d.postKudos.slice(0, 6).map(k => `@${k.handle} sent ${k.emoji} on your post: ${k.url}`).join("\n"));
-    // 2. new followers (Follow back on their page makes you friends, for everyone)
-    if (d.requests.length) sec("New followers", d.requests.map(r => row(`${who(r.handle, r.name)}${r.why ? ` <span style="color:#55525E">&middot; ${esc(r.why)}</span>` : ""}${r.note ? `<br><span style="color:#55525E">"${esc(r.note)}"</span>` : ""}<br>${btn(at(r.handle), "Follow back")}`)).join("")
-      + `<p style="margin:0;color:#8A8794;font-size:12.5px">Follow back and you're friends.</p>`,
-      d.requests.map(r => `@${r.handle}${r.why ? ` (${r.why})` : ""}${r.note ? `: "${r.note}"` : ""} follows you - follow back: ${at(r.handle)}`).join("\n"));
-    // 3. intros (double opt-in)
-    if (d.intros?.length) { const ans = `${hub}/me/building`;
-      sec("Would like to connect", d.intros.map(x => row(`${who(x.handle, x.name)}${x.tag ? `, also building ${esc(x.tag)},` : ""} would like to connect<br>${btn(ans, "Accept")}${btn(at(x.handle), "See their page", true)}`)).join(""),
-        d.intros.map(x => `@${x.handle}${x.tag ? ` (also building ${x.tag})` : ""} would like to connect - answer: ${ans}`).join("\n")); }
-    // 3b. feed posts sent to them because they match, and offers to help on their posts (double opt-in)
-    if (d.postWaiting?.length) sec("Sent to you", d.postWaiting.slice(0, 5).map(w => row(`${esc(w.text)}<br><span style="color:#55525E">${w.kind === "help" ? "Accept to connect" : "You match. Accept to connect"}</span><br>${btn(w.url, "See it and answer")}`)).join(""),
-      d.postWaiting.slice(0, 5).map(w => `${w.text} - answer: ${w.url}`).join("\n"));
-    // 4. people to meet
-    if (d.suggestions.length) sec("People to meet", d.suggestions.slice(0, 3).map(x => row(`${who(x.handle, x.name)}${x.why ? ` <span style="color:#55525E">&middot; ${esc(x.why)}</span>` : ""}<br>${btn(at(x.handle), "Follow", true)}`)).join(""),
-      d.suggestions.slice(0, 3).map(x => `@${x.handle}${x.why ? ` (${x.why})` : ""} - follow: ${at(x.handle)}`).join("\n"));
-    // 4b. what people are looking for that fits them, and recommendations for people like them
-    if (d.lookingFor?.length) sec("Looking for", d.lookingFor.map(x => row(`${esc(x.sentence)}<br><span style="color:#55525E">You match: ${esc(x.why)}</span><br>${btn(x.url, "See the post", true)}`)).join(""),
-      d.lookingFor.map(x => `${x.sentence} (you match: ${x.why}) ${x.url}`).join("\n"));
-    if (d.recommends?.length) sec("Recommended for you", d.recommends.map(x => row(`${esc(x.sentence)}<br>${btn(x.url, "See why", true)}`)).join(""),
-      d.recommends.map(x => `${x.sentence} ${x.url}`).join("\n"));
-    // 5. new connections made for them (shared repo, GitHub follows, people who just joined)
+    // Notifications: everything that happened to you, one row each
+    const N: [string, string?][] = [], NT: string[] = [];
+    for (const k of d.kudos || []) { N.push([`${esc(k.emoji)} ${who(k.handle, k.name)} sent you kudos`, btn(at(k.handle), "Send one back")]); NT.push(`@${k.handle} sent you ${k.emoji} - send one back: ${at(k.handle)}`); }
+    for (const k of (d.postKudos || []).slice(0, 6)) { N.push([`${esc(k.emoji)} ${who(k.handle, k.name)} on your post`, btn(k.url, "See the post")]); NT.push(`@${k.handle} sent ${k.emoji} on your post: ${k.url}`); }
+    for (const r of d.requests) { N.push([`${who(r.handle, r.name)} followed you${r.why ? ` <span style="color:${MUT}">&middot; ${esc(r.why)}</span>` : ""}${r.note ? mut(`"${esc(r.note)}"`) : ""}`, btn(at(r.handle), "Follow back", "green")]); NT.push(`@${r.handle}${r.why ? ` (${r.why})` : ""}${r.note ? `: "${r.note}"` : ""} follows you - follow back: ${at(r.handle)}`); }
+    for (const x of d.intros || []) { N.push([`${who(x.handle, x.name)} would like to connect${x.tag ? mut(`also building ${esc(x.tag)}`) : ""}`, `${btn(`${hub}/me/building`, "Accept", "green")} ${btn(at(x.handle), "Their page")}`]); NT.push(`@${x.handle}${x.tag ? ` (also building ${x.tag})` : ""} would like to connect - answer: ${hub}/me/building`); }
+    for (const w of (d.postWaiting || []).slice(0, 5)) { N.push([`${esc(w.text)}${mut(w.kind === "help" ? "Accept to connect" : "You match. Accept to connect")}`, btn(w.url, "Answer", "green")]); NT.push(`${w.text} - answer: ${w.url}`); }
     const because = (f: DigestData["friends"][number]) => f.kind === "repo" && f.why ? `you both work on ${f.why}` : f.kind === "github" && f.why ? f.why : f.kind === "intro" ? "you both said yes to an intro" : "";
-    if (cons.length) sec("New connections", `<p style="margin:0;line-height:1.7">${cons.map(f => { const b = because(f);
-        return f.joined ? `${who(f.handle, f.name)} just joined Caldera${b ? ` - you're connected because ${esc(b)}` : " - you're connected"}` : b ? `You and ${who(f.handle, f.name)} are now connected: ${esc(b)}` : `You and ${who(f.handle, f.name)} are now friends`; }).join("<br>")}</p>`,
-      cons.map(f => { const b = because(f); return (f.joined ? `@${f.handle} just joined Caldera${b ? ` - you're connected because ${b}` : ""}` : `You and @${f.handle} are now connected${b ? ": " + b : ""}`) + ` - ${at(f.handle)}`; }).join("\n"));
-    if (d.invited.length) sec("Your invites", `<p style="margin:0">${d.invited.map(i => `<a href="${esc(at(i.handle))}" style="color:#6E4FE0;text-decoration:none;font-weight:600">@${esc(i.handle)}</a>`).join(", ")} joined from your invite.</p>`, `${d.invited.map(i => `@${i.handle} (${at(i.handle)})`).join(", ")} joined from your invite.`);
-    if (d.gravity.length) sec("Gravity", d.gravity.map(g => `<p style="margin:4px 0"><a href="${esc(at(g.handle))}" style="color:#6E4FE0;text-decoration:none;font-weight:600">@${esc(g.handle)}</a>${g.reason ? `: ${esc(g.reason)}` : ""}</p>`).join(""), d.gravity.map(g => `@${g.handle}${g.reason ? ": " + g.reason : ""} - ${at(g.handle)}`).join("\n"));
-    // 6. your page
+    for (const f of cons) { const b = because(f); N.push([f.joined ? `${who(f.handle, f.name)} just joined Caldera - you're connected${b ? mut(esc(b)) : ""}` : `You and ${who(f.handle, f.name)} are now ${b ? "connected" : "friends"}${b ? mut(esc(b)) : ""}`, btn(at(f.handle), "Say hi")]);
+      NT.push((f.joined ? `@${f.handle} just joined Caldera${b ? ` - you're connected because ${b}` : ""}` : `You and @${f.handle} are now connected${b ? ": " + b : ""}`) + ` - ${at(f.handle)}`); }
+    for (const i of d.invited) { N.push([`${who(i.handle)} joined from your invite`, btn(at(i.handle), "Say hi")]); NT.push(`@${i.handle} joined from your invite (${at(i.handle)})`); }
+    for (const g of d.gravity) { N.push([`${who(g.handle)} sent you gravity${g.reason ? mut(esc(g.reason)) : ""}`, btn(at(g.handle), "See their page")]); NT.push(`@${g.handle} sent you gravity${g.reason ? ": " + g.reason : ""} - ${at(g.handle)}`); }
+    if (N.length) sec("Notifications", pl(N.length, "new item"), N, NT.join("\n"));
+    // Picked for you: posts that match you, then the newest feed posts
+    const P: [string, string?][] = [], PT: string[] = [], seen = new Set<string>();
+    for (const x of d.lookingFor || []) { seen.add(x.url); P.push([`${a(x.url, esc(x.sentence), true)}${mut(`You match: ${esc(x.why)}`)}`, btn(x.url, "See the post")]); PT.push(`${x.sentence} (you match: ${x.why}) ${x.url}`); }
+    for (const x of d.recommends || []) { seen.add(x.url); P.push([`${a(x.url, esc(x.sentence), true)}${x.why ? mut(esc(x.why)) : ""}`, btn(x.url, "See why")]); PT.push(`${x.sentence} ${x.url}`); }
+    for (const x of net?.posts || []) { if (seen.has(x.url) || P.length >= 4) continue; P.push([`${a(x.url, esc(x.text), true)}${mut(`in Feed${x.comments ? ` &middot; ${pl(x.comments, "comment")}` : ""}`)}${x.tags.length ? `<div>${x.tags.map(pill).join("")}</div>` : ""}`, btn(x.url, "Open")]); PT.push(`${x.text} ${x.url}`); }
+    if (P.length) sec("Picked for you", d.lookingFor?.length || d.recommends?.length ? "matches your tags" : "new in the feed", P, PT.join("\n"));
+    // Bulletin boards
+    if (net?.boards.length) sec("Bulletin boards", "since your last email", net.boards.map(b => [`<span style="font:12px ${M};color:${MUT}">#${esc(b.group)}</span> ${a(b.url, esc(b.text))}${mut(`@${esc(b.by)}`)}`, `<span style="color:${MUT};font-size:12px">${pl(b.replies, "reply", "replies")}</span>`] as [string, string]),
+      net.boards.map(b => `#${b.group}: ${b.text} (@${b.by}, ${pl(b.replies, "reply", "replies")}) ${b.url}`).join("\n"));
+    // New members
+    if (net?.members.length) sec("New members", a(`${hub}/people?sort=new`, `See all ${net.joinedWeek} this week`), net.members.map(m => [`${who(m.handle, m.name)}${m.headline ? mut(esc(m.headline)) : ""}`, btn(at(m.handle), "Say hi")] as [string, string]),
+      net.members.map(m => `@${m.handle}${m.headline ? ` - ${m.headline}` : ""}: ${at(m.handle)}`).join("\n") + `\nEveryone new: ${hub}/people?sort=new`);
+    // People to meet (picked for you from your repos and tags)
+    const met = new Set((net?.members || []).map(m => m.handle));
+    const sug = d.suggestions.filter(x => !met.has(x.handle)).slice(0, 3);
+    if (sug.length) sec("People to meet", "", sug.map(x => [`${who(x.handle, x.name)}${x.why ? mut(esc(x.why)) : ""}`, btn(at(x.handle), "Follow")] as [string, string]),
+      sug.map(x => `@${x.handle}${x.why ? ` (${x.why})` : ""} - follow: ${at(x.handle)}`).join("\n"));
+    // New cities | New tools, side by side
+    const cityCell = net?.newCities.length ? box("New cities", "", rows(net.newCities.map(c => [`${a(c.url, `@${esc(c.handle)}'s city`, true)}${mut("Their public repos as a living city")}`, btn(c.url, "Walk it")] as [string, string]))) : "";
+    const toolCell = net?.tools.length ? box("New tools", "", rows(net.tools.map(t => [`${a(t.url, esc(t.name), true)}${t.pitch ? mut(esc(t.pitch)) : ""}${t.platforms.length ? `<div>${t.platforms.map(chip).join("")}</div>` : ""}`, btn(t.url, "Download", "green")] as [string, string]))) : "";
+    if (cityCell || toolCell) {
+      H.push(cityCell && toolCell ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="cd-half" width="50%" style="vertical-align:top;padding-right:8px">${cityCell}</td><td class="cd-half" width="50%" style="vertical-align:top;padding-left:8px">${toolCell}</td></tr></table>` : cityCell || toolCell);
+      if (net!.newCities.length) T.push(`NEW CITIES\n${net!.newCities.map(c => `@${c.handle}'s city: ${c.url}`).join("\n")}`);
+      if (net!.tools.length) T.push(`NEW TOOLS\n${net!.tools.map(t => `${t.name}${t.pitch ? ` - ${t.pitch}` : ""}: ${t.url}`).join("\n")}`);
+    }
+    // AI & agents today
+    if (news.length) sec("AI &amp; agents today", "Hacker News &middot; GitHub &middot; Hugging Face", news.map(n => [`<span style="display:inline-block;width:56px;font:12px ${M};color:${MUT}">${esc(n.src)}</span>${a(n.url, esc(n.title))}${mut(`<span style="display:inline-block;width:56px"></span>${esc(n.meta)}`)}`] as [string]),
+      news.map(n => `[${n.src}] ${n.title} (${n.meta}) ${n.url}`).join("\n"));
+    // Your page: one stat strip
     const pg: string[] = [], pt: string[] = [];
-    if (d.views7 || d.visitors24) { pg.push(`<b style="font-size:24px;color:#111113">${d.visitors24}</b> ${d.visitors24 === 1 ? "person" : "people"} in the last day &middot; <b>${d.visitors7}</b> this week${d.viewsAll ? ` &middot; ${d.viewsAll.toLocaleString("en-US")} all time` : ""}`);
-      pt.push(`${d.visitors24} people in the last day, ${d.visitors7} this week${d.viewsAll ? `, ${d.viewsAll} all time` : ""}`); }
-    if (d.vault && (d.vault.journal || d.vault.notes)) { pg.push(`From your vault: ${pl(d.vault.journal, "journal entry", "journal entries")}, ${pl(d.vault.notes, "note")} edited`); pt.push(`From your vault: ${pl(d.vault.journal, "journal entry", "journal entries")}, ${pl(d.vault.notes, "note")} edited`); }
-    if (d.cityCommits) { pg.push(`Your city: ${pl(d.cityCommits, "commit")} this week`); pt.push(`Your city: ${pl(d.cityCommits, "commit")} this week`); }
-    if (d.links) { pg.push(`${pl(d.links, "new link")} into your page from other members`); pt.push(`${pl(d.links, "new link")} into your page`); }
-    if (pg.length) sec("Your page", `<p style="margin:0;line-height:1.7">${pg.join("<br>")}<br><a href="${esc(page)}" style="color:#6E4FE0">See your page</a> &middot; <a href="${esc(page)}city.html" style="color:#6E4FE0">your city</a></p>`, pt.join("\n") + `\n${page}`);
+    const stat = (n: number | string, label: string) => `<span style="display:inline-block;white-space:nowrap;margin-right:14px"><b style="font-family:${M};color:${INK}">${n}</b> ${label}</span>`;
+    if (d.views7 || d.visitors24) { pg.push(stat(d.visitors24, "visitors today"), stat(d.visitors7, "this week")); const all = d.viewsAll && d.viewsAll > d.visitors7 ? d.viewsAll : 0; if (all) pg.push(stat(all.toLocaleString("en-US"), "all time")); pt.push(`${d.visitors24} people in the last day, ${d.visitors7} this week${all ? `, ${all} all time` : ""}`); }
+    if (d.vault && (d.vault.journal || d.vault.notes)) { pg.push(stat(d.vault.journal, d.vault.journal === 1 ? "journal entry" : "journal entries"), stat(d.vault.notes, d.vault.notes === 1 ? "note edited" : "notes edited")); pt.push(`From your vault: ${pl(d.vault.journal, "journal entry", "journal entries")}, ${pl(d.vault.notes, "note")} edited`); }
+    if (d.cityCommits) { pg.push(stat(d.cityCommits.toLocaleString("en-US"), "commits on your city")); pt.push(`Your city: ${pl(d.cityCommits, "commit")} this week`); }
+    if (d.links) { pg.push(stat(d.links, d.links === 1 ? "new link in" : "new links in")); pt.push(`${pl(d.links, "new link")} into your page`); }
+    if (pg.length) { H.push(box("Your page", `${a(page, "Your page")} &middot; ${a(`${page}city.html`, "your city")}`, `<tr><td colspan="2" style="padding:10px 14px;font-size:13px;color:${MUT};line-height:1.9">${pg.join("")}</td></tr>`)); T.push(`YOUR PAGE\n${pt.join("\n")}\n${page}`); }
     if (!H.length && !d.setup) return null;
-    // 7. exactly one setup step (a page that stopped updating comes first)
-    if (d.stale) { H.push(`<p style="margin:22px 0 0;padding:12px 14px;border-radius:10px;background:#FFF4DC;color:#24222B;font-size:14px"><b>Your page last updated ${d.stale} days ago</b> - open Obsidian to refresh it. Your page updates itself while Obsidian is open. <a href="obsidian://caldera" style="color:#6E4FE0">Open Obsidian</a> &middot; <a href="${esc(page)}" style="color:#6E4FE0">See your page</a></p>`);
+    // exactly one setup step (a page that stopped updating comes first)
+    const callout = (bg: string, border: string, inner: string) => H.push(`<div style="margin:0 0 16px;padding:12px 14px;border:1px solid ${border};border-radius:6px;background:${bg};font-size:14px;color:${INK}">${inner}</div>`);
+    if (d.stale) { callout("#fff8c5", "#d4a72c66", `<b>Your page last updated ${d.stale} days ago</b> - open Obsidian to refresh it. Your page updates itself while Obsidian is open. <a href="obsidian://caldera" style="color:${LINK}">Open Obsidian</a> &middot; <a href="${esc(page)}" style="color:${LINK}">See your page</a>`);
       T.push(`Your page last updated ${d.stale} days ago - open Obsidian to refresh it. Your page: ${page}`); }
-    else if (d.setup) { H.push(`<div style="margin:22px 0 0;padding:14px 16px;border-radius:12px;background:#F1EDFF;color:#24222B;font-size:14px"><b>Next for your page: ${esc(d.setup.label)}.</b> ${esc(d.setup.why)}<br>${btn(d.setup.url, d.setup.how)}</div>`);
+    else if (d.setup) { callout("#f5f0ff", "#c8b8f5", `<b>Next for your page: ${esc(d.setup.label)}.</b> ${esc(d.setup.why)}<div style="margin-top:8px">${btn(d.setup.url, d.setup.how, "accent")}</div>`);
       T.push(`NEXT FOR YOUR PAGE: ${d.setup.label}. ${d.setup.why} ${d.setup.how}: ${d.setup.url}`); }
-    else if (d.nudge) { H.push(`<p style="margin:22px 0 0;padding:12px 14px;border-radius:10px;background:#F1EDFF;color:#24222B;font-size:14px"><b>Finish your page: ${esc(d.nudge.label)}.</b> ${esc(d.nudge.why)} <a href="${esc(d.nudge.url)}" style="color:#6E4FE0">${esc(d.nudge.how)}</a></p>`);
+    else if (d.nudge) { callout("#f5f0ff", "#c8b8f5", `<b>Finish your page: ${esc(d.nudge.label)}.</b> ${esc(d.nudge.why)} <a href="${esc(d.nudge.url)}" style="color:${LINK}">${esc(d.nudge.how)}</a>`);
       T.push(`FINISH YOUR PAGE: ${d.nudge.label}. ${d.nudge.why} ${d.nudge.how}: ${d.nudge.url}`); }
-    if (d.alerts?.length) { H.push(`<p style="margin:18px 0 0;font-size:13.5px;color:#55525E"><b>From Caldera:</b> ${d.alerts.map(a => `<a href="${esc(a.url)}" style="color:#6E4FE0">${esc(a.title)}</a>`).join(" &middot; ")}</p>`);
-      T.push(`FROM CALDERA\n${d.alerts.map(a => `${a.title}: ${a.url}`).join("\n")}`); }
+    if (d.alerts?.length) { H.push(`<p style="margin:0 0 16px;font-size:13px;color:${MUT}"><b style="color:${INK}">From Caldera:</b> ${d.alerts.map(x => a(x.url, esc(x.title))).join(" &middot; ")}</p>`);
+      T.push(`FROM CALDERA\n${d.alerts.map(x => `${x.title}: ${x.url}`).join("\n")}`); }
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
-    H.push(`<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #ECEAF2;color:#55525E;font-size:13.5px">Bring a friend: <a href="${esc(invite)}" style="color:#6E4FE0">${esc(invite)}</a>.</p>`);
     T.push(`Bring a friend: ${invite}`);
-    return { to: "", subject, html: shell(quiet ? "This week on Caldera" : `Your day on Caldera, @${esc(d.handle)}`, H.join(""), unsub), text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`), src: quiet ? "email-weekly" : "email-digest",
+    // header: breadcrumb + the four numbers that matter today
+    const day = new Date().toISOString().slice(0, 10), unread = d.messages?.unread || 0;
+    const tile = (n: string, label: string, color: string, last = false) => `<td class="cd-tile" width="25%" style="padding:12px 14px;${last ? "" : `border-right:1px solid ${LINE};`}vertical-align:top"><div style="font:700 22px/1.2 ${M};color:${color}">${n}</div><div style="font-size:12px;color:${MUT}">${label}</div></td>`;
+    const tiles = net ? `<tr><td style="padding:0;border-bottom:1px solid ${LINE}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${tile(String(unread), "unread messages", unread ? ACC : INK)}${tile(`+${net.joinedNew}`, `joined &middot; ${net.joinedWeek} this week`, INK)}${tile(String(net.cities), net.citiesNew ? `cities &middot; +${net.citiesNew} new` : "cities on the map", INK)}${tile(String(net.toolsNew || net.tools.length), net.toolsNew ? (net.toolsNew === 1 ? "new tool" : "new tools") : "tools this week", net.tools.length ? "#1a7f37" : INK, true)}</tr></table></td></tr>` : "";
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><style>@media (max-width:520px){.cd-tile{display:inline-block!important;width:50%!important;box-sizing:border-box;border-right:0!important;border-bottom:1px solid #d0d7de}.cd-half{display:block!important;width:100%!important;padding:0!important}.cd-pad{padding-left:12px!important;padding-right:12px!important}}a{word-break:break-word}</style></head><body style="margin:0;background:${BG};padding:20px 10px;font:14px/1.5 ${F};color:${INK}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border:1px solid ${LINE};border-radius:6px;border-collapse:separate;text-align:left">
+<tr><td style="padding:14px 20px;border-bottom:1px solid ${LINE}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="font:14px ${M};color:${INK}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:6px;background:${ACC};color:#fff;text-align:center;font-weight:700;margin-right:8px">C</span><span style="color:${MUT}">caldera /</span> <b>${quiet ? "weekly" : "daily"}</b> <span style="color:${MUT}">/ ${day}</span></td><td style="text-align:right">${btn(page, "Open Caldera")}</td></tr></table></td></tr>
+${tiles}<tr><td class="cd-pad" style="padding:16px 20px 0">${H.join("\n")}</td></tr>
+<tr><td style="padding:12px 20px;border-top:1px solid ${LINE};background:${BG};border-radius:0 0 6px 6px;font-size:12px;color:${MUT}">Bring a friend: <a href="${esc(invite)}" style="color:${LINK}">${esc(invite.replace(/^https?:\/\//, ""))}</a><span style="float:right"><a href="${esc(unsub)}" style="color:${MUT}">Unsubscribe</a></span></td></tr>
+</table>
+<p style="max-width:640px;margin:12px auto 0;color:${MUT};font-size:11.5px;text-align:center">You get this because you signed up for the Caldera Daily. <a href="${esc(unsub)}" style="color:${MUT}">Unsubscribe</a> in one click. Caldera is run by mjonesone, LLC &middot; <a href="${hub}/privacy" style="color:${MUT}">Privacy</a> &middot; <a href="${hub}/terms" style="color:${MUT}">Terms</a></p>
+</td></tr></table></body></html>`;
+    return { to: "", subject, html, text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`), src: quiet ? "email-weekly" : "email-digest",
       headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };
+  }
+  /** Subject on a day with nothing personal: what happened on Caldera, then the top AI story. */
+  function netSubject(d: DigestData): string {
+    const n = d.network!, pl = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`, bits: string[] = [];
+    if (n.joinedNew) bits.push(`${pl(n.joinedNew, "new member")}`);
+    if (n.toolsNew) bits.push(`${pl(n.toolsNew, "new tool")}`);
+    if (n.boards.length) bits.push(`${pl(n.boards.length, "board post")}`);
+    if (n.posts.length) bits.push(`${pl(n.posts.length, "feed post")}`);
+    const top = d.news?.find(x => x.src === "HN");
+    return `Caldera Daily: ${bits.length ? bits.join(", ") : "today in AI and agents"}${top ? ` | ${top.title.slice(0, 70)}` : ""}`;
   }
 
   /** One pass over every confirmed subscriber. `force` ignores the once-a-day guard (tests, manual runs). */
@@ -258,13 +315,17 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     if (!force && last === today) return { sent: 0, skipped: 0, errors: 0 };
     q("INSERT OR REPLACE INTO hub_meta VALUES ('digest_last', ?)").run(today);
     let sent = 0, skipped = 0, errors = 0;
+    const news = ctx.news ? await ctx.news().catch((e: any) => { console.error("digest news", e?.message); return []; }) : [];
     for (const r of q("SELECT * FROM email_subs WHERE confirmed=1").all() as any[]) {
       const to = addr(r); if (!to || suppressed(to)) { skipped++; continue; }
       const since = r.last_sent || new Date(Date.now() - DAY).toISOString();
       const d = ctx.digest(r.owner, since); if (!d) { skipped++; continue; }
       // links into the garden have no timestamp: compare with the count at the last send
       const newLinks = r.last_links == null ? 0 : Math.max(0, d.links - r.last_links), totalLinks = d.links; d.links = newLinks;
-      const active = rank.active(d);
+      const personal = rank.active(d);
+      if (ctx.network) { d.network = ctx.network(r.owner, since); d.news = news; d.personal = personal; }
+      // the network counts too: someone joined, a new tool, a board or feed post since the last email
+      const n = d.network, active = personal || !!(n && (n.joinedNew || n.toolsNew || n.boards.length || n.posts.length));
       const quietOk = !r.last_quiet || Date.parse(r.last_quiet) < Date.now() - 7 * DAY;   // people to meet / one setup step alone: at most weekly
       if (!active && !(quietOk && (d.suggestions.length || d.newMembers.length || d.setup || d.nudge))) { skipped++; q("UPDATE email_subs SET last_links=? WHERE owner=?").run(totalLinks, r.owner); continue; }
       const m = compose(d, unsubUrl(r.token), !active); if (!m) { skipped++; continue; }

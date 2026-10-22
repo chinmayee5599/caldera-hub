@@ -133,8 +133,12 @@ function tagRelevance(tags: Tag[], text: string, tag: string, term: string) {
 const digestActive = (d: DigestData) => !!(d.messages?.unread || d.visitors24 || d.kudos?.length || d.postKudos?.length || d.postWaiting?.length || d.requests.length || d.intros?.length || d.friends.length || d.invited.length || d.gravity.length || d.links || d.alerts?.length);
 function digestSubject(d: DigestData) {
   if (d.messages?.unread) return d.messages.from.length === 1 ? `Caldera: ${d.messages.unread === 1 ? "a message" : d.messages.unread + " messages"} from @${d.messages.from[0]!.handle}` : `Caldera: ${d.messages.unread} unread messages`;
-  return "Caldera: " + (d.kudos?.length ? "you got kudos" : d.requests.length ? "new followers" : d.intros?.length ? "introductions waiting"
-    : d.friends.length ? "new connections" : d.visitors24 ? "people viewed your page" : "your daily summary");
+  const pl = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+  return "Caldera: " + (d.kudos?.length ? (d.kudos.length === 1 ? `@${d.kudos[0]!.handle} sent you kudos` : `${d.kudos.length} people sent you kudos`)
+    : d.requests.length ? (d.requests.length === 1 ? `@${d.requests[0]!.handle} followed you` : `${d.requests.length} new followers`)
+    : d.intros?.length ? (d.intros.length === 1 ? `@${d.intros[0]!.handle} would like to connect` : `${d.intros.length} introductions waiting`)
+    : d.friends.length ? (d.friends.length === 1 ? `you and @${d.friends[0]!.handle} are now connected` : `${d.friends.length} new connections`)
+    : d.visitors24 ? `${pl(d.visitors24, "person", "people")} viewed your page` : "your daily summary");
 }
 function digestSetup(s: SetupState): SetupStep {
   const url = `${s.account}#connections`;

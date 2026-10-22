@@ -205,7 +205,8 @@ test("every digest section links back to the page it's about (HTML and plain tex
     friends: [{ ...p("fr"), kind: "repo", why: "x/y" }, { ...p("fj"), joined: true }], invited: [{ handle: "iv" }], gravity: [{ handle: "gr", reason: "helped" }], newMembers: [] };
   const m = hub.mail.compose(d, "http://hub.test/u", false);
   const sections = m.html.split(/<h2[^>]*>/).slice(1);
-  assert.ok(sections.length >= 12, "all sections rendered: " + sections.length);
+  assert.ok(sections.length >= 5, "all sections rendered: " + sections.length);   // inbox, notifications, picked for you, people to meet, your page
+  for (const h of ["ma", "ku", "pk", "rq", "in", "su", "fr", "fj", "iv", "gr"]) assert.match(m.html, new RegExp(`href="http://hub\\.test/@${h}/"`), "links to @" + h);
   for (const s of sections) assert.match(s, /href="https?:\/\//, "HTML section without a link: " + s.slice(0, 60));
   for (const s of m.text.split("\n\n").filter(x => /^[A-Z][A-Z ]+(:|\n)/.test(x))) assert.match(s, /https?:\/\//, "text section without a link: " + s.slice(0, 60));
   // the stale-page note links to the page too, not only to obsidian://
@@ -227,4 +228,17 @@ test("email links back to the hub carry src=<email kind>; one-time links and oth
   const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [{ handle: "rq", name: "RQ", note: "" }], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [] };
   const m = hub.mail.compose(d, "http://hub.test/v1/email/unsub?t=z", false);
   assert.equal(m.src, "email-digest");
+});
+
+test("Caldera Daily: stat tiles, network boxes and AI news render, and a network-only day leads the subject with the network", async () => {
+  const d = { handle: "mike", name: "Mike", hosted: false, views24: 0, visitors24: 0, views7: 0, visitors7: 0, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [], personal: false,
+    network: { joinedNew: 2, joinedWeek: 9, members: [{ handle: "nu", name: "New One", headline: "Agents at a fintech" }], cities: 31, citiesNew: 1, newCities: [{ handle: "nu", url: "http://hub.test/@nu/city.html" }],
+      tools: [{ name: "Dictate", pitch: "Local push-to-talk", platforms: ["macOS"], url: "http://hub.test/tools#t-1", by: "mike" }], toolsNew: 1,
+      boards: [{ group: "ai-model-discussion", groupName: "AI model discussion", by: "bo", text: "Which local model for tool calls?", replies: 3, url: "http://hub.test/messages/groups/ai-model-discussion/p1" }],
+      posts: [{ by: "cy", text: "@cy is looking for a co-founder.", tags: ["ai agents"], comments: 2, url: "http://hub.test/feed/p/x1" }] },
+    news: [{ src: "HN", title: "An agent story", url: "https://example.com/a", meta: "400 points" }, { src: "Paper", title: "A paper", url: "https://huggingface.co/papers/1", meta: "9 upvotes" }] };
+  const m = hub.mail.compose(d, "http://hub.test/u", false);
+  for (const s of ["unread messages", "+2", "31", "New members", "Say hi", "New cities", "New tools", "Download", "Bulletin boards", "#ai-model-discussion", "3 replies", "Picked for you", "co-founder", "AI &amp; agents today", "An agent story", "caldera /</span> <b>daily</b>"]) assert.ok(m.html.includes(s), s);
+  assert.match(m.subject, /^Caldera Daily: 2 new members, 1 new tool, 1 board post, 1 feed post \| An agent story$/);
+  assert.match(m.text, /AI & AGENTS TODAY\n\[HN\] An agent story/); assert.ok(/^[\x00-\x7e]*$/.test(m.text), "ascii text part");
 });

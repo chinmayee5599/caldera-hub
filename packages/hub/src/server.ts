@@ -20,7 +20,8 @@ export { fallbacks as publicExt, type Ext } from "./ext";
 export { effectiveTags, canonical, readmeSignal, depsOf } from "./tagkit";
 import { building } from "./building";
 import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards";
-import { feed } from "./feed";
+import { feed, sentenceText, postTags } from "./feed";
+import { newsToday } from "./news";
 import { gifts } from "./gifts";
 import { funnel } from "./funnel";
 import { emailPages } from "./emailpages";
@@ -1218,7 +1219,31 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
           postKudos: n.kudos.map(k => ({ handle: k.from.handle, name: k.from.name, emoji: k.emoji, url: k.url })),
           postWaiting: n.waiting.map(w => ({ handle: w.from.handle, name: w.from.name, text: w.text, kind: w.kind, url: w.url })) }; })() };
   }
-  const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor, rank: { active: d => ext.digestActive(d), subject: d => ext.digestSubject(d) } });
+  /** The daily email's network half: who joined, new cities and tools, bulletin-board and feed posts since the last email
+   *  (`since`); the member and tool lists fall back to the past week so the boxes aren't empty on a slow day. */
+  function networkFor(owner: string, since: string) {
+    const d7 = new Date(Date.now() - 7 * DAY).toISOString(), s = since;
+    const hasCity = (h: string) => fs.existsSync(path.join(opts.dataDir, "profiles", h, "city.html"));
+    const all = (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY created DESC").all() as any[]).filter(listed);
+    const week = all.filter(p => p.id !== owner && p.created && p.created > d7), fresh = week.filter(p => p.created > s);
+    const who = (id: string) => { const p = profile(id); return p?.handle && listed(p) ? { handle: p.handle as string, name: String(p.name || "") } : null; };
+    const head = (p: any) => String(p.headline || body(p).headline || "").replace(/\s+/g, " ").trim().slice(0, 90);
+    const tools = (q("SELECT * FROM tools WHERE status='live' AND created > ? ORDER BY created DESC LIMIT 2").all(d7) as any[])
+      .map(t => ({ name: String(t.name), pitch: String(t.pitch || ""), platforms: String(t.platforms || "").split(",").filter(Boolean), url: `${PUB()}/tools#t-${t.id}`, by: who(t.owner)?.handle || "", fresh: t.created > s }));
+    const boards = CHAT ? (q("SELECT * FROM chat_posts WHERE status='ok' AND parent IS NULL AND author<>? AND (ts > ? OR last_reply > ?) ORDER BY COALESCE(last_reply, ts) DESC LIMIT 6").all(owner, s, s) as any[])
+      .map(p => { const g = CHAT!.nameOf(p.grp), a = who(p.author); return g && a ? { group: p.grp as string, groupName: g, by: a.handle, text: String(p.body || "").replace(/\s+/g, " ").slice(0, 110), replies: Number(p.replies) || 0, url: `${PUB()}/messages/groups/${p.grp}/${p.id}` } : null; })
+      .filter(Boolean).slice(0, 3) as { group: string; groupName: string; by: string; text: string; replies: number; url: string }[] : [];
+    const posts = (q("SELECT * FROM posts WHERE status='open' AND author<>? AND ts > ? ORDER BY ts DESC LIMIT 10").all(owner, s) as any[])
+      .map(r => { const a = who(r.author); if (!a) return null; let f: any = {}; try { f = JSON.parse(r.fields); } catch { /* bad row */ }
+        return { by: a.handle, text: sentenceText(a.handle, f), tags: postTags(f).slice(0, 4), comments: (q("SELECT COUNT(*) n FROM post_comments WHERE post=? AND status='ok'").get(r.id) as any).n as number, url: `${PUB()}/feed/p/${r.id}` }; })
+      .filter(Boolean).slice(0, 3) as { by: string; text: string; tags: string[]; comments: number; url: string }[];
+    const cityMembers = (fresh.length ? fresh : week).filter(p => hasCity(p.handle));
+    return { joinedNew: fresh.length, joinedWeek: week.length, members: (fresh.length ? fresh : week).slice(0, 4).map(p => ({ handle: p.handle as string, name: String(p.name || ""), headline: head(p) })),
+      cities: all.filter(p => hasCity(p.handle)).length, citiesNew: fresh.filter(p => hasCity(p.handle)).length,
+      newCities: cityMembers.slice(0, 2).map(p => ({ handle: p.handle as string, url: `${PUB()}/@${p.handle}/city.html` })),
+      tools, toolsNew: tools.filter(t => t.fresh).length, boards, posts };
+  }
+  const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor, network: networkFor, news: opts.email?.schedule ? () => newsToday(q) : undefined, rank: { active: d => ext.digestActive(d), subject: d => ext.digestSubject(d) } });
   if (opts.email?.schedule) mail.schedule();
 
   const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
@@ -2634,7 +2659,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   setTimeout(() => { try { promptPrivateChoice(); } catch (e: any) { console.error("private repos prompt", e?.message); } }, 15_000).unref?.();
   setTimeout(() => { try { const n = offerNamed(); if (n) console.log("offered named private repos to", n); } catch (e: any) { console.error("named offer", e?.message); } }, 20_000).unref?.();
 
-  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, guide: GUIDE, offerNamed: () => offerNamed(), digestFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
+  return { ext, server, privateServer, db, admin, mail, feed: FEED!, messages: MSG!, guide: GUIDE, offerNamed: () => offerNamed(), digestFor, networkFor, feedReady, headerItems, privateModes: PM, promptPrivateChoice, act: { token: (v: string, h: string, ttl?: number) => actToken(v, h, ttl), read: readAct },
     listen: (port = opts.port || 8787, host = process.env.CALDERA_HOST || "127.0.0.1") => new Promise<number>(r => server.listen(port, host, () => r((server.address() as any).port))),
     listenPrivate: (port = opts.privatePort || 0) => new Promise<number>(r => privateServer.listen(port, "127.0.0.1", () => r((privateServer.address() as any).port))) };
 }
@@ -2695,3 +2720,4 @@ if (import.meta.url === `file://${process.argv[1]}` && /server\.js$/.test(proces
   if (process.env.CALDERA_PRIVATE_PORT) hub.listenPrivate().then(p => console.log(`Caldera private owner address on 127.0.0.1:${p}`));
 }
 export { guideSteps, welcomeText } from "./setupguide";
+export { newsToday } from "./news";
