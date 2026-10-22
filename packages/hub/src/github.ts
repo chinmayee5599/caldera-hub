@@ -421,14 +421,15 @@ export function github(ctx: GhCtx) {
   const peopleOf = async (a: any): Promise<GhPerson[]> => { try { return (await ctx.social?.circle?.people(a.profile_id)) || []; } catch { return []; } };
   /** GitHub's primary verified address (needs the app's "Email addresses: read" permission, which users accept on their next
    *  sign-in) else the public profile email: stored sealed, only to prefill the daily-summary opt-in. Never blocks sign-in. */
-  async function captureEmail(owner: string, access: string, me: any) {
-    const em = ctx.social?.email; if (!em?.suggest) return;
+  async function captureEmail(owner: string, access: string, me: any): Promise<string | null> {
+    const em = ctx.social?.email; if (!em?.suggest) return null;
     try {
       const list = await Promise.race([gh(access, "/user/emails"), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000))]) as any[];
       const pick = Array.isArray(list) ? (list.find(x => x.primary && x.verified) || list.find(x => x.verified)) : null;
-      if (pick?.email && !/noreply\.github\.com$/i.test(pick.email)) { em.suggest(owner, String(pick.email), true, "github-verified"); return; }
+      if (pick?.email && !/noreply\.github\.com$/i.test(pick.email)) { em.suggest(owner, String(pick.email), true, "github-verified"); return String(pick.email); }
     } catch { /* 403/404: the permission isn't granted (yet) - fall back to the public address */ }
-    if (typeof me?.email === "string" && me.email) em.suggest(owner, me.email, false, "github-public");
+    if (typeof me?.email === "string" && me.email) { em.suggest(owner, me.email, false, "github-public"); return me.email; }
+    return null;
   }
   /** The first thing a member sees until they've answered it: where to send the daily summary (prefilled, one click). */
   function emailCaptureCard(owner: string): string {
@@ -636,6 +637,8 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
+      // the daily email is opted in by default at sign-up: only an unticked box on the sign-up form (digest=0 alone) opts out
+      const dg = url.searchParams.getAll("digest"); setCookie(res, "cal_dig", dg.length && !dg.includes("1") ? "0" : "1", 600);
       const si = signin() || a; ctx.track?.(req, "click", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
@@ -700,7 +703,10 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         q(`INSERT INTO gh_accounts (gh_id, login, profile_id, handle, key_sealed, token_sealed, edits, cache, created) VALUES (?,?,?,?,?,?,?,?,?)`)
           .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), JSON.stringify(edits0), "{}", new Date().toISOString());
         acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id);
-        startSession(res, me.id); await captureEmail(id.id, tok.access, me);
+        startSession(res, me.id); const signupEmail = await captureEmail(id.id, tok.access, me);
+        // pre-checked daily email: a GitHub-verified address is on at once, a public one gets a confirmation link
+        if (signupEmail && ck.cal_dig !== "0" && ctx.social?.email?.subscribe) try { await ctx.social.email.subscribe(id.id, signupEmail); } catch (e: any) { console.error("signup digest", e.message); }
+        setCookie(res, "cal_dig", "", 0);
         if (ck.cal_inv) setCookie(res, "cal_inv", "", 0);
         if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);
         // the first build reads the whole GitHub account (slow): send them to /me now, build in the background

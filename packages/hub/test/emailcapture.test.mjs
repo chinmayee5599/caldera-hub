@@ -31,8 +31,9 @@ function setup() {
   const h = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: fake, limits: { newProfilesPerDay: 100 }, email: { send: async m => { mails.push(m); } } });
   return { h, d, mails };
 }
-async function signup(b, code) {
-  const a = await fetch(b + "/auth/github", { redirect: "manual" });
+// qs: the sign-up form's daily-email box. Default here is unticked (digest=0) so the welcome-card tests start unsubscribed
+async function signup(b, code, qs = "?digest=0") {
+  const a = await fetch(b + "/auth/github" + qs, { redirect: "manual" });
   const jar = (a.headers.getSetCookie?.() || []).map(c => c.split(";")[0]).filter(c => !c.endsWith("="));
   const state = new URL(a.headers.get("location")).searchParams.get("state");
   const cb = await fetch(b + `/auth/github/callback?code=${code}&state=${state}`, { headers: { cookie: jar.join("; ") }, redirect: "manual" });
@@ -113,6 +114,26 @@ test("the owner banner subscribes through the page's owner token; the token can'
   const other = await (await fetch(b + "/@ver/", { headers: { cookie: w.cookie, "user-agent": "Mozilla/5.0" } })).text();
   const t2 = (other.match(/data-act="([^"]+)"/) || [])[1];
   if (t2) { const x = await act({ t: t2, action: "email-subscribe", email: "evil@realmail.org" }); assert.notEqual(x.j.ok && x.j.message, true); assert.equal(h.db.prepare("SELECT COUNT(*) n FROM email_subs").get().n, 1); }
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});
+test("sign-up: the daily email is pre-checked; a verified address is on at once, a public one gets a confirmation link", async () => {
+  const { h, d, mails } = setup(); const b = "http://127.0.0.1:" + await h.listen(0);
+  const sub = (login) => h.db.prepare("SELECT confirmed FROM email_subs WHERE owner=(SELECT profile_id FROM gh_accounts WHERE login=?)").get(login);
+  const page = await (await fetch(b + "/signin")).text();
+  assert.match(page, /name="digest" value="1" checked/, "the box is ticked on the sign-up form");
+  await signup(b, "ver", "?digest=0&digest=1");   // the form with the box ticked
+  assert.equal(sub("ver").confirmed, 1); assert.equal(mails.length, 0, "verified: nothing to confirm");
+  await signup(b, "pub", "");   // a plain sign-up link elsewhere on the site: on by default
+  assert.equal(sub("pub").confirmed, 0); assert.equal(mails.length, 1); assert.match(mails[0].subject, /Confirm/);
+  await signup(b, "none", "");   // no address from GitHub at all: nothing to subscribe
+  assert.equal(sub("none"), undefined);
+  h.server.close(); fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("sign-up: unticking the daily-email box means no subscription", async () => {
+  const { h, d, mails } = setup(); const b = "http://127.0.0.1:" + await h.listen(0);
+  await signup(b, "ver", "?digest=0");
+  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM email_subs").get().n, 0); assert.equal(mails.length, 0);
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
 // the digest's order, subject and setup tip are open-core hooks: their tests live in caldera-private
