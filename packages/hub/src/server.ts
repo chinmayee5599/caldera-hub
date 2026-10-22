@@ -1761,7 +1761,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "gifts" }); },
     onChange: () => FEED?.invalidate() });
   FEED = feed({ q, now, hub: opts.publicUrl || "https://caldera.social", profile, byHandle, body, listed, modOf, areFriends, befriend: (a, b, kind, ts, why) => { befriend(a, b, kind, ts, why); worldCache = null; },
-    memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags, toolItems: () => TOOLS ? TOOLS.feedItems() : [],
+    memberOf, sameOrigin, readBody, json, navify, weekScore, tooMany, founder: opts.founder || null, ogTags, hasCity: (h: string) => fs.existsSync(path.join(opts.dataDir, "profiles", h, "city.html")), toolItems: () => TOOLS ? TOOLS.feedItems() : [],
     tagsOf: (pr: any) => B.tagsOf(pr), vocab: ext.tagVocab().problems, stackVocab: ext.tagVocab().stack, requestIntro: (from, to) => B.requestIntro(from, to), decide: (me, from, yes) => B.decide(me, from, yes),
     notify: (to, a) => { alerts.post({ title: a.title, body: a.body, ctaLabel: a.ctaLabel, ctaUrl: a.ctaUrl, target: to, key: a.key, by: "feed" }); },
     dropNotices: (postId) => { const like = [`%${postId}%`, `%/feed/p/${postId}%`];

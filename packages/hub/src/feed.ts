@@ -205,6 +205,8 @@ export interface FeedCtx {
   fetch?: typeof fetch; ghToken?: () => Promise<string | null>;
   /** has this member got a city with public repos (new accounts without one get stricter link limits) */
   hasRepos?: (pr: any) => boolean;
+  /** is this member's city page actually on disk (a GitHub sign-up whose account or repos are gone has none) */
+  hasCity?: (handle: string) => boolean;
   /** a personal alert in the member's bell (and so their daily email); `key` folds repeats into one */
   notify?: (memberId: string, a: { title: string; body: string; ctaLabel?: string; ctaUrl?: string; key?: string }) => void;
   /** a deleted post takes its personal alerts (kudos, sends, recommendations) with it */
@@ -495,7 +497,8 @@ export function feed(c: FeedCtx) {
       const gh = hosted.get(pr.id);
       items.push({ kind: "join", ts: pr.created, who: who(pr), via: gh && !gh.claimed ? "GitHub" : "Obsidian" });
       const sections = (() => { try { return JSON.parse(pr.manifest).body.sections || []; } catch { return []; } })();
-      if (sections.includes("city") || (gh && !gh.claimed)) {
+      // only point at a city that exists: a deleted GitHub (or one with no public repos) leaves no city.html
+      if ((sections.includes("city") || (gh && !gh.claimed)) && (!c.hasCity || c.hasCity(pr.handle))) {
         const ts = new Date(Date.parse(pr.created) + 1000).toISOString();
         items.push({ kind: "city", ts, who: who(pr), url: `/@${pr.handle}/city.html` });
       }
