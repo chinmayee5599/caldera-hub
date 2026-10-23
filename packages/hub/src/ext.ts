@@ -79,6 +79,8 @@ export interface Ext {
   digestSetup(s: SetupState): SetupStep;
   /** the feed: who fits a post, link and posting policy */
   feedMatcher(): FeedMatcher;
+  /** an extra item in the signed-in header (right side, before Messages and the bell), for the member viewing the page; "" = none */
+  headerItem(viewer: { id: string; handle: string }): string;
 }
 
 /** Public suggestions: people in your groups first, then new members, then whoever was active this week. */
@@ -148,7 +150,7 @@ function digestSetup(s: SetupState): SetupStep {
 }
 
 export const fallbacks: Ext = { loaded: [], suggestScore, githubAccountOk, repoConnector, tagVocab, tagExtractor: basicTagExtractor, tagShared, tagRelevance, depOverlap,
-  digestActive, digestSubject, digestSetup, feedMatcher: () => publicMatcher };
+  digestActive, digestSubject, digestSetup, feedMatcher: () => publicMatcher, headerItem: () => "" };
 
 /** Load private overrides from a directory holding dist/index.cjs (or index.cjs). Missing or broken -> fallbacks. */
 export function loadExt(dir?: string | null, log: (...a: unknown[]) => void = console.error): Ext {

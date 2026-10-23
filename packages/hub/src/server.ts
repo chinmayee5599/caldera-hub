@@ -1835,6 +1835,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         grouped: !!q("SELECT 1 FROM chat_posts WHERE author=? LIMIT 1").get(id) };
     } }) : null;
   if (GUIDE) { const g = GUIDE; const t = setInterval(() => { try { g.tick(); } catch (e: any) { console.error("setup guide", e?.message); } }, 10 * 60_000); t.unref?.(); }
+  headerItems.push(me => { const pr = profile(me); return pr?.handle ? ext.headerItem({ id: me, handle: pr.handle }) : ""; });   // extension slot (caldera.social: Add to Apple Wallet)
   headerItems.push(me => MSG ? MSG.iconFor(me, true) : "");   // Messages + unread badge (DMs + groups), left of the bell in THE header
   const feedReady = Promise.resolve(true);
 
