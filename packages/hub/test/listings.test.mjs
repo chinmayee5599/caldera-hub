@@ -117,6 +117,14 @@ test("GitHub sign-ups: caldera.social/settings adds apps and websites, toggles s
     ed = JSON.parse(acct().edits); assert.deepEqual(ed.websites, ["https://ana.dev/ |  | no-storefront"]);
     idx = fs.readFileSync(path.join(dir, "index.html"), "utf8"); city = fs.readFileSync(path.join(dir, "city.html"), "utf8");
     assert.match(idx, /ana\.dev/); assert.doesNotMatch(city, /"kind":"site"/);
+    // a short name: saved on the line, shown on the card and the storefront instead of the store's title, cleaned
+    page = await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", app_0_name: "Notes <b>Pro</b>", site_0_url: "https://ana.dev/", site_0_repo: "" });
+    ed = JSON.parse(acct().edits); assert.deepEqual(ed.apps, ["https://apps.apple.com/app/id1234567 | notes-app | name: Notes b Pro /b"]);
+    assert.match(page, /name="app_0_name" value="Notes b Pro \/b"/);
+    idx = fs.readFileSync(path.join(dir, "index.html"), "utf8"); city = fs.readFileSync(path.join(dir, "city.html"), "utf8");
+    assert.match(idx, /Notes b Pro \/b/); assert.doesNotMatch(idx, /Ana Notes/); assert.match(city, /"name":"Notes b Pro \/b"/);
+    await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", app_0_name: "", site_0_url: "https://ana.dev/", site_0_repo: "" });
+    assert.deepEqual(JSON.parse(acct().edits).apps, ["https://apps.apple.com/app/id1234567 | notes-app"], "clearing the name drops it");
     // a repo without storefronts, and removing one
     await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", site_0_url: "https://ana.dev/", site_0_rm: "on", hide_sf: "notes-app, bad name!" });
     ed = JSON.parse(acct().edits); assert.deepEqual(ed.hideStorefronts, ["notes-app"]); assert.deepEqual(ed.websites, []);

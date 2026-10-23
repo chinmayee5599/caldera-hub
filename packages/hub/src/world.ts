@@ -64,7 +64,9 @@ export function buildWorld(members: WorldMemberIn[], friendships: ([string, stri
   for (const m of order) {
     const key = "@" + m.handle, src = m.city?.districts || [];
     const ranked = src.flatMap((d, di) => (d.repos || []).map(r => ({ di, r: cleanRepo(r, key) })));
-    ranked.sort((a, b) => (b.r.week * 20 + b.r.commits) - (a.r.week * 20 + a.r.commits));
+    // storefronts (apps and websites the member listed) always make the cut: they have no commits, but they're what the member chose to show
+    const score = (r: CityRepo) => (r.kind ? 1e12 : 0) + r.week * 20 + r.commits;
+    ranked.sort((a, b) => score(b.r) - score(a.r));
     const keep = ranked.slice(0, Math.max(0, Math.min(MAX_PER_MEMBER, left))); left -= keep.length;
     const notesLeft = { n: Math.min(16, Math.max(0, m.notes)) };
     src.forEach((d, di) => {
