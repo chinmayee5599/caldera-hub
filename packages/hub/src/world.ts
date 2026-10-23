@@ -29,6 +29,13 @@ const str = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f]/
 
 /** One building, re-cleaned: public repos keep name/link/history; anything else becomes a nameless padlocked block. */
 export function cleanRepo(r: CityRepo, project: string): CityRepo {
+  if ((r.kind === "app" || r.kind === "site") && r.public === true && r.name && !r.locked) {   // a listed app or website: a storefront, linking to the store or the site
+    const url = typeof r.url === "string" && /^https?:\/\/[^\s"<>]{3,300}$/.test(r.url) && (r.kind === "site" || /^https:\/\/(apps\.apple\.com|play\.google\.com)\//.test(r.url)) ? r.url : undefined;
+    const m = r.meta || {}, icon = typeof m.icon === "string" && /^https?:\/\/[^\s"<>]+\/v1\/listings\/img\/[A-Za-z0-9._%-]+$/.test(m.icon) ? m.icon : undefined;
+    const sites = (Array.isArray(r.sites) ? r.sites : []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9.-]+\.[a-z]{2,}(\/[a-z0-9._~%\/-]{1,120})?$/.test(x)).slice(0, 2);
+    return { name: str(r.name, 60), project, public: true, language: r.kind === "app" ? "App" : "Web", commits: 0, weeks: [], week: 0, today: 0, url, kind: r.kind, ...(sites.length ? { sites } : {}),
+      meta: { store: m.store === "play" ? "play" : m.store === "apple" ? "apple" : undefined, icon, host: m.host ? str(m.host, 120) : undefined, genre: m.genre ? str(m.genre, 40) : undefined } };
+  }
   const url = typeof r.url === "string" && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(r.url) ? r.url : undefined;
   if (r.priv && !r.locked && r.name) {   // "named" private repo: name, language and activity, never a link or description
     return { name: str(r.name, 100), project, public: false, priv: true, language: str(r.language || "Other", 30), commits: Math.max(0, Math.round(Number(r.commits) || 0)),

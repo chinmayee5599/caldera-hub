@@ -29,6 +29,7 @@ import { messages } from "./messages";
 import { chat, CHAT_CSS, CHAT_JS } from "./chat";
 import { setupGuide } from "./setupguide";
 import { tools } from "./tools";
+import { listings, type Lookup, type safeGet } from "./listings";
 import { mapPanel } from "./mapprompt";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
@@ -49,7 +50,7 @@ export interface HubOptions { dataDir: string; port?: number; publicUrl?: string
   /** Private owner address (e.g. behind `tailscale serve`): a second listener on 127.0.0.1:privatePort that serves the
    *  owner's private view only when the proxy-set Tailscale-User-Login header maps to that profile's handle. */
   privatePort?: number; privateUrl?: string;
-  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; /** run the shared-repo friendship job every 6 hours (the server binary turns it on; tests call it directly) */ repoJob?: boolean; /** read members' public GitHub signals into "what they're building" tags every 12 hours */ tagJob?: boolean; /** OpenRouter key for the tag normalising pass (rules only without it) */ llmKey?: string; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number; newProfilesPerMinute?: number };
+  /** Handle of the founder: every new profile starts out as their friend (MySpace's Tom). */ founder?: string; tailnetOwners?: Record<string, string>; githubFetch?: typeof fetch; /** tests: stand-ins for DNS and fetching listed apps and websites */ listingsLookup?: Lookup; listingsGet?: typeof safeGet; /** run the shared-repo friendship job every 6 hours (the server binary turns it on; tests call it directly) */ repoJob?: boolean; /** read members' public GitHub signals into "what they're building" tags every 12 hours */ tagJob?: boolean; /** OpenRouter key for the tag normalising pass (rules only without it) */ llmKey?: string; onEvent?: (e: { type: "signup" | "delete"; handle?: string; name?: string; total: number }) => void; limits?: { perMinute?: number; writesPerMinute?: number; newProfilesPerDay?: number; newProfilesPerMinute?: number };
   /** daily summary emails: Resend key (production) or a send hook (tests); schedule starts the daily job */
   email?: { resendKey?: string; send?: (m: Mail) => Promise<void>; schedule?: boolean }; }
 
@@ -847,6 +848,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   let FEED: ReturnType<typeof feed> | null = null;   // the network feed (created once the helpers it needs exist)
   let MSG: ReturnType<typeof messages> | null = null;   // direct messages (same)
   let TOOLS: ReturnType<typeof tools> | null = null;   // free tools members give away
+  let LISTINGS: ReturnType<typeof listings> | null = null;   // apps and websites members list: details looked up once a day
   let GUIDE: ReturnType<typeof setupGuide> | null = null;   // the setup-guide DMs
   let CHAT: ReturnType<typeof chat> | null = null;   // Groups under Messages (same)
   let GIFTS: ReturnType<typeof gifts> | null = null;   // light-ups on the world map (same)
@@ -1249,7 +1251,7 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
   const autoOff = (pr: any) => { const b = body(pr); return b.autoConnectGithub === false || b.autoConnectRepos === false; };
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
   const FUNNEL = funnel({ q, ipOf, botUa: BOT_UA });
-  const GH = github({ track: (req, step, detail) => FUNNEL.track(req, step, detail), accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
+  const GH = github({ listings: () => LISTINGS, track: (req, step, detail) => FUNNEL.track(req, step, detail), accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
     json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch, freshenMs: opts.githubFetch ? 0 : undefined,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
@@ -1816,6 +1818,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     ui: { ...MSG.ui, shell: (t: string, i: string, cls: string) => MSG!.ui.shell(t, i, cls, CHAT_CSS, CHAT_JS) } });
   MSG.setGroups(id => CHAT ? CHAT.unreadTotal(id) : 0);
   // free tools: listings on profiles, a Workshop in the maker's city, a Market on the World map, /tools (links only, never hosted)
+  LISTINGS = listings({ q, json, readBody, tooMany, ipOf, lookup: opts.listingsLookup, get: opts.listingsGet });
   TOOLS = tools({ q, now, hub: PUB(), profile, byHandle, body, modOf, memberOf, sameOrigin, readBody, json, navify, tooMany,
     founder: () => (opts.founder ? byHandle(String(opts.founder).toLowerCase())?.id : null) || null,
     verified: id => !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? LIMIT 1").get(id) || !!q("SELECT 1 FROM gh_links WHERE profile_id=? LIMIT 1").get(id),
@@ -1885,6 +1888,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       if (p.startsWith("/v1/gifts") && await GIFTS!.route(req, res, p)) return;
       if (/^\/(messages\/groups|v1\/groups)(\/|$)/.test(p) && CHAT && await CHAT.route(req, res, url, p)) return;
       if (/^\/(tools|downloads|v1\/tools)(\/|$)/.test(p) && TOOLS && await TOOLS.route(req, res, url, p)) return;
+      if (p.startsWith("/v1/listings/") && LISTINGS && await LISTINGS.route(req, res, p)) return;
       // founder only: send the setup guide to members who joined before it existed ({dry:true} previews it)
       if (p === "/v1/admin/setup-guide" && req.method === "POST" && GUIDE) {
         const me = memberOf(req), f = opts.founder ? byHandle(String(opts.founder).toLowerCase()) : null;

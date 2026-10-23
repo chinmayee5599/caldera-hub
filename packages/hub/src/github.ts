@@ -17,12 +17,15 @@ import path from "node:path";
 import * as C from "@caldera/core";
 import { renderProfile, type ProfileData, type DailyEntry } from "../../../../caldera/packages/plugin/src/render";
 import { cityData, publicCity, cleanSites, type CityRepo } from "../../../../caldera/packages/plugin/src/city";
+import { listingLine, parseListingLine, toListing, withListingsPublic, MAX_LISTINGS, type ListingKind, type ListingMeta, type ListingRef } from "../../../../caldera/packages/plugin/src/listings";
 import { cleanImage } from "./images";
 import { connectionsPanel, settingsNav, sectionHead, SETTINGS_CSS, type Conn } from "./settings";
 import { alertItem, ALERT_CSS, ALERT_JS, type AlertRow } from "./alerts";
 
 export interface GhPerson { login: string; avatar: string; url: string; relation: string; invited: boolean; canEmail: boolean }
 export interface GhCtx {
+  /** apps and websites members list (details looked up and cached by the hub) */
+  listings?: () => { resolve: (refs: ListingRef[], mayFetch?: boolean) => Promise<ListingMeta[]>; refsOf: (lines: unknown, kind: ListingKind) => ListingRef[] } | null;
   /** how often a page view may check GitHub for new repos, per member (default 10 minutes; tests use 0) */
   freshenMs?: number;
   /** sign-up gate for new GitHub accounts (an open-core hook) */
@@ -328,7 +331,13 @@ export function github(ctx: GhCtx) {
     // private repos: the member's setting decides what their public city and code numbers say about them
     const prRow = q("SELECT * FROM profiles WHERE id=?").get(acct.profile_id) || { id: acct.profile_id, created: new Date().toISOString() };
     const pmode = ctx.privateMode?.modeFor(prRow) || "show", counted = pmode === "show" || pmode === "named" ? cityRepos : cityRepos.filter(r => r.public);
-    const pubCity = publicCity(city, city.districts.map(d => d.name), pmode);
+    const pubBase = publicCity(city, city.districts.map(d => d.name), pmode);
+    // apps and websites they listed in settings: cards on the page, storefronts in the city
+    const LS = ctx.listings?.(), lrefs = LS ? [...LS.refsOf(edits.apps, "app"), ...LS.refsOf(edits.websites, "site")] : [];
+    const lmeta = LS && lrefs.length ? await LS.resolve(lrefs).catch(() => [] as ListingMeta[]) : [];
+    const listed = lrefs.map(r => toListing(r, lmeta.find(m => m.key === r.key), pub));
+    const hideSf: string[] = Array.isArray(edits.hideStorefronts) ? edits.hideStorefronts : [];
+    const pubCity = withListingsPublic(pubBase, city, listed, pmode, [], hideSf) || pubBase;
     const total = counted.reduce((a, r) => a + r.commits, 0), langs = [...new Set(counted.map(r => r.language).filter(l => l !== "Other"))].slice(0, 6);
     const weekly = Array.from({ length: 12 }, (_, i) => counted.reduce((a, r) => a + (r.weeks[i] || 0), 0));
     const handle = acct.handle as string, name = String(edits.name || me.name || me.login).slice(0, 80);
@@ -354,6 +363,7 @@ export function github(ctx: GhCtx) {
       code: { commits: total, repos: counted.length, languages: langs, weekly, url: me.html_url },
       projects: cityRepos.filter(r => r.public).sort((a, b) => b.commits - a.commits).slice(0, 6).map(r => ({ name: r.name, status: r.description || r.language, url: r.url || me.html_url, commits: r.commits })),
       city: pubCity, source: "GitHub",
+      ...(listed.some(l => l.kind === "app") ? { apps: listed.filter(l => l.kind === "app") } : {}), ...(listed.some(l => l.kind === "site") ? { websites: listed.filter(l => l.kind === "site") } : {}),
     } as ProfileData;
     for (const [k, v] of Object.entries(renderProfile(p))) files[k] = v;
     const id = JSON.parse(ctx.unseal(acct.key_sealed)) as C.Identity;
@@ -366,7 +376,7 @@ export function github(ctx: GhCtx) {
     fs.writeFileSync(path.join(dir, "caldera.json"), JSON.stringify(manifest));
     // live traffic + agents: one site key per district, the agent key with a hashed repo -> district map
     const have = new Map((q("SELECT key, project FROM traffic_sites WHERE owner=?").all(id.id) as any[]).map(x => [x.project, x.key]));
-    for (const d of city.districts) if (!have.has(d.name)) q("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run(crypto.randomBytes(8).toString("hex"), id.id, d.name, 1, crypto.randomBytes(18).toString("hex"), new Date().toISOString());
+    for (const d of [...city.districts, ...pubCity.districts.filter(x => x.name === "Apps & sites")]) if (!have.has(d.name)) q("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run(crypto.randomBytes(8).toString("hex"), id.id, d.name, 1, crypto.randomBytes(18).toString("hex"), new Date().toISOString());
     const rmap = Object.fromEntries(cityRepos.map(r => [crypto.createHash("sha256").update(r.name.toLowerCase()).digest("hex").slice(0, 16), r.project]));
     if (q("SELECT 1 FROM agent_keys WHERE owner=?").get(id.id)) q("UPDATE agent_keys SET repos=? WHERE owner=?").run(JSON.stringify(rmap), id.id);
     else q("INSERT INTO agent_keys VALUES (?,?,?,?,?)").run(crypto.randomBytes(9).toString("hex"), id.id, crypto.randomBytes(18).toString("hex"), JSON.stringify(rmap), new Date().toISOString());
@@ -486,6 +496,7 @@ ${finishCard(a)}
 <label for="l">Extra links <span class="mut">(one per line: Label | https://...)</span></label><textarea id="l" name="links">${esc(edits.links || "")}</textarea>
 <label for="g">Groups <span class="mut">(comma separated, like <code>producthunt</code>; each one is a town at caldera.social/g/name)</span></label><input type="text" id="g" name="groups" maxlength="200" value="${esc((edits.groups || []).join(", "))}">
 <div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>
+${listingsForm(edits)}
 ${sectionHead("people", "People")}${growth}
 ${sectionHead("notifications", "Notifications")}${emailCard(a, edits)}
 ${sectionHead("privacy", "Privacy")}<div class="card"><b>&#128274; What Caldera can see on GitHub</b><p class="mut" style="margin:6px 0 0">Your public profile, your email address and your public repos: read-only. Not your code, not your private repos (unless you install the app for chosen repos, and then only names, sizes and commit counts). GitHub enforces this. <a href="/security">Details</a> &middot; Revoke any time at <a href="https://github.com/settings/applications" target="_blank" rel="noopener">github.com/settings/applications</a>, or delete your page below.</p></div><form method="post" class="card" id="privacy-form"><input type="hidden" name="do" value="privacy">
@@ -579,6 +590,36 @@ ${left.map(i => `<div style="margin:12px 0"><b>${esc(i.label)}</b> <span class="
 
   /** Growth cards on /me: this week's visitors, share + invite, friends (requests, current, suggestions), daily email. */
   /** Daily summary email card (Notifications). */
+  /** Apps and websites: one row each (repo it's built from, Storefront on/off, remove), then add one, then repos without storefronts. */
+  function listingsForm(edits: any): string {
+    const rows = (kind: ListingKind) => { const v = kind === "app" ? edits.apps : edits.websites; return (Array.isArray(v) ? v : []).map((l: string) => parseListingLine(l, kind)).filter(Boolean).slice(0, MAX_LISTINGS) as ListingRef[]; };
+    const row = (r: ListingRef, kind: string, i: number) => `<div class="row ls-row" style="gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0"><input type="hidden" name="${kind}_${i}_url" value="${esc(r.url)}"><span style="flex:1 1 220px;overflow-wrap:anywhere">${esc(r.kind === "site" ? r.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : r.store === "play" ? "Google Play: " + r.id : "App Store: id" + r.id)}</span><input type="text" name="${kind}_${i}_repo" value="${esc(r.repo || "")}" placeholder="repo (optional)" maxlength="100" style="width:150px" aria-label="Repo it's built from"><label style="display:inline"><input type="checkbox" name="${kind}_${i}_sf" ${r.storefront === false ? "" : "checked"}> Storefront</label><label class="mut" style="display:inline"><input type="checkbox" name="${kind}_${i}_rm"> Remove</label></div>`;
+    const apps = rows("app"), sites = rows("site");
+    return `<form method="post" class="card" id="listings"><input type="hidden" name="do" value="listings"><b>Apps and websites</b> <span class="mut">Each one gets a card on your page. With Storefront on it also stands as a storefront in your city (a website's live visitors walk into it). Repo: the repo it's built from, so it stands beside that repo. Up to ${MAX_LISTINGS} of each.</span>
+<div style="margin-top:8px"><b class="small">Apps</b>${apps.map((r, i) => row(r, "app", i)).join("") || '<div class="mut small">None yet.</div>'}<label for="ls-app">Add an app <span class="mut">(App Store or Google Play link)</span></label><input type="text" id="ls-app" name="app_new" placeholder="https://apps.apple.com/us/app/name/id123456789" maxlength="300"></div>
+<div style="margin-top:8px"><b class="small">Websites</b>${sites.map((r, i) => row(r, "site", i)).join("") || '<div class="mut small">None yet.</div>'}<label for="ls-site">Add a website <span class="mut">(a whole site, or one page like example.com/tool)</span></label><input type="text" id="ls-site" name="site_new" placeholder="https://example.com" maxlength="300"></div>
+<label for="ls-hide">Repos without storefronts <span class="mut">(comma separated; their apps and websites get no storefront, and their own websites are left off your city)</span></label><input type="text" id="ls-hide" name="hide_sf" maxlength="2000" value="${esc((Array.isArray(edits.hideStorefronts) ? edits.hideStorefronts : []).join(", "))}">
+<div class="row" style="margin-top:12px"><button class="btn small" type="submit">Save and republish</button></div></form>`;
+  }
+  /** The listings form -> edits.apps / edits.websites ("link | repo | no-storefront" lines) and edits.hideStorefronts */
+  function listingsFromForm(f: URLSearchParams): { apps: string[]; websites: string[]; hideStorefronts: string[]; bad: string[] } {
+    const bad: string[] = [];
+    const read = (kind: ListingKind) => {
+      const out: ListingRef[] = [];
+      for (let i = 0; i < MAX_LISTINGS; i++) {
+        const u = f.get(`${kind}_${i}_url`); if (!u || f.get(`${kind}_${i}_rm`)) continue;
+        const r = parseListingLine(u, kind); if (!r || out.some(x => x.key === r.key)) continue;
+        const repo = (f.get(`${kind}_${i}_repo`) || "").trim(); if (/^[A-Za-z0-9._-]{1,100}$/.test(repo)) r.repo = repo;
+        if (!f.get(`${kind}_${i}_sf`)) r.storefront = false;
+        out.push(r);
+      }
+      const add = (f.get(`${kind}_new`) || "").trim();
+      if (add) { const r = parseListingLine(add, kind); if (!r) bad.push(add); else if (!out.some(x => x.key === r.key) && out.length < MAX_LISTINGS) out.push(r); }
+      return out.map(listingLine);
+    };
+    const hideStorefronts = (f.get("hide_sf") || "").split(",").map(x => x.trim()).filter(x => /^[A-Za-z0-9._-]{1,100}$/.test(x)).slice(0, 300);
+    return { apps: read("app"), websites: read("site"), hideStorefronts, bad };
+  }
   function emailCard(a: any, edits: any): string {
     const soc = ctx.social, me = a.profile_id as string, em = soc?.email?.status(me);
     const btn = (doit: string, label: string, hidden: Record<string, string>) => `<form method="post" style="display:inline"><input type="hidden" name="do" value="${doit}">${Object.entries(hidden).map(([k, x]) => `<input type="hidden" name="${k}" value="${esc(x)}">`).join("")}<button class="btn small" type="submit">${label}</button></form>`;
@@ -835,6 +876,12 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           const edits = { ...prev, name: (f.get("name") || "").slice(0, 80), headline: (f.get("headline") || "").slice(0, 160), summary: (f.get("summary") || "").slice(0, 1200), links: (f.get("links") || "").slice(0, 2000), groups: groupsFrom(f.get("groups")) };
           q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify(edits), acct.gh_id);
         }
+        let listingNote = "";
+        if (act === "listings") {
+          const prev = JSON.parse(acct.edits || "{}"), l = listingsFromForm(f as any);
+          q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify({ ...prev, apps: l.apps, websites: l.websites, hideStorefronts: l.hideStorefronts }), acct.gh_id);
+          if (l.bad.length) listingNote = ` Not added (not an App Store, Google Play or website link): ${esc(l.bad[0].slice(0, 80))}`;
+        }
         if (act === "private-repos" && ctx.privateMode) ctx.privateMode.set(acct.profile_id, f.get("mode"));
         if (act === "search" && ctx.searchPref) ctx.searchPref.set(acct.profile_id, !!f.get("on"));
         if (act === "privacy") { const prev = JSON.parse(acct.edits || "{}"); q("UPDATE gh_accounts SET edits=? WHERE gh_id=?").run(JSON.stringify({ ...prev, listed: f.get("listed") === "on", autoConnectRepos: f.get("autoConnectRepos") === "on" }), acct.gh_id); }
@@ -859,7 +906,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         }
         if (act === "email-dismiss" && ctx.social?.email) { ctx.social.email.dismissPrompt?.(acct.profile_id); pre = "No problem. You can turn on the daily summary any time under Notifications."; }
         let note = pre || (act === "claim" ? `Here's your code: <code>${esc(claimCode)}</code>. Paste it into Caldera in Obsidian (Settings &gt; Import a GitHub sign-up). It works once, for 30 minutes.` : "");
-        if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy" || act === "private-repos") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished."; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
+        if (act === "save" || act === "refresh" || act === "remove-banner" || act === "privacy" || act === "private-repos" || act === "listings") { try { await queuedBuild(q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id)); note = "Republished." + listingNote; } catch (e: any) { note = "Couldn't republish: " + esc(e.message); } }
         mePage(res, q("SELECT * FROM gh_accounts WHERE gh_id=?").get(acct.gh_id), note, await peopleOf(acct)); return true;
       }
     }
