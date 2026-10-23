@@ -74,3 +74,53 @@ test("resolve endpoint + image route: lookups by id/link only, cached, images se
     assert.ok(calls.every(u => !/caldera|hub\.test|member/i.test(u)), "only the app id or site link is ever sent");
   } finally { hub.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+test("GitHub sign-ups: caldera.social/settings adds apps and websites, toggles storefronts, ties repos; the page and city follow", async () => {
+  const crypto = await import("node:crypto"), C = await import("@caldera/core");
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-lsgh-"));
+  const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  fs.writeFileSync(path.join(d, "github-app.json"), JSON.stringify({ id: 1, slug: "t", client_id: "cid", client_secret: "csec", pem: privateKey.export({ type: "pkcs1", format: "pem" }) }));
+  const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
+  const gh = async (u, init = {}) => { u = String(u);
+    if (u.endsWith("/access_token")) return J({ access_token: "tok", expires_in: 28800 });
+    if (u.endsWith("/user/emails")) return J([]);
+    if (u.endsWith("/user")) return J({ id: 31, login: "ana", name: "Ana", created_at: "2019-01-01T00:00:00Z", public_repos: 1, followers: 1, html_url: "https://github.com/ana", avatar_url: "https://avatars.githubusercontent.com/u/31" });
+    if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"));
+    if (u.includes("/repos?")) return J([{ name: "notes-app", full_name: "ana/notes-app", private: false, fork: false, archived: false, language: "Swift", html_url: "https://github.com/ana/notes-app", pushed_at: new Date().toISOString(), created_at: "2024-01-01T00:00:00Z", size: 10, owner: { login: "ana" } }]);
+    if (u.includes("/events")) return J([]);
+    return J({}, 404); };
+  const meta = async (url) => { if (url.startsWith("https://itunes.apple.com/lookup?id=1234567&")) return { status: 200, type: "application/json", url, body: Buffer.from(JSON.stringify({ results: [{ trackName: "Ana Notes", primaryGenreName: "Productivity" }] })) };
+    if (url === "https://ana.dev/") return { status: 200, type: "text/html", url, body: Buffer.from("<title>Ana's site</title>") }; throw new Error("no"); };
+  const h = createHub({ dataDir: d, publicUrl: "http://hub.test", githubFetch: gh, listingsGet: meta, limits: { newProfilesPerDay: 100 } });
+  const b = "http://127.0.0.1:" + await h.listen(0);
+  try {
+    const a = await fetch(b + "/auth/github?digest=0", { redirect: "manual" });
+    const jar = (a.headers.getSetCookie?.() || []).map(c => c.split(";")[0]).filter(c => !c.endsWith("="));
+    const state = new URL(a.headers.get("location")).searchParams.get("state");
+    const cb = await fetch(b + `/auth/github/callback?code=x&state=${state}`, { headers: { cookie: jar.join("; ") }, redirect: "manual" });
+    const cookie = (cb.headers.getSetCookie?.() || []).map(c => c.split(";")[0]).filter(c => c.startsWith("cal_s=")).join("; ");
+    const acct = () => h.db.prepare("SELECT * FROM gh_accounts WHERE gh_id=31").get();
+    for (let i = 0; i < 50 && !acct()?.refreshed; i++) await new Promise(r => setTimeout(r, 100));
+    const post = body => fetch(b + "/me", { method: "POST", headers: { cookie, origin: "http://hub.test", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() }).then(r => r.text());
+    let page = await post({ do: "listings", app_new: "https://apps.apple.com/us/app/ana-notes/id1234567", site_new: "https://evil.example/x\"><script>" , hide_sf: "" });
+    assert.match(page, /Not added/); assert.doesNotMatch(page, /<script>"/);
+    page = await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", site_new: "https://ana.dev" });
+    let ed = JSON.parse(acct().edits);
+    assert.deepEqual(ed.apps, ["https://apps.apple.com/app/id1234567 | notes-app"]); assert.deepEqual(ed.websites, ["https://ana.dev/"]);
+    assert.match(page, /name="app_0_repo" value="notes-app"/); assert.match(page, /name="site_0_sf" checked/);
+    const dir = path.join(d, "profiles", acct().handle);
+    let idx = fs.readFileSync(path.join(dir, "index.html"), "utf8"), city = fs.readFileSync(path.join(dir, "city.html"), "utf8");
+    assert.match(idx, /Ana Notes/); assert.match(idx, /id="websites"/);
+    assert.match(city, /"kind":"app"/); assert.match(city, /"kind":"site"/);
+    // storefronts off (the site), the cards stay
+    await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", site_0_url: "https://ana.dev/", site_0_repo: "" });
+    ed = JSON.parse(acct().edits); assert.deepEqual(ed.websites, ["https://ana.dev/ |  | no-storefront"]);
+    idx = fs.readFileSync(path.join(dir, "index.html"), "utf8"); city = fs.readFileSync(path.join(dir, "city.html"), "utf8");
+    assert.match(idx, /ana\.dev/); assert.doesNotMatch(city, /"kind":"site"/);
+    // a repo without storefronts, and removing one
+    await post({ do: "listings", app_0_url: "https://apps.apple.com/app/id1234567", app_0_repo: "notes-app", app_0_sf: "on", site_0_url: "https://ana.dev/", site_0_rm: "on", hide_sf: "notes-app, bad name!" });
+    ed = JSON.parse(acct().edits); assert.deepEqual(ed.hideStorefronts, ["notes-app"]); assert.deepEqual(ed.websites, []);
+    city = fs.readFileSync(path.join(dir, "city.html"), "utf8"); assert.doesNotMatch(city, /"kind":"app"/);
+    assert.match(fs.readFileSync(path.join(dir, "index.html"), "utf8"), /Ana Notes/, "the card still shows");
+  } finally { h.server.close(); fs.rmSync(d, { recursive: true, force: true }); }
+});
