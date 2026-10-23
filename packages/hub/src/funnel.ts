@@ -9,7 +9,23 @@
 import type http from "node:http";
 import crypto from "node:crypto";
 
-export const STEPS = ["view", "preview", "click", "back", "created", "signin", "fail", "landed"] as const;
+export const STEPS = ["view", "preview", "gate", "click", "back", "created", "signin", "fail", "landed", "email-start", "email-sent", "email-created"] as const;
+/** Crawlers, link previewers and scripts: never counted in the funnel or page views. Real browsers never match.
+ *  Many crawlers ignore robots.txt and follow sign-up links (Meta's AI agents, GoogleOther, BigBug): named here. */
+export const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|facebookcatalog|embedly|discord|slack|telegram|whatsapp|externalagent|webindexer|googleother|google-inspectiontool|google-extended|bigbug|wrendex|scrapy|httpx|axios|okhttp|go-http|java\/|libwww|ia_archiver|barkrowler|dataprovider|petalsearch|yisou|sogou|seznam|ahrefs|semrush|mj12|bytespider|claude-user|claude-searchbot|anthropic-ai|perplexity|ccbot|cohere|diffbot|timpi|imagesift|omgili|youbot|qwant|yandex|baidu|meta-/i;
+/** A browser that claims to be modern Chrome or Firefox always sends Sec-Fetch-Mode on a navigation; a request that
+ *  claims to be one and doesn't is a script dressed up as a browser. Fetches that aren't navigations (prefetch, no-cors)
+ *  aren't clicks either. Safari and older browsers without these headers still count. */
+export function looksAutomated(req: http.IncomingMessage): boolean {
+  const ua = String(req.headers["user-agent"] || ""); if (!ua || BOT_UA.test(ua)) return true;
+  const mode = req.headers["sec-fetch-mode"];
+  if (mode && mode !== "navigate" && mode !== "cors" && mode !== "same-origin") return true;
+  if (!mode) {
+    const ch = /Chrome\/(\d+)/.exec(ua), ff = /Firefox\/(\d+)/.exec(ua);
+    if ((ch && +ch[1] >= 90 && !/Edge\/|OPR\/|SamsungBrowser|Electron/.test(ua)) || (ff && +ff[1] >= 95)) return true;
+  }
+  return false;
+}
 export type Step = typeof STEPS[number];
 const DAY = 86_400_000;
 /** the funnel day: Los Angeles calendar day */
@@ -37,7 +53,7 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
   /** count this visitor at this step today (once per day per step) */
   function track(req: http.IncomingMessage, step: Step, detail = "") {
     try {
-      const ua = String(req.headers["user-agent"] || ""); if (!ua || c.botUa.test(ua)) return;
+      const ua = String(req.headers["user-agent"] || ""); if (!ua || c.botUa.test(ua) || looksAutomated(req)) return;
       const day = funnelDay();
       q("INSERT OR IGNORE INTO funnel_events VALUES (?,?,?,?,?)").run(day, vidOf(req, day), step, String(detail).slice(0, 80), new Date().toISOString());
     } catch { /* counting never breaks a request */ }

@@ -69,13 +69,13 @@ export function connectionsPanel(o: PanelOpts): string {
     const bu = `${pub.replace(/\/$/, "")}/@${handle}/`;
     gh += `<p style="margin:14px 0 4px"><b>Your city in your GitHub README</b></p><p class="mut">Everyone who visits your GitHub sees your city and clicks through to it.</p><img src="${esc(bu)}badge.svg?style=card" alt="Your GitHub city badge" width="420" height="92" style="max-width:100%;height:auto;display:block;margin:6px 0"><pre id="badge-md" style="white-space:pre-wrap;word-break:break-all">${esc(`[![My GitHub city on Caldera](${bu}badge.svg?style=card)](${bu}city.html)`)}</pre><button class="btn small" type="button" data-copy-text="badge-md">Copy for my README</button>`;
   } else if (conn.github.listed) {
-    gh = `<p>Your page already lists <b>github.com/${esc(conn.github.listed)}</b>. Sign in with that GitHub account once to link it:</p><a class="btn small" href="/auth/github?h=${hs}">Sign in with GitHub</a>
+    gh = `<p>Your page already lists <b>github.com/${esc(conn.github.listed)}</b>. Sign in with that GitHub account once to link it:</p><a rel="nofollow" class="btn small" href="/auth/github?h=${hs}">Sign in with GitHub</a>
 <p class="mut" style="margin-top:8px">Linking lets you sign in with GitHub on any device, and connects you with people you know from GitHub.</p>`;
   } else {
     const line = `  - "GitHub | https://github.com/YOUR-LOGIN"`;
     gh = `<ol><li>Add your GitHub to your page's links. In your vault, open <code>Caldera/profile.md</code> and add this line under <code>links:</code> (put your GitHub username in):${copyBlock("gh-line", line, "Copy line")}
 <span class="mut">Caldera republishes your page about a minute after you save. Your repos also become your city.</span></li>
-<li>Then sign in with that GitHub account to link it:<br><a class="btn small" href="/auth/github?h=${hs}" style="margin-top:6px">Sign in with GitHub</a></li></ol>`;
+<li>Then sign in with that GitHub account to link it:<br><a rel="nofollow" class="btn small" href="/auth/github?h=${hs}" style="margin-top:6px">Sign in with GitHub</a></li></ol>`;
   }
   const ghStatus = conn.github.on ? `Connected as <b>@${esc(conn.github.login)}</b>` : conn.github.listed ? "Listed on your page, not linked yet" : "Not connected";
   // Obsidian

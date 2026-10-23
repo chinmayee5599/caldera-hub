@@ -74,7 +74,7 @@ test("plugin API: send and read kudos with the vault's key; owner sees who", asy
 test("the bar: public views + inline kudos row; owner can hide views (and still sees them)", async () => {
   await page("ana"); await page("ana");
   const anon = await page("ana");
-  assert.match(anon, /class="cb-views"[^>]*><b>1<\/b> view</, "one visitor today = 1 view"); assert.match(anon, /class="cb-k" data-k="heart"/); assert.match(anon, /data-api="https:\/\/hub\.test"/); assert.doesNotMatch(anon, /data-act=/, "no action token for anonymous visitors"); assert.match(anon, /id="cb-need"/);
+  assert.match(anon, /class="cb-views"[^>]*><b>1<\/b> view</, "one visitor today = 1 view"); assert.match(anon, /class="cb-k" data-k="heart"/); assert.match(anon, /data-api="https:\/\/hub\.test"/); assert.doesNotMatch(anon, /data-act=/, "no action token for anonymous visitors"); assert.match(anon, /window\.calGate/, "signed-out visitors get the sign-up panel"); assert.doesNotMatch(anon, /href="[^"]*\/auth\/github/, "and no crawlable GitHub link");
   const boAnon = await page("bo");
   assert.doesNotMatch(boAnon, /&#128065;/, "hidden views aren't shown to visitors");
   const boOwn = await page("bo", await ownerCookie(ids.bo));

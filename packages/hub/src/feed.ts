@@ -10,6 +10,7 @@
  * first, free text second) and can send the post to them: a double opt-in introduction (the recipient accepts or not).
  * Members can say "I can help", send kudos on a post (once a day per post), share it (permalink + their invite), report it.
  */
+import { GATE_CSS, GATE_JS } from "./signupgate";
 import http from "node:http";
 import crypto from "node:crypto";
 import { linkMentions, tellMentioned, MENTION_CSS, MENTION_JS } from "./mentions.js";
@@ -665,7 +666,7 @@ ${v.detail && !f.simple ? `<p class="det">${linkMentions(linkify(v.detail), isMe
   function commentsHtml(postId: string, viewer: string | null, postAuthor: string): string {
     const t = threadOf(postId), n = commentCount(postId);
     const form = viewer ? `<div class="fd-c-form"><label class="fd-sr" for="cm-${esc(postId)}">Add a comment</label><textarea id="cm-${esc(postId)}" data-mention maxlength="1000" rows="2" placeholder="Add a comment. Type @ to mention someone"></textarea><div class="fd-c-f"><span class="fd-count">Text only. Links are fine.</span><button type="button" class="fd-btn pri" data-csend>Comment</button></div></div>`
-      : `<p class="fd-c-in"><a href="/auth/github?back=${encodeURIComponent("/feed/p/" + postId)}">Sign in with GitHub</a> to comment.</p>`;
+      : `<p class="fd-c-in"><a rel="nofollow" href="/auth/github?back=${encodeURIComponent("/feed/p/" + postId)}">Sign in with GitHub</a> to comment.</p>`;
     return `<section class="fd-cm" id="comments" data-cm="${esc(postId)}" aria-label="Comments"><h2 class="fd-c-n">${n ? `${n} comment${n === 1 ? "" : "s"}` : "Comments"}</h2>${form}<ol class="fd-thread fd-top-t">${t.map(v => commentHtml(v, v.replies, viewer, postAuthor, 0)).join("")}</ol></section>`;
   }
   function actHtml(i: any) {
@@ -683,7 +684,7 @@ ${v.detail && !f.simple ? `<p class="det">${linkMentions(linkify(v.detail), isMe
   }
   const itemHtml = (i: any, viewer: string | null) => i.kind === "post" ? postHtml(i.post, viewer) : actHtml(i);
 
-  const SIGNIN = (back: string, inv = "") => `<div class="fd-card"><h2 style="margin:0 0 6px;font-size:16px;color:var(--text-strong)">Ask the network</h2><p style="margin:0 0 12px;color:var(--text-muted)">Looking for someone, code, work, clients or feedback? Members post here, and Caldera sends your ask to the people who fit.</p><a class="btn small" href="/auth/github?back=${encodeURIComponent(back)}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}">Sign in with GitHub to post</a> <a href="/signin?back=${encodeURIComponent(back)}" style="margin-left:10px;font-size:14px">Other ways</a></div>`;
+  const SIGNIN = (back: string, inv = "") => `<div class="fd-card"><h2 style="margin:0 0 6px;font-size:16px;color:var(--text-strong)">Ask the network</h2><p style="margin:0 0 12px;color:var(--text-muted)">Looking for someone, code, work, clients or feedback? Members post here, and Caldera sends your ask to the people who fit.</p><a rel="nofollow" class="btn small" href="/auth/github?back=${encodeURIComponent(back)}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}">Sign in with GitHub to post</a> <a href="/signin?back=${encodeURIComponent(back)}" style="margin-left:10px;font-size:14px">Other ways</a></div>`;
   /** the composer: one choice + one free-text box. Placeholders show what a good post looks like for each choice. */
   const PH: Record<string, string> = {
     someone: "a co-founder for a social app built on Next.js and Supabase", code: "an open-source library that parses Obsidian vaults into a graph",
@@ -705,12 +706,14 @@ ${chips("ask", ASK_CHIPS)}${chips("rec", REC_CHIPS)}
 <div class="fd-prev" data-prev hidden></div><p class="fd-err" data-err hidden></p>
 <div class="fd-foot" data-foot><span class="fd-count">Text only. Caldera sends it to the people who fit.</span><button type="button" class="fd-btn pri fd-postbtn" data-post-it>Post</button></div></div></section><section class="fd-card fd-match" data-newmatch hidden></section>`;
   }
-  const SCRIPT = (me: string | null, invite: string) => `<style>${MENTION_CSS}</style><script>${MENTION_JS}</script><script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
+  const SCRIPT = (me: string | null, invite: string) => `<style>${MENTION_CSS}</style>${me ? "" : GATE_CSS + `<script>${GATE_JS}</script>`}<script>${MENTION_JS}</script><script>(function(){var ME=${JSON.stringify(me)},INV=${JSON.stringify(invite)},HINT=${JSON.stringify(TYPE_HINT)};
 ${sentence.toString()}
 function $(s,r){return (r||document).querySelector(s)}function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
 function tip(m){var t=document.createElement('div');t.className='fd-tip';t.setAttribute('role','status');t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove()},2600)}
 function api(path,o){return fetch(path,{method:o?'POST':'GET',credentials:'same-origin',headers:o?{'content-type':'application/json'}:{},body:o?JSON.stringify(o):undefined}).then(function(r){return r.json().then(function(j){return{ok:r.ok,status:r.status,j:j}})},function(){return{ok:false,j:{error:'Could not reach Caldera. Try again.'}}})}
-function need(back){tip('Sign in to do that');setTimeout(function(){location.href='/auth/github?back='+encodeURIComponent(back||location.pathname)},700)}
+function need(back,k){var e=encodeURIComponent,b=back||location.pathname;if(!window.calGate){location.href='/auth/github?back='+e(b);return}
+calGate({kind:k||'join',title:({comment:'Join Caldera to comment',reply:'Join Caldera to reply',help:'Join Caldera to offer help',kudos:'Join Caldera to send kudos',post:'Join Caldera to post'})[k]||'Join Caldera to do that',name:'Caldera',api:'',
+gh:'/auth/github?back='+e(b),obsidian:'/#obsidian',start:'/start',signin:'/signin?back='+e(b)})}
 // share: the permalink, plus the sharer's invite so sign-ups from it credit them
 function shareUrl(u){return ME&&INV?u+(u.indexOf('?')<0?'?':'&')+'invite='+encodeURIComponent(INV):u}
 function shareMenu(card,btn){var pop=btn.parentNode.querySelector('.fd-pop');if(!pop.hidden){pop.hidden=true;return}var u=shareUrl(card.getAttribute('data-url')),t=card.getAttribute('data-text'),e=encodeURIComponent;
@@ -730,8 +733,8 @@ var t=document.createElement('div');t.className='t';var a=document.createElement
 var bt=document.createElement('button');bt.type='button';bt.className='fd-btn';bt.setAttribute('data-to',m.handle);bt.textContent=m.sent?'Sent':'Send it to them';bt.disabled=!!m.sent;bt.addEventListener('click',function(){send([m.handle],[bt])});
 row.appendChild(av);row.appendChild(t);row.appendChild(bt);box.appendChild(row)})}
 function wire(card){var pid=card.getAttribute('data-post');
-$$('.fd-kd button',card).forEach(function(b){b.addEventListener('click',function(){if(!ME)return need('/feed/p/'+pid);$$('.fd-kd button',card).forEach(function(x){x.disabled=true});api('/v1/posts/'+pid+'/kudos',{kind:b.getAttribute('data-k')}).then(function(x){if(x.ok){b.classList.add('on');var i=b.querySelector('i');i.textContent=String((parseInt(i.textContent,10)||0)+1);tip('Kudos sent')}else{tip(x.j.error||'Could not send');if(x.status!==409)$$('.fd-kd button',card).forEach(function(y){y.disabled=false})}})})});
-var help=$('[data-help]',card);if(help)help.addEventListener('click',function(){if(!ME)return need('/feed/p/'+pid);if(help.getAttribute('aria-disabled'))return;api('/v1/posts/'+pid+'/help',{}).then(function(x){if(x.ok){help.textContent='Offered to help';help.classList.remove('pri');help.setAttribute('aria-disabled','true');tip('Sent. They can accept to connect with you.')}else tip(x.j.error||'Could not send')})});
+$$('.fd-kd button',card).forEach(function(b){b.addEventListener('click',function(){if(!ME)return need('/feed/p/'+pid,'kudos');$$('.fd-kd button',card).forEach(function(x){x.disabled=true});api('/v1/posts/'+pid+'/kudos',{kind:b.getAttribute('data-k')}).then(function(x){if(x.ok){b.classList.add('on');var i=b.querySelector('i');i.textContent=String((parseInt(i.textContent,10)||0)+1);tip('Kudos sent')}else{tip(x.j.error||'Could not send');if(x.status!==409)$$('.fd-kd button',card).forEach(function(y){y.disabled=false})}})})});
+var help=$('[data-help]',card);if(help)help.addEventListener('click',function(){if(!ME)return need('/feed/p/'+pid,'help');if(help.getAttribute('aria-disabled'))return;api('/v1/posts/'+pid+'/help',{}).then(function(x){if(x.ok){help.textContent='Offered to help';help.classList.remove('pri');help.setAttribute('aria-disabled','true');tip('Sent. They can accept to connect with you.')}else tip(x.j.error||'Could not send')})});
 var sh=$('[data-share]',card);if(sh)sh.addEventListener('click',function(){shareMenu(card,sh)});
 var mt=$('[data-matches]',card);if(mt)mt.addEventListener('click',function(){var box=$('.fd-matches',card);if(!box.hidden){box.hidden=true;return}api('/v1/posts/'+pid+'/matches').then(function(x){if(x.ok)matchesInto(box,x.j.matches||[],pid);else tip(x.j.error||'Could not load')})});
 var own=$('[data-own]',card);if(own){var op=own.parentNode.querySelector('.fd-pop'),cf=$('.fd-confirm',op);own.addEventListener('click',function(){op.hidden=!op.hidden;if(cf)cf.hidden=true;$$('[role=menuitem]',op).forEach(function(b){b.hidden=false})})}
@@ -757,7 +760,7 @@ sec.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctr
 sec.addEventListener('click',function(e){var el=e.target.closest('button,a');if(!el||!sec.contains(el))return;var li=el.closest('.fd-c');
 if(el.hasAttribute('data-csend')){send(el.closest('.fd-c-form'));return}
 if(el.hasAttribute('data-ccancel')){el.closest('.fd-c-form').remove();return}
-if(el.hasAttribute('data-creply')){e.preventDefault();if(!ME)return need('/feed/p/'+pid);var ex=li.querySelector(':scope>.fd-c-form');if(ex){$('textarea',ex).focus();return}var f=box(li.getAttribute('data-c'));li.querySelector(':scope>.fd-c-a').after(f);$('textarea',f).focus();return}
+if(el.hasAttribute('data-creply')){e.preventDefault();if(!ME)return need('/feed/p/'+pid,'reply');var ex=li.querySelector(':scope>.fd-c-form');if(ex){$('textarea',ex).focus();return}var f=box(li.getAttribute('data-c'));li.querySelector(':scope>.fd-c-a').after(f);$('textarea',f).focus();return}
 if(el.hasAttribute('data-cdel')){if(el.getAttribute('data-sure')!=='1'){el.setAttribute('data-sure','1');el.textContent='Sure?';return}
 api('/v1/comments/'+li.getAttribute('data-c')+'/delete',{}).then(function(x){if(!x.ok){tip(x.j.error||'Could not delete');return}if(x.j.state==='deleted'){li.className='fd-c gone';li.querySelector(':scope>.fd-c-h').remove();li.querySelector(':scope>.fd-c-a').remove();li.querySelector(':scope>.fd-c-b').textContent='[deleted]'}else li.remove();count(x.j.count)});return}
 if(el.hasAttribute('data-crep')){if(el.getAttribute('data-sure')!=='1'){el.setAttribute('data-sure','1');el.textContent='Report it?';return}
@@ -832,7 +835,7 @@ ${author ? `<p class="fd-shared">Showing posts and activity from <a href="/@${es
     if (!row || row.status === "hidden" || !visible(author)) { res.writeHead(404, { "content-type": "text/html; charset=utf-8" }); res.end(c.navify(`<!doctype html><html><head><meta charset="utf-8"><title>Not found - Caldera</title></head><body><main class="fd"><h1>That post isn't here</h1><p class="lede">It may have been deleted. <a href="/feed">Back to the feed</a></p></main></body></html>`, "/feed")); return; }
     const v = postView(row, me), meH = me ? c.profile(me)?.handle || "" : "", invBy = inv ? c.byHandle(inv) : null;
     const og = c.ogTags ? c.ogTags({ url: v.url, image: `${hub}/feed/p/${id}.png`, title: v.text, description: v.detail || `On Caldera, the social network for GitHub and Obsidian.` }) : "";
-    const shared = !me && invBy && visible(invBy) ? `<div class="fd-shared"><b>${esc(invBy.name || "@" + invBy.handle)}</b> shared this with you. <a href="/auth/github?invite=${encodeURIComponent(invBy.handle)}&back=${encodeURIComponent("/feed/p/" + id)}">Sign up with GitHub</a> to reply, and you'll start as friends.</div>` : "";
+    const shared = !me && invBy && visible(invBy) ? `<div class="fd-shared"><b>${esc(invBy.name || "@" + invBy.handle)}</b> shared this with you. <a rel="nofollow" href="/auth/github?invite=${encodeURIComponent(invBy.handle)}&back=${encodeURIComponent("/feed/p/" + id)}">Sign up with GitHub</a> to reply, and you'll start as friends.</div>` : "";
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(v.text)} - Caldera</title>
 <meta name="description" content="${esc(v.detail || v.text)}">${og}<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">

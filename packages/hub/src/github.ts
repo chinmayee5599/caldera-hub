@@ -706,7 +706,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       // this is invisible; only a second failure in a row shows a page
       const retry = () => { ctx.track?.(req, "fail", "stale or reused sign-in (auto-retried)"); if (cookies(req).cal_retry) return false; setCookie(res, "cal_retry", "1", 120); settle(null); redirect(res, "/auth/github"); return true; };
       if ((!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) && retry()) return true;
-      if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "One more click", `<h1>That sign-in took a little too long</h1><p>For your safety, a GitHub sign-in has to finish within 10 minutes in the same browser. Start again and it takes a few seconds.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
+      if (!url.searchParams.get("state") || url.searchParams.get("state") !== cookies(req).cal_oauth) { page(res, 400, "One more click", `<h1>That sign-in took a little too long</h1><p>For your safety, a GitHub sign-in has to finish within 10 minutes in the same browser. Start again and it takes a few seconds.</p><p><a rel="nofollow" class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
       setCookie(res, "cal_oauth", "", 0);
       try {
         const tok = await exchange({ code: url.searchParams.get("code") || "", redirect_uri: pub + "/auth/github/callback" }, signin() || a);
@@ -721,7 +721,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           if (!pr) { const cands = claimants(me.login).filter(x => !wantH || x.handle === wantH), proven = cands.filter(x => provenOwner(req, x, me));
             if (proven.length === 1) pr = proven[0];
             else if (cands.length) { ctx.track?.(req, "fail", "GitHub link needs proof");
-              page(res, 403, "Link your GitHub", `<h1>One step to link your GitHub</h1><p>To keep GitHub accounts safe, Caldera links a GitHub account to a page only with proof that both are yours. Either:</p><ul><li>Open your page as its owner first: in Obsidian run <b>Caldera: Open my public page (as owner)</b>, then sign in with GitHub again, or</li><li>Put your Caldera page (<code>caldera.social/@your-handle</code>) in your GitHub profile's website or bio, then sign in with GitHub again.</li></ul><p><a class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; } }
+              page(res, 403, "Link your GitHub", `<h1>One step to link your GitHub</h1><p>To keep GitHub accounts safe, Caldera links a GitHub account to a page only with proof that both are yours. Either:</p><ul><li>Open your page as its owner first: in Obsidian run <b>Caldera: Open my public page (as owner)</b>, then sign in with GitHub again, or</li><li>Put your Caldera page (<code>caldera.social/@your-handle</code>) in your GitHub profile's website or bio, then sign in with GitHub again.</li></ul><p><a rel="nofollow" class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; } }
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
             ctx.track?.(req, "signin", "linked page"); addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;
@@ -737,7 +737,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         // a brand-new, completely empty GitHub account (how bots look) still gets its page, just not listed in People or
         // the world until it has a public repo, a follower or a few days behind it (the refresh lists it then)
         const held = !(ctx.accountOk ? ctx.accountOk(me) : true);
-        if (!ctx.allowNewProfile(req)) { ctx.track?.(req, "fail", "rate limited (many sign-ups from one network)"); page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a class="btn" href="/auth/github">try again</a>.</p>`); return true; }
+        if (!ctx.allowNewProfile(req)) { ctx.track?.(req, "fail", "rate limited (many sign-ups from one network)"); page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a rel="nofollow" class="btn" href="/auth/github">try again</a>.</p>`); return true; }
         const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);
         const edits0: any = grp0.length ? { groups: grp0 } : {};
         if (held) { edits0.listed = false; edits0.heldNew = true; }
@@ -764,9 +764,9 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         // a used or expired one-time code (a reload, a retried request, a restart mid-sign-in): one more click fixes it,
         // and if the account was already created the retry simply signs them in
         if (/incorrect or expired|bad_verification_code/i.test(String(e.message)) && retry()) return true;
-        if (/incorrect or expired|bad_verification_code/i.test(String(e.message))) { page(res, 400, "One more click", `<h1>That GitHub sign-in link was already used</h1><p>No problem: this happens when a page reloads mid-sign-in. Continue and you'll land on your page.</p><p><a class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
+        if (/incorrect or expired|bad_verification_code/i.test(String(e.message))) { page(res, 400, "One more click", `<h1>That GitHub sign-in link was already used</h1><p>No problem: this happens when a page reloads mid-sign-in. Continue and you'll land on your page.</p><p><a rel="nofollow" class="btn" href="/auth/github">Continue with GitHub</a></p>`); return true; }
         console.error("github callback", String(e?.message || e)); ctx.track?.(req, "fail", "error: " + String(e?.message || e).slice(0, 60));
-        page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/auth/github">Try again</a></p>`); return true;
+        page(res, 502, "GitHub", `<h1>GitHub sign-in didn't work</h1><p class="mut">${esc(e.message)}</p><p><a rel="nofollow" class="btn" href="/auth/github">Try again</a></p>`); return true;
       }
       } finally { settle(null); }   // every other outcome (errors, refusals) settles too, so a duplicate never waits
     }
@@ -929,7 +929,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
   async function privateRoute(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
     if (url.pathname === "/setup/github" && req.method === "GET") {
       const a = app();
-      if (a) { page(res, 200, "GitHub app", `<h1>GitHub sign-up is set up</h1><p>App: <a href="${esc(a.html_url || "")}">${esc(a.slug)}</a>. <a class="btn" href="${esc(pub)}/auth/github">Try signing in</a></p>`); return true; }
+      if (a) { page(res, 200, "GitHub app", `<h1>GitHub sign-up is set up</h1><p>App: <a href="${esc(a.html_url || "")}">${esc(a.slug)}</a>. <a rel="nofollow" class="btn" href="${esc(pub)}/auth/github">Try signing in</a></p>`); return true; }
       const base = (ctx.privateUrl || "").replace(/\/$/, ""), state = crypto.randomBytes(12).toString("hex");
       fs.writeFileSync(path.join(ctx.dataDir, "github-app.state"), state, { mode: 0o600 });
       const manifest = { name: "Caldera Social", url: pub, description: "Sign up for Caldera with GitHub: your repos become a little city on your Caldera profile.",
@@ -948,7 +948,7 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       if (!j.client_id || !j.pem) { page(res, 502, "GitHub app", `<h1>GitHub didn't return the app's keys</h1><p class="mut">${esc(j.message || r.status)}</p>`); return true; }
       fs.writeFileSync(appFile, JSON.stringify({ id: j.id, slug: j.slug, client_id: j.client_id, client_secret: j.client_secret, pem: j.pem, webhook_secret: j.webhook_secret, html_url: j.html_url, owner: { login: j.owner?.login } }), { mode: 0o600 });
       fs.rmSync(path.join(ctx.dataDir, "github-app.state"), { force: true });
-      page(res, 200, "Done", `<h1>GitHub sign-up is live</h1><p>App <a href="${esc(j.html_url)}">${esc(j.slug)}</a> created. <a class="btn" href="${esc(pub)}/auth/github">Try it: sign in with GitHub</a></p>`); return true;
+      page(res, 200, "Done", `<h1>GitHub sign-up is live</h1><p>App <a href="${esc(j.html_url)}">${esc(j.slug)}</a> created. <a rel="nofollow" class="btn" href="${esc(pub)}/auth/github">Try it: sign in with GitHub</a></p>`); return true;
     }
     return false;
   }

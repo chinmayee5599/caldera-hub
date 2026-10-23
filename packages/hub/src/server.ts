@@ -23,7 +23,8 @@ import { cityArt, cardSvg, postCardSvg, toPng, groupPage, ogTags } from "./cards
 import { feed, sentenceText, postTags } from "./feed";
 import { newsToday } from "./news";
 import { gifts } from "./gifts";
-import { funnel } from "./funnel";
+import { funnel, BOT_UA } from "./funnel";
+import { GATE_CSS, GATE_JS, okGateKind } from "./signupgate";
 import { emailPages } from "./emailpages";
 import { messages } from "./messages";
 import { chat, CHAT_CSS, CHAT_JS } from "./chat";
@@ -94,7 +95,7 @@ export const KUDOS: Record<string, string> = { heart: "\u2764\uFE0F", up: "\u{1F
 /** Who's looking, for the inline kudos + friend controls: a signed-in member gets a short-lived action token. */
 export interface BarViewer { handle: string; token: string; sent: string | null; friend: FriendState; why?: string }
 export type FriendState = "self" | "friends" | "incoming" | "requested" | "queued" | "none";
-export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean; counts?: { friends: number; followers: number; following: number } }
+export interface BarSocial { views: number; showViews: boolean; tally: [string, number][]; owner: boolean; viewer?: BarViewer | null; inPage?: boolean; name?: string; avatar?: string | null; counts?: { friends: number; followers: number; following: number } }
 export const FRIEND_LABEL: Record<FriendState, string> = { self: "", friends: "Friends \u2713", incoming: "Follow back", requested: "Following", queued: "Following", none: "+ Follow" };
 const compact = (n: number) => n < 1000 ? String(n) : n < 10_000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : Math.round(n / 1000) + "k";
 export interface OwnerNav { handle: string; current: "public" | "private"; publicHref: string; privateHref: string; privateExternal?: boolean; signout: string; note?: string; stale?: number; settings?: string; conn?: { github: boolean; obsidian: boolean } }
@@ -135,23 +136,25 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const msg = fs === "self" ? "" : `<a class="cb-msg" href="${e(base)}/messages/@${e(handle)}" target="_blank" rel="noopener" title="Send @${e(handle)} a message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</a>`;
   // how you're connected reads as a quiet note next to the stats, not stuffed into the button
   if (fs === "friends" && v?.why) stats.push(`<span class="cb-why">Friends: ${e(v.why)}</span>`);
-  return `<div class="cb-social"${v ? ` data-act="${e(v.token)}"` : ""} data-api="${e(base)}" data-h="${e(handle)}">${stats.length ? `<div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div>` : ""}<div class="cb-acts">${fr}${msg}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span></div></div>`;
+  return `<div class="cb-social"${v ? ` data-act="${e(v.token)}"` : ` data-nm="${e(String(so.name || "").trim().slice(0, 60) || "@" + handle)}"${so.avatar ? ` data-av="${e(base + so.avatar)}"` : ""}`} data-api="${e(base)}" data-h="${e(handle)}">${stats.length ? `<div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div>` : ""}<div class="cb-acts">${fr}${msg}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span></div></div>`;
 }
 
 /** Inline kudos + friend for hosted pages: talks to /v1/act with the token the hub put in the page (the page is sandboxed
  *  with no cookies, so the token is the only credential). Anonymous visitors get a small sign-in prompt instead. */
 const BAR_ACT_JS = `(function(){function go(){var S=document.querySelector('.cb-social[data-api]');if(!S)return;var api=S.getAttribute('data-api'),t=S.getAttribute('data-act'),H=S.getAttribute('data-h');
 var L={friends:'Friends \\u2713',incoming:'Follow back',requested:'Following',queued:'Following',none:'+ Follow'};
-function need(el){var p=document.getElementById('cb-need');if(!p)return;p.hidden=false;var r=el.getBoundingClientRect();p.style.top=(r.bottom+window.scrollY+8)+'px';p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-300))+'px'}
-document.addEventListener('click',function(ev){var p=document.getElementById('cb-need');if(p&&!p.hidden&&!p.contains(ev.target)&&!ev.target.closest('.cb-k,[data-caldera-friend]'))p.hidden=true});
+function need(el,k){if(!window.calGate)return;var nm=S.getAttribute('data-nm')||('@'+H),e=encodeURIComponent,mb='/messages/@'+H,gb=k==='message'?mb:(S.getAttribute('data-back')||'/@'+H+'/');
+calGate({kind:k,title:k==='message'?'Message '+nm+' on Caldera':k==='kudos'?'Send '+nm+' kudos':'Follow '+nm+' on Caldera',name:nm,avatar:S.getAttribute('data-av')||'',blank:true,api:api,
+gh:api+'/auth/github?back='+e(gb)+'&invite='+e(H),obsidian:api+'/?invite='+e(H)+'#obsidian',start:api+'/start?invite='+e(H)+(k==='message'?'&back='+e(mb):''),signin:api+'/signin'+(k==='message'?'?back='+e(mb):'')})}
+var M=S.querySelector('.cb-msg');if(M&&!t)M.addEventListener('click',function(ev){if(!window.calGate)return;ev.preventDefault();need(M,'message')});
 function post(o){o.t=t;return fetch(api+'/v1/act',{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify(o)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,status:r.status,j:j}})},function(){return{ok:false,status:0,j:{error:'Could not reach Caldera. Check your connection.'}}})}
 function burst(el,em){var r=el.getBoundingClientRect();for(var i=0;i<14;i++){var s=document.createElement('span');s.textContent=em;s.style.cssText='position:fixed;z-index:99;pointer-events:none;font-size:22px;left:'+(r.left+r.width/2-11)+'px;top:'+(r.top)+'px;transition:transform 1.3s cubic-bezier(.2,.7,.3,1),opacity 1.3s';document.body.appendChild(s);(function(s){requestAnimationFrame(function(){s.style.transform='translate('+(Math.random()*160-80)+'px,'+(120+Math.random()*120)+'px) scale(1.3)';s.style.opacity='0'});setTimeout(function(){s.remove()},1400)})(s)}}
 function tip(el,msg){el.title=msg;var p=document.createElement('span');p.className='cb-tip';p.textContent=msg;var r=el.getBoundingClientRect();p.style.top=(r.bottom+window.scrollY+6)+'px';p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-260))+'px';document.body.appendChild(p);setTimeout(function(){p.remove()},2600)}
-var ks=S.querySelectorAll('.cb-k');ks.forEach(function(b){b.addEventListener('click',function(){if(!t)return need(b);ks.forEach(function(x){x.disabled=true});post({action:'kudos',kind:b.getAttribute('data-k')}).then(function(x){
+var ks=S.querySelectorAll('.cb-k');ks.forEach(function(b){b.addEventListener('click',function(){if(!t)return need(b,'kudos');ks.forEach(function(x){x.disabled=true});post({action:'kudos',kind:b.getAttribute('data-k')}).then(function(x){
 if(x.ok){b.classList.add('on','pop');var i=b.querySelector('i');var n=parseInt((i.textContent||'0'),10);if(!isNaN(n)&&!/k$/.test(i.textContent))i.textContent=String(n+1);else if(!i.textContent)i.textContent='1';burst(b,b.firstChild.textContent);tip(b,'Sent! @'+H+' will see it.');ks.forEach(function(x){x.title='You sent kudos today. More tomorrow.'})}
 else{tip(b,x.j.error||'Could not send.');if(x.status!==409)ks.forEach(function(y){y.disabled=false})}})})});
 function setF(st){document.querySelectorAll('[data-caldera-friend]').forEach(function(f){if(!L[st])return;f.setAttribute('data-state',st);f.removeAttribute('data-sure');if(f.classList.contains('cb-fr'))f.textContent=L[st];else f.textContent=st==='none'?'+ Follow @'+H:st==='incoming'?'Follow @'+H+' back':L[st];var off=st==='friends';if(f.tagName==='BUTTON')f.disabled=off;else if(off)f.setAttribute('aria-disabled','true');else f.removeAttribute('aria-disabled')})}
-document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEventListener('click',function(ev){ev.preventDefault();if(!t)return need(f);var st=f.getAttribute('data-state')||'none';if(st==='friends')return;
+document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEventListener('click',function(ev){ev.preventDefault();if(!t)return need(f,'follow');var st=f.getAttribute('data-state')||'none';if(st==='friends')return;
 if((st==='requested'||st==='queued')&&!f.getAttribute('data-sure')){f.setAttribute('data-sure','1');var l=f.textContent;f.textContent='Tap again to unfollow';setTimeout(function(){if(f.getAttribute('data-sure')){f.removeAttribute('data-sure');f.textContent=l}},3500);return}
 post({action:st==='incoming'?'accept':st==='none'?'friend':'unfollow'}).then(function(x){if(x.ok){setF(x.j.state);tip(f,x.j.state==='friends'?'You and @'+H+' follow each other: you are friends now.':x.j.state==='none'?'You unfollowed @'+H+'.':'You follow @'+H+'. If they follow you back, you are friends.')}else tip(f,x.j.error||'Could not do that.')})})})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
 
@@ -168,9 +171,11 @@ const BAR_ACT_CSS = `<style>.cb-row{margin:14px 0 20px}.cb-social{display:flex;f
 /** The social row under the person's name on their profile and city: views, kudos and Add friend belong to the person,
  *  not to the site bar. Carries the sign-in prompt and the inline actions script. */
 export function socialRow(hub: string, handle: string, so: BarSocial, back = ""): string {
-  const base = hub.replace(/\/$/, ""), join = `${base}/?invite=${encodeURIComponent(handle)}`;
-  const need = !so.owner && !so.viewer ? `<div id="cb-need" hidden role="dialog" aria-label="Sign in"><b>Sign in to send kudos and follow people</b>Caldera members can cheer each other on.<br><a href="${base}/auth/github${back ? `?back=${encodeURIComponent(back)}` : ""}" target="_blank" rel="noopener">Sign in with GitHub</a><a class="alt" href="${base}/signin" target="_blank" rel="noopener">Other ways</a><a class="alt" href="${join}#install" target="_blank" rel="noopener">Get your own page</a></div>` : "";
-  return BAR_ACT_CSS + `<div class="cb-row">${socialChips(base, handle, so)}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
+  const base = hub.replace(/\/$/, "");
+  // signed out: the sign-up panel is built in the browser (signupgate.ts), so the page carries no sign-up link for crawlers to follow
+  const need = !so.owner && !so.viewer ? GATE_CSS + `<script>${GATE_JS}</script>` : "";
+  const chips = socialChips(base, handle, so), bk = /^\/@[a-z0-9-]+\/[\w./-]*$/.test(back) ? back : "";
+  return BAR_ACT_CSS + `<div class="cb-row">${bk && need ? chips.replace('<div class="cb-social"', `<div class="cb-social" data-back="${bk}"`) : chips}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
 }
 
 /** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
@@ -334,7 +339,6 @@ export function createHub(opts: HubOptions) {
     d.setAuthTag(buf.subarray(12, 28)); return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString("utf8"); };
   const owners = opts.tailnetOwners || {};
   const privateFor = (handle: string) => opts.privateUrl && Object.values(owners).includes(handle) ? `${opts.privateUrl.replace(/\/$/, "")}/@${handle}/` : undefined;
-  const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|embedly|discord|slack|telegram|whatsapp/i;
   const q = (sql: string) => db.prepare(sql);
   // how each member's private repos show on their public city (privatemode.ts); enforced on every public page and feed below
   const PM = privateModes(q as any, undefined, (opts as any).privateModeSince, (opts as any).privateNamedSince);
@@ -1485,7 +1489,8 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
   const viewsOf = (handle: string, since = "") => (q("SELECT COUNT(DISTINCT visitor || substr(ts,1,10)) n FROM page_views WHERE handle=? AND ts > ?").get(handle, since) as any).n as number;
   const tallyOf = (id: string): [string, number][] => { const rows = q("SELECT kind, COUNT(*) n FROM kudos WHERE recipient=? GROUP BY kind").all(id) as any[];
     return Object.keys(KUDOS).map(k => [k, rows.find(r => r.kind === k)?.n || 0] as [string, number]); };
-  const barSocial = (pr: any, owner: boolean): BarSocial => ({ views: viewsOf(pr.handle), showViews: body(pr).showViews !== false, tally: tallyOf(pr.id), owner, counts: followCounts(pr.id) });
+  const barSocial = (pr: any, owner: boolean): BarSocial => { const b = body(pr); return { views: viewsOf(pr.handle), showViews: b.showViews !== false, tally: tallyOf(pr.id), owner, counts: followCounts(pr.id),
+    name: /^untitled$/i.test(String(b.name || "").trim()) ? "" : String(b.name || "").trim(), avatar: b.photos?.avatar ? `/@${pr.handle}/${String(b.photos.avatar).replace(/^\.?\//, "")}` : null }; };
   /** One kudos per sender per recipient per (UTC) day; members only; never to yourself. */
   function sendKudos(sender: string, to: any, kind: string, page = ""): { status: number; body: any } {
     if (!KUDOS[kind]) return { status: 400, body: { error: "pick one of: " + Object.keys(KUDOS).join(", ") } };
@@ -1688,22 +1693,26 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
 <form method="get" action="/auth/github" style="margin:0">${q2.split("&").filter(Boolean).map(kv => { const [k, v = ""] = kv.split("="); return `<input type="hidden" name="${escAttr(decodeURIComponent(k))}" value="${escAttr(decodeURIComponent(v))}">`; }).join("")}<input type="hidden" name="digest" value="0">
 <label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer"><input type="checkbox" name="digest" value="1" checked style="margin-top:3px;flex:none"><span><b>Send me the Caldera Daily</b><br><span class="mut" style="font-size:13px">Unread messages, new members, new tools and the day's AI news, to your GitHub email. Only on days something happens; one-click unsubscribe.</span></span></label>
 <div class="row"><button class="btn" type="submit" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">${GH_ICON}Sign up with GitHub</button><a class="btn ghost" href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">Sign up with Obsidian</a></div></form>
+<p class="mut" style="font-size:13px;margin-top:10px">&#128274; Read-only: your public GitHub profile and email. No access to your code or private repos.</p>
+<form method="post" action="/signin/signup-email" style="margin:10px 0 0">${q2.split("&").filter(kv => /^(back|invite)=/.test(kv)).map(kv => { const [k, v = ""] = kv.split("="); return `<input type="hidden" name="${escAttr(k)}" value="${escAttr(decodeURIComponent(v))}">`; }).join("")}<label class="mut" style="font-size:13px;display:block;margin-bottom:6px" for="su-email">Not signed in to GitHub on this device? Get a sign-up link by email.</label><div class="row"><input id="su-email" type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com" style="flex:1;min-width:180px"><button class="btn small ghost" type="submit">Email me a link</button></div></form>
 <p class="mut" style="font-size:13px;margin-top:12px">With Obsidian your vault becomes a living profile (notes, a daily journal, your AI usage): install the Caldera plugin, publish your page, then ${after}.</p>
 <p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
-<div class="card"><h2>Already on Caldera?</h2><div class="row"><a class="btn small ghost" href="/auth/github${bq}" style="display:inline-flex;align-items:center;gap:7px">${GH_ICON}Sign in with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:10px">Made your page in Obsidian? Open your page and tap <b>Sign in</b> in the bar at the top, then come back here. Made it with ChatGPT or Claude? <a href="/start${bq}">Email me a sign-in link</a>.</p></div>`;
-  function signinGeneral(res: http.ServerResponse, back = "") {
+<div class="card"><h2>Already on Caldera?</h2><div class="row"><a rel="nofollow" class="btn small ghost" href="/auth/github${bq}" style="display:inline-flex;align-items:center;gap:7px">${GH_ICON}Sign in with GitHub</a></div><p class="mut" style="font-size:12.5px;margin-top:10px">Made your page in Obsidian? Open your page and tap <b>Sign in</b> in the bar at the top, then come back here. Made it with ChatGPT or Claude? <a href="/start${bq}">Email me a sign-in link</a>.</p></div>`;
+  function signinGeneral(res: http.ServerResponse, back = "", req?: http.IncomingMessage) {
     const bq = /^\/(messages|messages\/@[a-z0-9-]+|messages\/groups(?:\/[a-z0-9-]+(?:\/[0-9a-f]{16})?)?|feed|people|world|@[a-z0-9-]+\/|me\/building|settings|alerts)$/.test(back) ? `?back=${encodeURIComponent(back)}` : "";   // come back to the page that asked (e.g. a conversation)
     // "Message" on someone's page, signed out: say why, offer sign-up first (credited to them), and land in the conversation after
     const mh = back.match(/^\/messages\/@([a-z0-9-]+)$/)?.[1] || "", them = mh ? byHandle(mh) : null;
     // a group link, signed out: same idea, "Sign up to join <group>", back into the group after
     const gs = back.match(/^\/messages\/groups\/([a-z0-9-]+)/)?.[1] || "", gname = gs && CHAT ? CHAT.nameOf(gs) : null;
     if (gname) {
+      if (req) FUNNEL.track(req, "gate", "join");
       const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)), q2 = `back=${encodeURIComponent(back)}`;
       signinPage(res, 200, `Join ${gname}`, `<h1>Sign up to join ${e(gname)}</h1><p class="lede">Groups are where Caldera members talk shop. You need a free page first, then you land right in the conversation.</p>
 ${signupCards(q2, `open this group again`, bq)}`);
       return;
     }
     if (them && !modOf(them.handle, them.id)) {
+      if (req) FUNNEL.track(req, "gate", "message");
       const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
       const h = them.handle as string, who = String(body(them).name || "").trim() || `@${h}`, q2 = `back=${encodeURIComponent(back)}&invite=${encodeURIComponent(h)}`;
       signinPage(res, 200, `Message @${h}`, `<h1>Sign up to message ${e(who)}</h1><p class="lede">Messages on Caldera are between members, so you need a free page first. Then you land right in your conversation with @${e(h)}.</p>
@@ -1712,7 +1721,7 @@ ${signupCards(q2, `tap Message on @${e(h)}'s page again`, bq)}
       return;
     }
     signinPage(res, 200, "Sign in", `<h1>Sign in to Caldera</h1><p class="lede">Sign this browser in as the owner of your page. It stays signed in for a year.</p>
-<div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
+<div class="card"><h2>Sign in with GitHub</h2><p class="mut">Works if you signed up with GitHub, or if your page lists your GitHub account in its links.</p><a rel="nofollow" class="btn" href="/auth/github${bq}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>
 <div class="card"><h2>Made your page with ChatGPT or Claude?</h2><p class="mut">Enter your email on the start page (leave the profile box empty) and we send you a sign-in link.</p><a class="btn ghost" href="/start">Email me a sign-in link</a></div>
 <div class="card"><h2>Made your page in Obsidian?</h2><p class="mut">Open your page and tap <b>Sign in</b> in the bar at the top for an email link or a code from Obsidian. Or in Obsidian, run <b>Caldera: Open my public page (as owner)</b>.</p></div>
 <h2 style="margin-top:22px">No page yet?</h2>
@@ -1725,7 +1734,7 @@ ${signupCards(bq ? bq.slice(1) : "", `open this page again`, bq).split('\n<div c
       ? `<p class="mut">Type the email your daily Caldera summary goes to. We'll send a link that works once, for 15 minutes.</p><form method="post" action="/signin/email"><input type="hidden" name="h" value="${e(h)}"><input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com"><button class="btn small" type="submit">Send the link</button></form>`
       : `<p class="mut">This page has no confirmed summary email yet, so there's nowhere to send a link. ${hosted ? "Sign in with GitHub instead, and add your email on your account page for next time." : "Pair this device from Obsidian below, then turn on the daily summary email in Caldera settings for next time."}</p>`}</div>`;
     const ghLogin = hosted ? "" : GH.ghLoginsOf(pr)[0] || "";   // a page made in Obsidian that lists its GitHub account
-    const ghCard = hosted || ghLogin ? `<div class="card"><h2>Sign in with GitHub</h2><p class="mut">${hosted ? "This page was made with GitHub. Sign in with the same GitHub account." : `Sign in as <b>${e(ghLogin)}</b>, the GitHub account linked on this page.`}</p><a class="btn" href="/auth/github?h=${encodeURIComponent(h)}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>` : "";
+    const ghCard = hosted || ghLogin ? `<div class="card"><h2>Sign in with GitHub</h2><p class="mut">${hosted ? "This page was made with GitHub. Sign in with the same GitHub account." : `Sign in as <b>${e(ghLogin)}</b>, the GitHub account linked on this page.`}</p><a rel="nofollow" class="btn" href="/auth/github?h=${encodeURIComponent(h)}">Sign in with GitHub</a><p class="mut" style="font-size:12.5px;margin-top:8px">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></div>` : "";
     const pairCard = hosted ? "" : `<div class="card" id="pair"><h2>Pair from Obsidian</h2><p class="mut">On a computer with your vault: in Obsidian, open the command palette and run <b>Caldera: Sign in another device</b> (or the key button in the My profile tab), then type the code shown here.</p>
 <div id="pair-box"><button class="btn small" type="button" id="pair-go">Show a code</button></div></div>`;
     const js = hosted ? "" : `(function(){var b=document.getElementById('pair-go');if(!b)return;b.addEventListener('click',function(){b.disabled=true;
@@ -1784,7 +1793,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} - Caldera</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap"></head><body>${body}</body></html>`)); },
     hasFollower: (id) => !!q("SELECT 1 FROM friends WHERE a=? OR b=? LIMIT 1").get(id, id) || !!q("SELECT 1 FROM friend_intents WHERE target=? AND kind='add' LIMIT 1").get(id),
     rememberEmail: (owner, email) => { try { mail.suggest(owner, email, true, "email-signup"); } catch { /* fine */ } },
-    eraseProfile: (id) => erase(id),
+    eraseProfile: (id) => erase(id), track: (req, step, detail) => FUNNEL.track(req, step, detail),
     onPublished: () => { worldCache = null; }, recordReferral });
   EMP.schedule();
   GIFTS = gifts({ q, now, profile, byHandle, listed, modOf, memberOf, sameOrigin, readBody, json, tooMany, founder: opts.founder ? opts.founder.toLowerCase() : null,
@@ -2096,6 +2105,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       }
       // inline kudos + friends on hosted pages: the page's action token is the only credential (sandboxed pages send no
       // cookies, Origin is "null"); it names the viewer and the one page owner it may act on, and expires in 2 hours
+      // the sign-up panel opened (signupgate.ts): one count per visitor per action per day, no cookie, nothing personal
+      if (req.method === "POST" && p === "/v1/funnel/gate") {
+        let s = ""; for await (const c of req) { s += c; if (s.length > 40) break; }
+        const k = okGateKind(s.trim()); if (k) FUNNEL.track(req, "gate", k);
+        res.writeHead(204, { "access-control-allow-origin": "*", "cache-control": "no-store" }); res.end(); return;
+      }
       if (req.method === "POST" && p === "/v1/act") {
         if (tooMany("act-ip:" + ipOf(req), 120)) return json(res, 429, { error: "slow down" });
         const b = await readBody(req).catch(() => ({})) as { t?: string; action?: string; kind?: string };
@@ -2229,7 +2244,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
         if (req.method === "POST" && origin && pubOrigin && origin !== pubOrigin && !sameOrigin(req)) return json(res, 403, { error: "wrong origin" });
         const ip = ipOf(req);
         if (req.method === "GET" && p === "/signin") {
-          if (!url.searchParams.get("h")) { signinGeneral(res, String(url.searchParams.get("back") || "")); return; }
+          if (!url.searchParams.get("h")) { signinGeneral(res, String(url.searchParams.get("back") || ""), req); return; }
           const pr = byHandle((url.searchParams.get("h") || "").toLowerCase()); if (!pr || modOf(pr.handle, pr.id)) { signinPage(res, 404, "Sign in", `<h1>No such page</h1><p><a href="/people">Find people</a></p>`); return; }
           signinHome(res, pr); return;
         }
@@ -2245,6 +2260,49 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
             void mail.sendSignin(pr.id, pr.handle, link).catch((e: any) => console.error("signin mail", e?.message));
           }
           signinHome(res, pr, "If that's the email on this page, a sign-in link is on its way. It works once, for 15 minutes. Check your spam folder too."); return;
+        }
+        // "Not signed in to GitHub on this device? Get a sign-up link by email." One email that works on any device: continue
+        // with GitHub there, or start without GitHub. Someone who already has a page gets a way back into THAT page instead
+        // (never a second profile). The answer on screen is the same either way, so nobody learns who is a member.
+        if (req.method === "POST" && p === "/signin/signup-email") {
+          const f = await form(), email = String(f.get("email") || "").trim().toLowerCase().slice(0, 200);
+          const back = String(f.get("back") || ""), okB = /^\/(messages|messages\/@[a-z0-9-]+|feed|feed\/p\/[0-9a-f]{12}|people|world|@[a-z0-9-]+\/)$/.test(back) ? back : "";
+          const inv = String(f.get("invite") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 31);
+          const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+          if (!/^[^\s@<>"']{1,64}@[^\s@<>"']+\.[a-z]{2,}$/i.test(email)) { signinPage(res, 400, "Sign up", `<h1>That email doesn't look right</h1><p><a class="btn" href="/#install">Go back</a></p>`); return; }
+          if (tooMany("signup-mail-ip:" + ip, 6) || tooMany("signup-mail:" + mail.hashOf(email), 3)) { signinPage(res, 429, "Sign up", `<h1>Too many tries</h1><p class="lede">Wait an hour, then try again. Or <a href="/auth/github" rel="nofollow">sign up with GitHub</a> on this device.</p>`); return; }
+          FUNNEL.track(req, "email-start", okB ? "from " + okB.split("/").slice(0, 2).join("/") : "");
+          const pubB = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), qs = (o: Record<string, string>) => { const s = new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString(); return s ? "?" + s : ""; };
+          const startBack = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world)$/.test(okB) ? okB : "";
+          const ghLink = `${pubB}/auth/github${qs({ back: okB, invite: inv })}`, startLink = `${pubB}/start${qs({ back: startBack, invite: inv })}`;
+          // an existing page with this address: its own email page, or a confirmed/verified address on a GitHub or Obsidian page
+          const h1 = mail.hashOf(email), ea = EMP?.accountByEmail(email);
+          const ownerId = ea?.profile_id || (q("SELECT owner FROM email_subs WHERE hash=? AND confirmed=1").get(h1) as any)?.owner || (q("SELECT owner FROM email_suggest WHERE hash=? AND verified=1").get(h1) as any)?.owner || null;
+          const pr = ownerId ? profile(ownerId) : null, live = pr?.handle && !modOf(pr.handle, pr.id) ? pr : null;
+          const btn = (href: string, label: string) => `<p><a href="${e(href)}" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${e(label)}</a></p>`;
+          let m: { subject: string; title: string; html: string; text: string };
+          if (live) {
+            const h = String(live.handle), isGh = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? LIMIT 1").get(live.id);
+            let link = "", how = "";
+            if (ea) { link = EMP!.signinLinkFor(email, startBack, inv); how = "Open this link to sign in. It works once, for 48 hours."; }
+            else if (isGh) { link = `${pubB}/auth/github${qs({ back: okB })}`; how = "Your page was made with GitHub, so sign in with the same GitHub account."; }
+            else if (mail.matches(live.id, email)) {
+              const code = crypto.randomBytes(24).toString("base64url");
+              q("DELETE FROM signin_links WHERE expires < ?").run(Date.now()); q("INSERT INTO signin_links VALUES (?,?,?)").run(hashToken(code), live.id, Date.now() + 15 * 60_000);
+              link = `${pubB}/signin/link?c=${encodeURIComponent(code)}`; how = "Open this link to sign in. It works once, for 15 minutes.";
+            } else { link = `${pubB}/signin?h=${encodeURIComponent(h)}`; how = "Open this page to sign in from Obsidian or with GitHub."; }
+            m = { subject: "You already have a Caldera page", title: `You're already on Caldera as @${h}`,
+              html: `<p>This email already belongs to <b>@${e(h)}</b>, so there's no need for a second page. ${e(how)}</p>${btn(link, "Sign in as @" + h)}<p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email.</p>`,
+              text: `This email already belongs to @${h} on Caldera. ${how}\n${link}\n\nIf you didn't ask for this, ignore this email.` };
+          } else {
+            m = { subject: "Your Caldera sign-up link", title: "Finish joining Caldera",
+              html: `<p>Open this on any device where you use GitHub. Your page and your city build themselves in about 10 seconds.</p>${btn(ghLink, "Continue with GitHub")}<p style="color:#777;font-size:13px">Read-only: your public GitHub profile and email. No access to your code or private repos.</p><p>No GitHub? <a href="${e(startLink)}">Make your page with ChatGPT or Claude</a>, or <a href="${e(pubB)}/#obsidian">use the Obsidian plugin</a>.</p><p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email.</p>`,
+              text: `Finish joining Caldera. Open this on any device where you use GitHub:\n${ghLink}\n\nRead-only: your public GitHub profile and email. No access to your code or private repos.\n\nNo GitHub? Make your page with ChatGPT or Claude: ${startLink}\n\nIf you didn't ask for this, ignore this email.` };
+          }
+          try { if (await mail.note({ to: email, ...m, src: "signup-email" })) FUNNEL.track(req, "email-sent", live ? "existing" : "new"); }
+          catch (err: any) { console.error("signup mail", err?.message); }
+          signinPage(res, 200, "Check your email", `<h1>Check your email</h1><p class="lede">We sent a link to <b>${e(email)}</b>. Open it on any device where you use GitHub, or start without GitHub from the same email.</p><p class="mut">Nothing there in a minute? Check spam, or <a href="/#install">try again</a>.</p>`);
+          return;
         }
         if (p === "/signin/link") {   // GET shows a button (mail scanners only GET); POST uses the link, once
           const c = req.method === "POST" ? String((await form()).get("c") || "") : url.searchParams.get("c") || "";

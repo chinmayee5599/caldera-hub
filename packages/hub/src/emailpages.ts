@@ -109,6 +109,8 @@ export interface EmailCtx {
   hasFollower: (id: string) => boolean;
   /** remember the confirmed address so message alerts and the daily summary can reach them */
   rememberEmail: (owner: string, email: string) => void;
+  /** count a sign-up funnel step (funnel.ts) */
+  track?: (req: http.IncomingMessage, step: "email-created", detail?: string) => void;
   /** delete the member and everything tied to them (the hub's own erase) */
   eraseProfile: (id: string) => void;
   onPublished?: (id: string, created: boolean) => void;
@@ -208,7 +210,7 @@ ${msg ? `<p class="${msg.startsWith("ok:") ? "ok" : "err"}" role="status">${esc(
 <h2 style="margin-top:16px"><span class="n">3</span>Your email</h2><input type="email" name="email" autocomplete="email" required placeholder="you@example.com" value="${esc(email)}">
 <p class="mut">We send one link to confirm. Open it and your page goes live. No password.</p>
 <div class="row"><button class="btn" type="submit">Make my page</button><span class="mut">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</span></div></form>
-<p class="mut">Already made your page this way? Enter just your email above (leave the box empty) and we send a sign-in link. Use GitHub? <a href="/auth/github${back || inv ? `?${[back ? `back=${encodeURIComponent(back)}` : "", inv ? `invite=${encodeURIComponent(inv)}` : ""].filter(Boolean).join("&")}` : ""}">Sign up with GitHub</a> instead: your repos become your city.</p></main>${copyJs}`);
+<p class="mut">Already made your page this way? Enter just your email above (leave the box empty) and we send a sign-in link. Use GitHub? <a rel="nofollow" href="/auth/github${back || inv ? `?${[back ? `back=${encodeURIComponent(back)}` : "", inv ? `invite=${encodeURIComponent(inv)}` : ""].filter(Boolean).join("&")}` : ""}">Sign up with GitHub</a> instead: your repos become your city.</p></main>${copyJs}`);
   }
 
   function settingsPage(res: http.ServerResponse, acct: any, msg = "") {
@@ -290,6 +292,7 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       c.rememberEmail(acct.profile_id, email);
       try { publish(acct); } catch (e: any) { c.page(res, 500, "Not yet", `${STYLE}<main class="ep"><h1>We couldn't publish your page</h1><p class="mut">${esc(e.message)}</p><p><a class="btn" href="/start">Try again</a></p></main>`); return true; }
       c.onPublished?.(acct.profile_id, created);
+      if (created) c.track?.(req, "email-created", inv ? "invite" : "");
       // joined from someone's invite (e.g. their Message button): credit them, and the new member follows them
       if (created && inv && inv !== acct.handle) try {
         const inviter = c.recordReferral?.(acct.profile_id, inv, "email");
@@ -340,5 +343,13 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
   }
   function schedule() { const t0 = setTimeout(function tick() { void daily(); const t = setTimeout(tick, DAY); t.unref?.(); }, 10 * 60_000); t0.unref?.(); }
   function erase(id: string) { q("DELETE FROM email_accounts WHERE profile_id=?").run(id); }
-  return { route, publish, daily, schedule, erase, isEmailPage: (id: string) => !!acctOf(id) };
+  /** the email page that uses this address, if any (email sign-ups are keyed by the address itself) */
+  const accountByEmail = (email: string) => q("SELECT profile_id, handle FROM email_accounts WHERE email_hash=?").get(hash(email.trim().toLowerCase())) as { profile_id: string; handle: string } | undefined;
+  /** a one-time sign-in link for an existing email page (the same link /start sends when the profile box is left empty) */
+  function signinLinkFor(email: string, back = "", inv = ""): string {
+    const tok = crypto.randomBytes(24).toString("base64url");
+    q("INSERT INTO email_pending VALUES (?,?,?,?,?)").run(hash(tok), c.seal(email.trim().toLowerCase()), "{}", Date.now() + 2 * DAY, new Date().toISOString());
+    return `${pub}/start/confirm?t=${tok}${carry(okBack(back), okInv(inv))}`;
+  }
+  return { route, publish, daily, schedule, erase, isEmailPage: (id: string) => !!acctOf(id), accountByEmail, signinLinkFor };
 }

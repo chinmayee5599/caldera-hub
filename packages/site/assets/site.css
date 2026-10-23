@@ -298,3 +298,10 @@ section h2 { line-height: 1.12; }
 .obs-later > summary::before { content: "+"; display: inline-block; width: 1.2em; color: var(--accent-text); }
 .obs-later[open] > summary::before { content: "\2212"; }
 .obs-later[open] { padding-bottom: 18px; }
+
+/* "Get a sign-up link by email" under the GitHub buttons (for people not signed in to GitHub on this device) */
+.em-link { margin: 12px 0 0; max-width: 460px; }
+.em-link label { display: block; color: var(--text-muted); font-size: 13.5px; margin-bottom: 6px; }
+.em-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.em-row input { flex: 1 1 200px; min-width: 0; box-sizing: border-box; min-height: 40px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; }
+.em-row .btn { min-height: 40px; cursor: pointer; }

@@ -139,7 +139,7 @@ h1{font:600 clamp(1.7rem,4vw,2.4rem)/1.15 'Source Serif 4',Georgia,serif;color:v
 <h1>${esc(o.slug)}</h1>
 <p class="lede">${n ? `${n} ${n === 1 ? "member" : "members"}, each shown as a city: every building is a project or a folder of notes, lit up when it was worked on this week.` : "Nobody has joined this group yet. Be the first: your city appears here as soon as you join."}</p>
 <div class="join"><span>Join ${esc(o.slug)}: your page and city show up here, and the people in the group are suggested to you as friends.</span>
-<a class="btn" href="${esc(hub)}/auth/github?group=${encodeURIComponent(o.slug)}">Join with GitHub</a><a class="btn alt" href="obsidian://caldera?group=${encodeURIComponent(o.slug)}">Join from Obsidian</a><a class="btn alt" href="${esc(hub)}/?group=${encodeURIComponent(o.slug)}#install">Get Caldera</a></div>
+<a rel="nofollow" class="btn" href="${esc(hub)}/auth/github?group=${encodeURIComponent(o.slug)}">Join with GitHub</a><a class="btn alt" href="obsidian://caldera?group=${encodeURIComponent(o.slug)}">Join from Obsidian</a><a class="btn alt" href="${esc(hub)}/?group=${encodeURIComponent(o.slug)}#install">Get Caldera</a></div>
 ${n ? `<div class="town">${o.members.map(m => `<div class="lot">${m.city ? `<a class="lot-city" href="${esc(hub)}/@${esc(m.handle)}/city.html" title="Walk ${esc(m.name || "@" + m.handle)}'s city">${cityTile(m.city)}</a>` : cityTile(m.city)}<a class="who" href="${esc(hub)}/@${esc(m.handle)}/"><b>${esc(m.name || "@" + m.handle)}</b><small>@${esc(m.handle)}${m.headline ? ` &middot; ${esc(m.headline)}` : ""}</small></a></div>`).join("")}</div>` : `<div class="empty">No members yet.</div>`}
 </main></body></html>`;
 }

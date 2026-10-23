@@ -138,7 +138,7 @@ export function ghPreview(c: GhPreviewCtx) {
     return sitePage("See any GitHub as a city - Caldera", `<h1>See any GitHub as a city</h1>
 <p class="lede">Type a GitHub username. Every public repo becomes a building: taller means more commits this year, lit windows mean work this week. Built from public data only.</p>
 ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${l}</a>`).join(" &middot; ")}</p>
-<p class="ghp-small">Want yours to come alive, with live visitors, your AI agents flying over the repos they're working in, and people who build the same things? <a href="/auth/github?back=/me">Sign up with GitHub</a>.</p>`,
+<p class="ghp-small">Want yours to come alive, with live visitors, your AI agents flying over the repos they're working in, and people who build the same things? <a rel="nofollow" href="/auth/github?back=/me">Sign up with GitHub</a>.</p>`,
       ogTags({ url: `${c.hub()}/gh`, image: `${c.hub()}/world/preview.png`, title: "See any GitHub as a city", description: "Type a GitHub username and walk their public repos as a living city. Caldera, the social network for GitHub and Obsidian." }));
   }
   function notFound(login: string, why: string): string {
@@ -156,7 +156,7 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
     let html = renderCity({ name: p.name || p.login, github: p.html_url, theme: "dark" }, p.city);
     const md = snippet(url, `${url}/badge.svg?style=card`, "My GitHub city on Caldera"), share = `${who}'s public GitHub as a living city`;
     const banner = `<section class="ghp-banner" aria-label="About this preview"><div class="ghp-b-top"><span class="ghp-pill">Preview</span><b>@${esc(p.login)}'s public GitHub as a city.</b> <span class="ghp-mut">A preview from public data. Not on Caldera yet.</span></div>
-<div class="ghp-b-actions"><a class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a>
+<div class="ghp-b-actions"><a rel="nofollow" class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a>
 <span class="ghp-share"><a class="ghp-btn ghost" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(share)}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="ghp-btn ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a><button class="ghp-btn ghost" type="button" data-copy="${esc(url)}">Copy link</button></span></div>
 <p class="ghp-small" style="margin:8px 0 0">&#128274; Claiming is read-only: your public profile and email. Caldera can't see your code or private repos; GitHub enforces it. <a href="/security">How we keep it safe</a></p>
 <div class="ghp-b-see">${seeForm()}</div>
