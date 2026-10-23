@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.28.6",
+      "date": "2026-10-23",
+      "title": "Keep the page you made with GitHub",
+      "items": [
+        "Signed up with GitHub on caldera.social first? The welcome screen in Obsidian now asks you to import that page (paste the code from Settings > Connections > Obsidian) before you pick a handle, so you keep one page instead of making a second.",
+        "If \"Add to Obsidian\" does nothing, the site and your settings page now show the manual way in: Settings > Community plugins > Turn on community plugins > Browse > search Caldera > Install > Enable."
+      ]
+    },
+    {
       "version": "0.28.5",
       "date": "2026-10-20",
       "title": "Visitors in the right building",
