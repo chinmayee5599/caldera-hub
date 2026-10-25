@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.28.10",
+      "date": "2026-10-25",
+      "title": "Storefront signs you can always see",
+      "items": [
+        "Every storefront's glowing sign now draws in front of the buildings, in your city and on the World map, so a tall tower standing in front can no longer hide it.",
+        "Tapping a sign opens that storefront even where a tower overlaps it."
+      ]
+    },
+    {
       "version": "0.28.9",
       "date": "2026-10-25",
       "title": "Lines of code in your daily email",
