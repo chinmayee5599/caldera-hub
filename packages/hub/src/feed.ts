@@ -679,7 +679,7 @@ ${v.detail && !f.simple ? `<p class="det">${linkMentions(linkify(v.detail), isMe
       : i.kind === "gift" ? `${whoLink(i.who)} lit up ${whoLink(i.other)}'s city${i.text ? ` for <b>${esc(i.text)}</b>` : ""}. <a href="/world">See it on the map</a>`
       : i.kind === "tool" ? `${whoLink(i.who)} shared a free tool: <a href="${esc(i.url)}"><b>${esc(i.text || "")}</b></a>`
       : `<a href="${esc(i.url || "/alerts")}">${esc(i.title || "New in Caldera")}</a>`;
-    const thumb = i.kind === "city" ? `<a href="${esc(i.url)}" tabindex="-1" aria-hidden="true"><img class="fd-thumb" src="/@${esc(i.who.handle)}/card.png" alt="" loading="lazy"></a>` : "";
+    const thumb = i.kind === "city" ? `<a href="${esc(i.url)}" tabindex="-1" aria-hidden="true"><img class="fd-thumb" src="/@${esc(i.who.handle)}/card.png" alt="@${esc(i.who.handle)}'s GitHub city" width="1200" height="630" loading="lazy"></a>` : "";
     return `<div class="fd-act" data-ts="${esc(i.ts)}"><span class="ic" aria-hidden="true">${icon[i.kind] || "•"}</span>${i.who ? avatarHtml(i.who) : ""}<span class="t">${text}</span>${thumb}<time datetime="${esc(i.ts)}">${ago(i.ts)}</time></div>`;
   }
   const itemHtml = (i: any, viewer: string | null) => i.kind === "post" ? postHtml(i.post, viewer) : actHtml(i);

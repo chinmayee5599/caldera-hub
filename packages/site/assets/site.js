@@ -29,8 +29,9 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     document.getElementById("invited-handle").textContent = "@" + h;
     var add = document.getElementById("invited-add"); if (add) add.href = "obsidian://caldera?friend=" + encodeURIComponent(h);
     var av = p.manifest && p.manifest.body && p.manifest.body.photos && p.manifest.body.photos.avatar;
-    var img = document.getElementById("invited-av");
-    if (av) img.src = "@" + h + "/" + String(av).replace(/^\.?\//, ""); else img.remove();
+    // the inviter's photo sits next to their name, so it is decorative (alt=""); added only when there is one
+    if (av) { var img = document.createElement("img"); img.className = "invited-av"; img.alt = ""; img.width = 44; img.height = 44;
+      img.src = "@" + h + "/" + String(av).replace(/^\.?\//, ""); var box = document.getElementById("invited"); box.insertBefore(img, box.firstChild); }
     var g = (p.manifest && p.manifest.body && p.manifest.body.garden) || [];
     var gb = document.getElementById("invited-garden");
     if (gb && g.length) {

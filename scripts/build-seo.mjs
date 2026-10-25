@@ -2,6 +2,7 @@
 //   <slug>.html pages (answer-first, FAQ, JSON-LD), learn.html, sitemap.xml, robots.txt, llms.txt, llms-full.txt,
 //   canonical/og tags on every page, and SoftwareApplication/Organization/FAQPage JSON-LD on the homepage.
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import { pages, UPDATED } from "./seo-pages.mjs";
 import { activeFeatures } from "../../caldera/packages/core/dist/index.js";
 const FEATURES = activeFeatures();   // the garden is paused (core flags.ts): nothing switched off reaches the site
@@ -13,6 +14,13 @@ const write = (f, s) => fs.writeFileSync(new URL(f, dir), s);
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const strip = h => h.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 const VERSION = (() => { try { const r = JSON.parse(fs.readFileSync(new URL("../packages/site/releases.json", import.meta.url), "utf8")); return String((r.releases || r)[0]?.version || "0.18"); } catch { return "0.18"; } })();
+// meta descriptions: search engines show ~160 characters. Keep whole sentences when that still says enough,
+// otherwise cut at a word boundary. The full text stays where it is read in full (the Learn list, llms.txt).
+const metaDesc = d => { d = String(d).replace(/\s+/g, " ").trim(); if (d.length <= 160) return d;
+  const sent = (d.slice(0, 161).match(/^.*[.!?](?=\s)/) || [""])[0]; if (sent.length >= 90) return sent;
+  let w = d.slice(0, 160).replace(/\s+\S*$/, ""), was;   // never end on "of" / "and" / "with"...
+  do { was = w; w = w.replace(/[\s,;:(\u2013\u2014-]+$/, "").replace(/\s+(?:a|an|the|and|or|of|to|for|with|by|in|on|at|what|so|that|per|your|their)$/i, ""); } while (w !== was);
+  return w + "\u2026"; };
 const ld = o => `<script type="application/ld+json">${JSON.stringify(o).replace(/</g, "\\u003c")}</script>`;
 const ORG = { "@type": "Organization", "@id": `${SITE}/#org`, name: "mjonesone, LLC", url: SITE, email: "hello@caldera.social" };
 
@@ -41,8 +49,8 @@ for (const f of fs.readdirSync(dir)) if (f.endsWith(".html")) { const h = read(f
 function head(title, description, slug, extra = "") {
   const url = slug ? `${SITE}/${slug}` : `${SITE}/`;
   return headTpl.replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(title)}</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(description)}">`)
-    + `<link rel="canonical" href="${url}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${url}"><meta property="og:type" content="article"><meta property="og:image" content="${SITE}/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">${extra}\n</head>`;
+    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(metaDesc(description))}">`)
+    + `<link rel="canonical" href="${url}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(metaDesc(description))}"><meta property="og:url" content="${url}"><meta property="og:type" content="article"><meta property="og:image" content="${SITE}/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">${extra}\n</head>`;
 }
 
 const bySlug = Object.fromEntries(pages.map(p => [p.slug, p]));
@@ -69,7 +77,7 @@ ${p.sections.map(s => `  <h2>${esc(s.h2)}</h2>\n  ${s.html}`).join("\n")}
 }
 
 // /learn index
-write("learn.html", `${head("Learn Caldera: GitHub cities, Obsidian profiles, sharing and AI agents", "Guides to GitHub cities, Obsidian public profiles, private note sharing, AI agents, daily journals, activity tracking and Obsidian Publish alternatives.", "learn", ld({ "@context": "https://schema.org", "@type": "CollectionPage", name: "Learn Caldera", url: `${SITE}/learn`, hasPart: pages.map(p => ({ "@type": "TechArticle", headline: p.h1, url: `${SITE}/${p.slug}` })) }))}
+write("learn.html", `${head("Learn: GitHub cities, Obsidian profiles, AI agents | Caldera", "Guides to GitHub cities, Obsidian public profiles, private note sharing, AI agents, daily journals, activity tracking and Obsidian Publish alternatives.", "learn", ld({ "@context": "https://schema.org", "@type": "CollectionPage", name: "Learn Caldera", url: `${SITE}/learn`, hasPart: pages.map(p => ({ "@type": "TechArticle", headline: p.h1, url: `${SITE}/${p.slug}` })) }))}
 <body>
 ${header}
 <main class="legal guide learn-page">
@@ -85,10 +93,21 @@ ${footer}
 `);
 
 // canonical + og on existing pages; homepage JSON-LD
-const core = [["index.html", ""], ["people.html", "people"], ["guide.html", "guide"], ["changelog.html", "changelog"], ["privacy.html", "privacy"], ["terms.html", "terms"]];
+const core = [["index.html", ""], ["people.html", "people"], ["guide.html", "guide"], ["changelog.html", "changelog"], ["privacy.html", "privacy"], ["terms.html", "terms"], ["security.html", "security"]];
+// pages written by hand that had no description (or a 3-word one): what each page actually covers
+const CORE_DESC = {
+  "changelog.html": "Caldera release notes, newest first: what changed in each version of the Obsidian plugin and caldera.social, in plain English.",
+  "privacy.html": "Caldera's privacy policy: what the Obsidian plugin does on your device, what the hub collects and why, emails, cookies, how long data is kept, and your rights.",
+  "terms.html": "Caldera's terms of service: who can use it, your account and content, acceptable use, the Feed, messages, moderation, and open source licensing.",
+};
 for (const [f, slug] of core) {
   let s = noLearn(read(f).replace(/<link rel="canonical"[^>]*>/g, ""));
   s = s.replace("</head>", `<link rel="canonical" href="${SITE}/${slug}">\n</head>`);
+  { const cur = (s.match(/<meta name="description" content="([^"]*)">/) || [])[1], d = metaDesc(CORE_DESC[f] || (cur || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"'));
+    if (d) s = cur !== undefined ? s.replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(d)}">`) : s.replace(/<title>/, `<meta name="description" content="${esc(d)}">\n<title>`);
+    // a link preview card (og/twitter) on pages that had none; the homepage keeps its own
+    if (d && !s.includes('property="og:title"')) { const t = (s.match(/<title>([^<]*)<\/title>/) || [])[1] || "Caldera";
+      s = s.replace("</head>", `<meta property="og:title" content="${t}"><meta property="og:description" content="${esc(d)}"><meta property="og:url" content="${SITE}/${slug}"><meta property="og:type" content="website"><meta property="og:image" content="${SITE}/og.jpg"><meta name="twitter:card" content="summary_large_image">\n</head>`); } }
   s = s.replace(/<a href="guide\.html">Guide<\/a> &middot; <a href="changelog\.html">/, '<a href="/learn">Learn</a> &middot; <a href="/guide">Guide</a> &middot; <a href="/changelog">');
   if (f === "index.html") {
     const faq = [...s.matchAll(/<details><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map(m => ({ "@type": "Question", name: strip(m[1]), acceptedAnswer: { "@type": "Answer", text: strip(m[2]) } }));
@@ -103,13 +122,24 @@ for (const [f, slug] of core) {
 }
 
 // sitemap, robots, llms
-const urls = [["", "weekly", "1.0"], ["learn", "weekly", "0.9"], ...pages.map(p => [p.slug, "monthly", "0.8"]), ["people", "daily", "0.7"], ["feed", "hourly", "0.7"], ["guide", "monthly", "0.7"], ["changelog", "weekly", "0.6"], ["privacy", "yearly", "0.3"], ["terms", "yearly", "0.3"]];
-write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(([u, f, pr]) => `  <url><loc>${SITE}/${u}</loc><lastmod>${UPDATED}</lastmod><changefreq>${f}</changefreq><priority>${pr}</priority></url>`).join("\n")}\n</urlset>\n`);
+// lastmod is when that page's content last changed (Google ignores lastmod it can't trust):
+//   guides: their "Updated" date; changelog: the newest release; privacy/terms: their effective date;
+//   other hand-made pages: the file's last commit, or today if this build changed it; people and feed are live lists, no lastmod.
+const today = new Date().toISOString().slice(0, 10);
+const gitDate = f => { try { const rel = `packages/site/${f}`, root = new URL("../", import.meta.url).pathname;
+  if (execFileSync("git", ["status", "--porcelain", "--", rel], { cwd: root, encoding: "utf8" }).trim()) return today;
+  return execFileSync("git", ["log", "-1", "--format=%cs", "--", rel], { cwd: root, encoding: "utf8" }).trim() || today; } catch { return UPDATED; } };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const effective = f => { const m = read(f).match(/Effective (\w+) (\d{1,2}), (\d{4})/); const mo = m ? MONTHS.indexOf(m[1]) + 1 : 0;
+  return mo ? `${m[3]}-${String(mo).padStart(2, "0")}-${m[2].padStart(2, "0")}` : gitDate(f); };
+const newestRelease = () => { try { const r = JSON.parse(read("releases.json")); return String((r.releases || r)[0]?.date || "").slice(0, 10) || gitDate("changelog.html"); } catch { return gitDate("changelog.html"); } };
+const urls = [["", "weekly", "1.0", gitDate("index.html")], ["learn", "weekly", "0.9", gitDate("learn.html")], ...pages.map(p => [p.slug, "monthly", "0.8", UPDATED]), ["people", "daily", "0.7", null], ["feed", "hourly", "0.7", null], ["guide", "monthly", "0.7", gitDate("guide.html")], ["changelog", "weekly", "0.6", newestRelease()], ["privacy", "yearly", "0.3", effective("privacy.html")], ["terms", "yearly", "0.3", effective("terms.html")], ["security", "yearly", "0.3", gitDate("security.html")]];
+write("sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(([u, f, pr, mod]) => `  <url><loc>${SITE}/${u}</loc>${mod ? `<lastmod>${mod}</lastmod>` : ""}<changefreq>${f}</changefreq><priority>${pr}</priority></url>`).join("\n")}\n</urlset>\n`);
 const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User", "anthropic-ai", "PerplexityBot", "Perplexity-User", "Google-Extended", "Googlebot", "Bingbot", "Applebot", "Applebot-Extended", "DuckAssistBot", "Meta-ExternalAgent", "MistralAI-User", "CCBot"];
-write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Profile pages carry noindex (owners' choice); the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n\nSitemap: ${SITE}/sitemap.xml\nSitemap: ${SITE}/sitemap-profiles.xml\n`);
+write("robots.txt", `# caldera.social - search engines and AI assistants are welcome to read and cite the public site.\n# Member pages are indexable only when the member allows it (Settings), otherwise noindex; the API is not for crawling.\n${bots.map(b => `User-agent: ${b}\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n`).join("\n")}\nUser-agent: *\nAllow: /\nDisallow: /v1/\nDisallow: /auth/\nDisallow: /signin\nDisallow: /messages\n\nSitemap: ${SITE}/sitemap.xml\nSitemap: ${SITE}/sitemap-profiles.xml\n`);
 write("llms.txt", `# Caldera
 
-> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members follow each other and become friends, join groups, message each other, share end-to-end encrypted notes, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
 - Sign up with GitHub (no install): ${SITE}/auth/github
 - Install for Obsidian: Obsidian community plugins (search Caldera), or copy one prompt into Claude Code, Codex or Cursor: ${SITE}/#install

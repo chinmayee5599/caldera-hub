@@ -41,6 +41,8 @@ import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from 
 import { citySnapshot, applyPrivateMode, rewriteCityPage, type CityData } from "../../../../caldera/packages/plugin/src/city";
 import { mentionSearch } from "./mentions.js";
 import { privateModes, scrubPrivateLive } from "./privatemode";
+import { profileMeta } from "./seometa";
+export { profileMeta } from "./seometa";
 
 const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
@@ -756,12 +758,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   function profileSeo(pr: any, rel: string, html: string): string {
     const e = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const base = `${hubUrl()}/@${pr.handle}/`, url = base + (rel === "city.html" ? "city.html" : ""), b = body(pr), name = pr.name || "@" + pr.handle;
-    const cut = (t: string, n: number) => { const first = t.split(/(?<=[.!?])\s/)[0]; if (first.length <= n) return first.replace(/[.!?]$/, ""); const w = t.slice(0, n).replace(/\s+\S*$/, ""); return w.replace(/[,;:\s]+$/, "") + "\u2026"; };
-    const tags = (() => { try { return B.tagsOf(pr).map((t: any) => t.t).slice(0, 10); } catch { return [] as string[]; } })();
+    // only what the page itself shows: the headline, the "Building" chips (the first 8 tags), links, the public city
+    const tags = (() => { try { return B.tagsOf(pr).map((t: any) => t.t).slice(0, 8); } catch { return [] as string[]; } })();
     const links = (Array.isArray(b.links) ? b.links : []).map((l: any) => Array.isArray(l) ? l[1] : l?.url).filter((u: any) => typeof u === "string" && /^https:\/\//.test(u)).slice(0, 8);
     const c = cityOf(pr.handle), fc = followCounts(pr.id);
-    const desc = (rel === "city.html" ? `${name}'s GitHub as a living city on Caldera${c?.buildings ? `: ${c.buildings} repos` : ""}. ` : "") + (pr.headline || `${name} builds with AI. Profile, projects and GitHub city on Caldera.`) + (tags.length ? ` Building: ${tags.slice(0, 5).join(", ")}.` : "");
-    const title = rel === "city.html" ? `${name}'s GitHub city | Caldera` : `${name} (@${pr.handle})${pr.headline ? ` - ${cut(String(pr.headline), 60)}` : ""} | Caldera`;
+    const { title, desc } = profileMeta({ handle: pr.handle, name: pr.name, headline: pr.headline, tags, repos: c?.buildings || 0, city: rel === "city.html" });
     const person = { "@type": "Person", "@id": base + "#person", name, alternateName: "@" + pr.handle, url: base, description: pr.headline || undefined, image: `${base}card.png`,
       sameAs: links.length ? links : undefined, knowsAbout: tags.length ? tags : undefined,
       interactionStatistic: [{ "@type": "InteractionCounter", interactionType: "https://schema.org/FollowAction", userInteractionCount: fc.followers + fc.friends }] };
@@ -769,7 +770,7 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Caldera", item: hubUrl() + "/" }, { "@type": "ListItem", position: 2, name: "People", item: hubUrl() + "/people" }, { "@type": "ListItem", position: 3, name, item: base }] }] };
     html = html.replace(/<meta name="robots"[^>]*>/gi, "").replace(/<link rel="canonical"[^>]*>/gi, "").replace(/<meta name="description"[^>]*>/gi, "")
       .replace(/<title>[\s\S]*?<\/title>/i, `<title>${e(title)}</title>`);
-    return html.replace(/<\/head>/i, `<meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${e(url)}"><meta name="description" content="${e(desc.slice(0, 300))}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script></head>`);
+    return html.replace(/<\/head>/i, `<meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${e(url)}"><meta name="description" content="${e(desc)}"><script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script></head>`);
   }
   function previewTags(handle: string, rel: string): string {
     const pr = byHandle(handle); if (!pr) return "";
@@ -2105,9 +2106,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   let footerAt = 0, footerChecked = 0;
   const freshFooter = () => { if (!opts.siteDir || Date.now() - footerChecked < 30_000) return; footerChecked = Date.now();
     try { const f = path.join(opts.siteDir, "assets", "footer.html"), mt = fs.statSync(f).mtimeMs; if (mt !== footerAt) { footerAt = mt; setSiteFooter(fs.readFileSync(f, "utf8")); } } catch { /* the short footer */ } };
+  // HSTS only when the hub is served over HTTPS (a plain-http dev or test hub must not pin browsers to https)
+  const HSTS = /^https:\/\//i.test(opts.publicUrl || "") ? "max-age=31536000" : "";
   const server = http.createServer(async (req, res) => {
     freshFooter();
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    if (HSTS) res.setHeader("strict-transport-security", HSTS);
     guardLinks(req, res, [], () => headerFor(req, (() => { try { return new URL(req.url || "/", "http://hub").pathname; } catch { return "/"; } })()));
     try {
       if (req.method === "HEAD") {   // link checkers (e.g. the Obsidian directory) probe with HEAD: answer like GET, without a body

@@ -1,6 +1,6 @@
 # Caldera
 
-> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members add friends, join groups, share end-to-end encrypted notes, post asks and offers for help, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
+> Caldera is the social network for GitHub and Obsidian: free, open source and built on an open protocol. Sign up with GitHub and your repos become a living city (districts are projects, buildings are repos, live visitors and AI agents move through it). Install the Obsidian plugin and your vault becomes a living public profile that updates itself. Members follow each other and become friends, join groups, message each other, share end-to-end encrypted notes, and give positive-only gravity. Private by default. Made by mjonesone, LLC.
 
 - Sign up with GitHub (no install): https://caldera.social/auth/github
 - Install for Obsidian: Obsidian community plugins (search Caldera), or copy one prompt into Claude Code, Codex or Cursor: https://caldera.social/#install

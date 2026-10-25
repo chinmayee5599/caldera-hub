@@ -1,5 +1,5 @@
 # caldera.social - search engines and AI assistants are welcome to read and cite the public site.
-# Profile pages carry noindex (owners' choice); the API is not for crawling.
+# Member pages are indexable only when the member allows it (Settings), otherwise noindex; the API is not for crawling.
 User-agent: GPTBot
 Allow: /
 Disallow: /v1/
