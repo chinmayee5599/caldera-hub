@@ -114,6 +114,10 @@ export interface EmailCtx {
   /** delete the member and everything tied to them (the hub's own erase) */
   eraseProfile: (id: string) => void;
   onPublished?: (id: string, created: boolean) => void;
+  /** a live GitHub or Obsidian member who owns this address (confirmed or verified): never make them a second page */
+  memberByEmail?: (email: string) => { id: string; handle: string } | null;
+  /** email that member the way back into their own page ("You already have a Caldera page") */
+  mailExisting?: (member: { id: string; handle: string }, email: string, back: string, inv: string) => Promise<boolean>;
   /** credit the member whose invite brought a new page; returns the inviter's id */
   recordReferral?: (invitee: string, inviterHandle: unknown, via: string) => string | null;
 }
@@ -249,9 +253,17 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       const back = okBack(f.get("back")), inv = okInv(f.get("invite")), again = (m: string) => startPage(res, m, text, email, back, inv);
       if (!okEmail(email)) { again("That email doesn't look right."); return true; }
       const pr = parseProfile(text), ex = q("SELECT handle FROM email_accounts WHERE email_hash=?").get(hash(email)) as any;
+      // the address already belongs to a GitHub or Obsidian member: one person, one page. They get the way back into
+      // their own page instead (the screen says the same either way, so nobody learns who is a member)
+      const other = ex ? null : c.memberByEmail?.(email) || null;
       // a returning member can leave the box empty: that's a sign-in link
-      if (!ex && !pr.name && !pr.headline && !pr.about) { again(text.trim() ? "We couldn't read that. Paste the whole block your AI wrote, starting with \"name:\"." : "Paste the profile your AI wrote first (step 2)."); return true; }
+      if (!ex && !other && !pr.name && !pr.headline && !pr.about) { again(text.trim() ? "We couldn't read that. Paste the whole block your AI wrote, starting with \"name:\"." : "Paste the profile your AI wrote first (step 2)."); return true; }
       if (c.tooMany("emailsignup:" + ipKey(req), 8) || c.tooMany("emailsignup:" + hash(email), 3)) { again("Too many tries. Wait an hour, then try again."); return true; }
+      const sent = () => c.page(res, 200, "Check your email", `${STYLE}<main class="ep"><h1>Check your email</h1><p class="lede">We sent a link to <b>${esc(email)}</b>. Open it and your page goes live.</p><p class="mut">Nothing there in a minute? Check spam, or <a href="/start">try again</a>.</p></main>`);
+      if (other) {
+        try { await c.mailExisting?.(other, email, back, inv); } catch (e: any) { again("We couldn't send the email: " + e.message); return true; }
+        sent(); return true;
+      }
       const tok = crypto.randomBytes(24).toString("base64url");
       q("INSERT INTO email_pending VALUES (?,?,?,?,?)").run(hash(tok), c.seal(email), JSON.stringify(pr), Date.now() + 2 * DAY, new Date().toISOString());
       q("DELETE FROM email_pending WHERE expires < ?").run(Date.now());
@@ -261,8 +273,7 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
           html: `<p>${ex ? `Open this link to sign in as <b>@${esc(ex.handle)}</b> and update your page with what you pasted.` : `Open this link to confirm your email. Your page${pr.name ? ` for <b>${esc(pr.name)}</b>` : ""} goes live right away.`}</p><p><a href="${esc(link)}" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${ex ? "Sign in" : "Publish my page"}</a></p><p style="color:#777;font-size:13px">The link works once, for 48 hours. If you didn't ask for this, ignore this email.</p>`,
           text: `${ex ? "Sign in to Caldera" : "Confirm your email and your Caldera page goes live"}: ${link}\n\nThe link works once, for 48 hours. If you didn't ask for this, ignore this email.` });
       } catch (e: any) { again("We couldn't send the email: " + e.message); return true; }
-      c.page(res, 200, "Check your email", `${STYLE}<main class="ep"><h1>Check your email</h1><p class="lede">We sent a link to <b>${esc(email)}</b>. Open it and your page goes live.</p><p class="mut">Nothing there in a minute? Check spam, or <a href="/start">try again</a>.</p></main>`);
-      return true;
+      sent(); return true;
     }
     // opening the link only shows a button (mail scanners open links; they never press buttons); the button does the work
     if (p === "/start/confirm" && req.method === "GET") {
@@ -278,6 +289,12 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
       q("DELETE FROM email_pending WHERE token_hash=?").run(hash(t));
       const email = c.unseal(row.email_sealed), pr = JSON.parse(row.content || "{}") as Profile;
       let acct = q("SELECT * FROM email_accounts WHERE email_hash=?").get(hash(email)) as any, created = false;
+      // the address became a GitHub or Obsidian member's after this link went out (or the link predates this check): the
+      // link proves the address, so it signs in to THAT page; the pasted profile is only for email pages
+      const other = acct ? null : c.memberByEmail?.(email) || null;
+      if (other) {
+        res.writeHead(302, { location: back || `/@${other.handle}/`, "set-cookie": c.startOwner(other.id), "cache-control": "no-store" }); res.end(); return true;
+      }
       if (!acct) {
         if (!c.allowNewProfile(req)) { c.page(res, 429, "One moment", `${STYLE}<main class="ep"><h1>Lots of people are joining right now</h1><p>Open the link again in a minute.</p></main>`); return true; }
         const id = C.newIdentity(), handle = handleFor(pr.name || "", email), now = new Date().toISOString();

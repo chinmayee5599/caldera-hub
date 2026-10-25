@@ -53,6 +53,10 @@ export interface GhCtx {
   /** search engines: may this member's page be indexed (listed members, after the notice period), and their choice */
   searchPref?: { on: (pr: any) => boolean; set: (owner: string, on: boolean) => void };
   privateMode?: { modeFor: (pr: any) => "show" | "anonymous" | "hidden" | "named"; chosen: (pr: any) => string | undefined; set: (owner: string, mode: unknown) => boolean; since: string };
+  /** one person, one profile: fold a GitHub sign-up page into the profile its GitHub account was just linked to */
+  merge?: (fromId: string, intoId: string, reason: string) => unknown;
+  /** a live member who owns this (verified) address: a new GitHub sign-up with it signs in to that page instead */
+  memberByEmail?: (email: string) => { id: string; handle: string } | null;
   /** test hook: replaces fetch for GitHub calls */
   fetch?: typeof fetch;
 }
@@ -431,6 +435,13 @@ export function github(ctx: GhCtx) {
   const peopleOf = async (a: any): Promise<GhPerson[]> => { try { return (await ctx.social?.circle?.people(a.profile_id)) || []; } catch { return []; } };
   /** GitHub's primary verified address (needs the app's "Email addresses: read" permission, which users accept on their next
    *  sign-in) else the public profile email: stored sealed, only to prefill the daily-summary opt-in. Never blocks sign-in. */
+  /** the account's verified addresses (needs the "Email addresses" permission; none without it) */
+  async function verifiedEmails(access: string): Promise<string[]> {
+    try {
+      const list = await Promise.race([gh(access, "/user/emails"), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3000))]) as any[];
+      return Array.isArray(list) ? list.filter(x => x?.verified && typeof x.email === "string" && !/noreply\.github\.com$/i.test(x.email)).map(x => String(x.email).toLowerCase()) : [];
+    } catch { return []; }
+  }
   async function captureEmail(owner: string, access: string, me: any): Promise<string | null> {
     const em = ctx.social?.email; if (!em?.suggest) return null;
     try {
@@ -715,7 +726,9 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         const wantH = String(cookies(req).cal_h || "").toLowerCase(); setCookie(res, "cal_h", "", 0);
         const backTo = safeBack(cookies(req).cal_back); if (backTo) setCookie(res, "cal_back", "", 0);
         // an existing profile that lists this GitHub account (made in Obsidian): sign in as its owner, never make another
-        if (!acct || acct.claimed || (wantH && wantH !== acct.handle)) {
+        // a GitHub sign-up page whose GitHub account is also linked to an Obsidian page: the same person, so it folds into it
+        const linkedElsewhere = !!acct && !acct.claimed && !wantH && !!linkedProfile(me.id, me.login);
+        if (!acct || acct.claimed || (wantH && wantH !== acct.handle) || linkedElsewhere) {
           // an existing link, or a first link with proof; never on a bare claim (anyone can put your GitHub on their page)
           let pr = linkedProfile(me.id, me.login);
           if (!pr) { const cands = claimants(me.login).filter(x => !wantH || x.handle === wantH), proven = cands.filter(x => provenOwner(req, x, me));
@@ -724,6 +737,12 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
               page(res, 403, "Link your GitHub", `<h1>One step to link your GitHub</h1><p>To keep GitHub accounts safe, Caldera links a GitHub account to a page only with proof that both are yours. Either:</p><ul><li>Open your page as its owner first: in Obsidian run <b>Caldera: Open my public page (as owner)</b>, then sign in with GitHub again, or</li><li>Put your Caldera page (<code>caldera.social/@your-handle</code>) in your GitHub profile's website or bio, then sign in with GitHub again.</li></ul><p><a rel="nofollow" class="btn" href="/auth/github">Sign in with GitHub</a></p>`); return true; } }
           if (pr && ctx.owner && (!wantH || wantH === pr.handle)) {
             q("INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)").run(me.id, me.login, pr.id, new Date().toISOString());
+            // this GitHub account also has its own page here (signed up with GitHub before the vault): one person, one
+            // profile. The GitHub page merges into the proven one; its handle redirects there, GitHub signs in there
+            if (acct && !acct.claimed && acct.profile_id !== pr.id && ctx.merge) {
+              try { ctx.merge(acct.profile_id, pr.id, `GitHub @${me.login} (${me.id}) linked to @${pr.handle}`); ctx.track?.(req, "signin", "merged GitHub page"); }
+              catch (e: any) { console.error("github merge", me.login, "->", pr.handle, e?.message); }
+            }
             ctx.track?.(req, "signin", "linked page"); addCookie(res, ctx.owner.start(pr.id)); ctx.social?.circle?.signedIn(pr.id); await captureEmail(pr.id, tok.access, me); done(backTo || `/@${pr.handle}/`); return true;
           }
           if (wantH) { page(res, 403, "Not this page", `<h1>That GitHub account isn't the one on this page</h1><p class="mut">You signed in as <b>${esc(me.login)}</b>, but @${esc(wantH)} doesn't list that GitHub account. Add <code>GitHub | https://github.com/${esc(me.login)}</code> to the page's links (in Obsidian: Caldera/profile.md), or sign in another way.</p><p><a class="btn" href="/signin?h=${encodeURIComponent(wantH)}">Other ways to sign in</a></p>`); return true; }
@@ -736,6 +755,15 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
         // new account: only a brand-new, completely empty GitHub account is held back (bots); new developers are welcome
         // a brand-new, completely empty GitHub account (how bots look) still gets its page, just not listed in People or
         // the world until it has a public repo, a follower or a few days behind it (the refresh lists it then)
+        // one person, one profile: a GitHub account whose verified address already belongs to a member (their email page,
+        // or an Obsidian page with that confirmed address) signs in to that page instead of making a second one
+        if (ctx.memberByEmail && ctx.owner) {
+          const mine = (await verifiedEmails(tok.access)).map(x => ctx.memberByEmail!(x)).find(Boolean);
+          if (mine) {
+            ctx.track?.(req, "signin", "matched verified email"); addCookie(res, ctx.owner.start(mine.id)); await captureEmail(mine.id, tok.access, me);
+            done(backTo || `/@${mine.handle}/`); return true;
+          }
+        }
         const held = !(ctx.accountOk ? ctx.accountOk(me) : true);
         if (!ctx.allowNewProfile(req)) { ctx.track?.(req, "fail", "rate limited (many sign-ups from one network)"); page(res, 429, "One moment", `<h1>Lots of people are joining from your network right now</h1><p>Give it a minute, then <a rel="nofollow" class="btn" href="/auth/github">try again</a>.</p>`); return true; }
         const id = C.newIdentity(), handle = handleFor(me.login), ck = cookies(req), grp0 = groupsFrom(ck.cal_grp);

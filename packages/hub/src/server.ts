@@ -484,6 +484,8 @@ export function createHub(opts: HubOptions) {
         if (handle && !/^[a-z0-9][a-z0-9-]{1,30}$/.test(handle)) return { status: 400, body: { error: "bad handle" } };
         if (RESERVED.has(handle)) return { status: 400, body: { error: "that handle is reserved" } };
         if (modOf(handle, e.from)) return { status: 403, body: { error: "this profile or handle is not available" } };
+        const al = handle ? aliasOf(handle) : undefined;   // merged away: kept for the person it now points at
+        if (al && al.id !== e.from) return { status: 403, body: { error: "this profile or handle is not available" } };
         const owner = handle ? byHandle(handle) : null;
         if (owner && owner.id !== e.from) return { status: 409, body: { error: "handle taken" } };
         const existing = profile(e.from);
@@ -496,6 +498,7 @@ export function createHub(opts: HubOptions) {
            headline=excluded.headline, manifest=excluded.manifest, updated=excluded.updated`)
           .run(e.from, handle || null, b.boxKey || "", nameNow, b.headline || "", JSON.stringify(e), e.ts, existing?.created || now());
         storeEnvelope(e, null);
+        if (al) q("DELETE FROM handle_aliases WHERE handle=?").run(handle);   // they took their old handle back
         if (C.gardenEnabled()) indexGarden(e.from, handle, b.garden);   // paused: the garden index is left exactly as it was
         if (!existing && b.invitedBy) recordReferral(e.from, b.invitedBy, "obsidian");
         { // a new member, or one whose page just gained a GitHub link: connect their GitHub circle on Caldera
@@ -880,10 +883,11 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   let EMP: ReturnType<typeof emailPages> | null = null;   // pages made by email + an AI (no GitHub, no Obsidian)
   function erase(id: string) {
     FEED?.erase(id); MSG?.erase(id); CHAT?.erase(id); GUIDE?.erase(id); TOOLS?.erase(id); GIFTS?.erase(id); EMP?.erase(id); PM.erase(id);
-    q("DELETE FROM alerts WHERE target=?").run(id);
+    q("DELETE FROM alerts WHERE target=?").run(id); q("DELETE FROM handle_aliases WHERE id=?").run(id);
     const pr = profile(id);
     if (pr?.handle) { fs.rmSync(path.join(opts.dataDir, "profiles", pr.handle), { recursive: true, force: true }); fs.rmSync(path.join(opts.dataDir, "cards", pr.handle + ".png"), { force: true }); q("DELETE FROM page_views WHERE handle=?").run(pr.handle); q("DELETE FROM garden_tombstones WHERE handle=?").run(pr.handle); }
     for (const r of q("SELECT key FROM traffic_sites WHERE owner=?").all(id) as any[]) q("DELETE FROM traffic WHERE key=?").run(r.key);
+    try { q("DELETE FROM merged_sites WHERE key IN (SELECT key FROM traffic_sites WHERE owner=?)").run(id); } catch { /* no merges yet */ }
     q("DELETE FROM traffic_sites WHERE owner=?").run(id); q("DELETE FROM client_versions WHERE owner=?").run(id); q("DELETE FROM agent_keys WHERE owner=?").run(id); q("DELETE FROM agents WHERE owner=?").run(id);
     q("DELETE FROM owner_private WHERE owner=?").run(id); q("DELETE FROM owner_sessions WHERE owner=?").run(id); q("DELETE FROM owner_links WHERE owner=?").run(id); q("DELETE FROM signin_links WHERE owner=?").run(id); q("DELETE FROM pair_codes WHERE owner=?").run(id);
     for (const sql of ["DELETE FROM profiles WHERE id=?", "DELETE FROM friends WHERE a=? OR b=?", "DELETE FROM repo_tombstones WHERE a=? OR b=?", "DELETE FROM gh_circle WHERE member=?", "DELETE FROM asks WHERE author=?", "DELETE FROM offers WHERE author=?",
@@ -892,6 +896,160 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       "DELETE FROM email_subs WHERE owner=?", "DELETE FROM email_suggest WHERE owner=?", "DELETE FROM email_prompt WHERE owner=?", "DELETE FROM referrals WHERE invitee=? OR inviter=?", "DELETE FROM invites_sent WHERE inviter=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
     }
+  }
+
+  // ---------------------------------------------------------------- one person, one profile: merging duplicates
+  // An old handle merged into another profile is an alias: /@old/... redirects to the survivor, and the handle stays
+  // reserved for that person (nobody else can take it; they can take it back as their own handle).
+  db.exec(`CREATE TABLE IF NOT EXISTS handle_aliases (handle TEXT PRIMARY KEY, id TEXT, reason TEXT, at TEXT);
+    CREATE TABLE IF NOT EXISTS profile_merges (from_id TEXT, from_handle TEXT, into_id TEXT, into_handle TEXT, reason TEXT, moved TEXT, at TEXT);
+    CREATE TABLE IF NOT EXISTS merged_sites (key TEXT PRIMARY KEY, from_id TEXT, at TEXT)`);
+  function aliasOf(handle: string): { handle: string; id: string } | undefined {
+    try { return q("SELECT * FROM handle_aliases WHERE handle=?").get(String(handle || "")) as any; } catch { return undefined; } }
+  /** reserved handles plus merged-away ones: what the GitHub and email sign-ups may not pick for a new page */
+  const TAKEN = { has: (h: string) => RESERVED.has(h) || !!aliasOf(h) } as unknown as Set<string>;
+  /** Merge profile `fromId` into `intoId` (same person, two profiles). The social graph, credit, alerts, messages, posts and
+   *  website keys move to `intoId`; welcome bonuses don't. A GitHub sign-up page becomes a claimed account that signs in to
+   *  the survivor, an email page's address becomes the survivor's sign-in address. Then the old profile is erased and its
+   *  handle redirects to the survivor. Signed envelopes can't change signer, so the old key's follows become follows the
+   *  survivor's Obsidian signs on its next sync. One transaction: all of it or nothing. */
+  function mergeProfiles(fromId: string, intoId: string, reason = "") {
+    const from = profile(fromId), into = profile(intoId);
+    if (!from || !into) throw new Error(`unknown profile: ${!from ? fromId : intoId}`);
+    if (fromId === intoId) throw new Error("that's the same profile");
+    const F = fromId, I = intoId, moved: Record<string, number> = {};
+    const run = (label: string, sql: string, ...args: any[]) => {
+      try { const n = Number(q(sql).run(...args).changes || 0); if (n) moved[label] = (moved[label] || 0) + n; return n; }
+      catch (e: any) { if (/no such table|no such column/.test(String(e?.message))) return 0; throw e; }
+    };
+    const rows = (sql: string, ...args: any[]): any[] => { try { return q(sql).all(...args) as any[]; } catch (e: any) { if (/no such table|no such column/.test(String(e?.message))) return []; throw e; } };
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      // friends, both directions; a link to themselves goes
+      run("friends", "INSERT OR IGNORE INTO friends (a, b, ts, kind, why) SELECT ?, b, ts, kind, why FROM friends WHERE a=? AND b<>?", I, F, I);
+      run("friends", "INSERT OR IGNORE INTO friends (a, b, ts, kind, why) SELECT a, ?, ts, kind, why FROM friends WHERE b=? AND a<>?", I, F, I);
+      for (const r of rows("SELECT a, b, ts FROM repo_tombstones WHERE a=? OR b=?", F, F)) {
+        const o = r.a === F ? r.b : r.a; if (o !== I) run("repo_tombstones", "INSERT OR IGNORE INTO repo_tombstones VALUES (?,?,?)", ...[I, o].sort(), r.ts); }
+      // follows: signed requests from the old key become follows queued for the survivor; requests to it, follows of the survivor
+      for (const r of rows("SELECT DISTINCT recipient FROM envelopes WHERE type='friend.request' AND sender=? AND recipient<>?", F, I))
+        if (!areFriends(I, r.recipient) && !follows(I, r.recipient)) run("follows", "INSERT OR IGNORE INTO friend_intents VALUES (?,?,?,?,?)", I, r.recipient, "add", null, now());
+      for (const r of rows("SELECT DISTINCT sender FROM envelopes WHERE type='friend.request' AND recipient=? AND sender<>?", F, I))
+        if (!areFriends(r.sender, I) && !follows(r.sender, I)) run("followers", "INSERT OR IGNORE INTO friend_intents VALUES (?,?,?,?,?)", r.sender, I, "add", null, now());
+      run("friend_intents", "UPDATE OR IGNORE friend_intents SET owner=? WHERE owner=? AND target<>?", I, F, I);
+      run("friend_intents", "UPDATE OR IGNORE friend_intents SET target=? WHERE target=? AND owner<>?", I, F, I);
+      // kudos, gravity, light-ups, introductions
+      run("kudos", "UPDATE OR IGNORE kudos SET recipient=? WHERE recipient=? AND sender<>?", I, F, I);
+      run("kudos", "UPDATE OR IGNORE kudos SET sender=? WHERE sender=? AND recipient<>?", I, F, I);
+      run("gravity", "UPDATE gravity SET recipient=? WHERE recipient=? AND sender<>?", I, F, I);
+      run("gravity", "UPDATE gravity SET sender=? WHERE sender=? AND recipient<>?", I, F, I);
+      run("gifts", "UPDATE OR IGNORE gifts SET recipient=? WHERE recipient=? AND giver<>?", I, F, I);
+      run("gifts", "UPDATE OR IGNORE gifts SET giver=? WHERE giver=? AND recipient<>?", I, F, I);
+      run("intros", "UPDATE OR IGNORE intros SET a=? WHERE a=? AND b<>?", I, F, I);
+      run("intros", "UPDATE OR IGNORE intros SET b=? WHERE b=? AND a<>?", I, F, I);
+      // credit: everything but the welcome bonus; who invited whom
+      run("ledger", "UPDATE ledger SET who=? WHERE who=? AND reason<>'welcome'", I, F);
+      run("ledger", "UPDATE ledger SET ref=? WHERE ref=?", I, F);
+      if (!q("SELECT 1 FROM referrals WHERE invitee=?").get(I)) run("referrals", "UPDATE referrals SET invitee=? WHERE invitee=? AND inviter<>?", I, F, I);
+      run("referrals", "UPDATE referrals SET inviter=? WHERE inviter=? AND invitee<>?", I, F, I);
+      run("invites_sent", "UPDATE invites_sent SET inviter=? WHERE inviter=?", I, F);
+      // alerts meant for the old profile (not ones about the survivor itself, like "@survivor followed you")
+      run("alerts", "DELETE FROM alerts WHERE target=? AND dkey LIKE ?", F, `%${I}%`);
+      run("alerts", "UPDATE alerts SET target=? WHERE target=?", I, F);
+      run("alert_reads", "UPDATE OR IGNORE alert_reads SET owner=? WHERE owner=?", I, F);
+      // what they're building, their GitHub circle, posts, comments, groups, tools, asks and offers
+      for (const t of ["member_tags", "tag_edits"]) if (!q(`SELECT 1 FROM ${t} WHERE member=?`).get(I)) run(t, `UPDATE ${t} SET member=? WHERE member=?`, I, F);
+      run("gh_circle", "UPDATE OR IGNORE gh_circle SET member=? WHERE member=?", I, F);
+      run("posts", "UPDATE posts SET author=? WHERE author=?", I, F);
+      run("post_comments", "UPDATE post_comments SET author=? WHERE author=?", I, F);
+      run("post_kudos", "UPDATE OR IGNORE post_kudos SET sender=? WHERE sender=?", I, F);
+      run("post_links", "UPDATE OR IGNORE post_links SET src=? WHERE src=? AND dst<>?", I, F, I);
+      run("post_links", "UPDATE OR IGNORE post_links SET dst=? WHERE dst=? AND src<>?", I, F, I);
+      run("chat_posts", "UPDATE chat_posts SET author=? WHERE author=?", I, F);
+      run("chat_reads", "UPDATE OR IGNORE chat_reads SET member=? WHERE member=?", I, F);
+      run("tools", "UPDATE tools SET owner=? WHERE owner=?", I, F);
+      run("tool_gets", "UPDATE OR IGNORE tool_gets SET member=? WHERE member=?", I, F);
+      run("asks", "UPDATE asks SET author=? WHERE author=?", I, F);
+      run("offers", "UPDATE offers SET author=? WHERE author=?", I, F);
+      run("member_days", "UPDATE OR IGNORE member_days SET owner=? WHERE owner=?", I, F);
+      for (const t of ["post_bans", "msg_bans"]) run(t, `INSERT OR IGNORE INTO ${t} SELECT ?, reason, ts FROM ${t} WHERE member=?`, I, F);   // a ban follows the person
+      // messages: a conversation the survivor already has with the same person absorbs the old one
+      const pair = (x: string, y: string) => x < y ? [x, y] : [y, x];
+      for (const t of rows("SELECT * FROM msg_threads WHERE a=? OR b=?", F, F)) {
+        const other = t.a === F ? t.b : t.a; if (other === I) continue;   // a thread with themselves: erased with the old profile
+        const [a, b] = pair(I, other), ex = q("SELECT id FROM msg_threads WHERE a=? AND b=?").get(a, b) as any;
+        if (ex) { run("msg_messages", "UPDATE msg_messages SET thread=? WHERE thread=?", ex.id, t.id); run("msg_reports", "UPDATE msg_reports SET thread=? WHERE thread=?", ex.id, t.id);
+          run("msg_threads", "UPDATE msg_threads SET updated=MAX(updated, ?) WHERE id=?", t.updated, ex.id); q("DELETE FROM msg_threads WHERE id=?").run(t.id); }
+        else run("msg_threads", "UPDATE msg_threads SET a=?, b=?, requested_by=CASE WHEN requested_by=? THEN ? ELSE requested_by END WHERE id=?", a, b, F, I, t.id);
+      }
+      run("msg_messages", "UPDATE msg_messages SET sender=? WHERE sender=?", I, F);
+      run("msg_reports", "UPDATE msg_reports SET reported=? WHERE reported=?", I, F);
+      run("msg_blocks", "UPDATE OR IGNORE msg_blocks SET blocker=? WHERE blocker=? AND blocked<>?", I, F, I);
+      run("msg_blocks", "UPDATE OR IGNORE msg_blocks SET blocked=? WHERE blocked=? AND blocker<>?", I, F, I);
+      run("msg_emailed", "UPDATE OR IGNORE msg_emailed SET owner=? WHERE owner=? AND sender<>?", I, F, I);
+      run("msg_emailed", "UPDATE OR IGNORE msg_emailed SET sender=? WHERE sender=? AND owner<>?", I, F, I);
+      if (!q("SELECT 1 FROM msg_prefs WHERE owner=?").get(I)) run("msg_prefs", "UPDATE msg_prefs SET owner=? WHERE owner=?", I, F);
+      // email: a confirmed daily summary beats none or an unconfirmed one; a verified address beats none or a guess
+      const subI = q("SELECT confirmed FROM email_subs WHERE owner=?").get(I) as any, subF = q("SELECT confirmed FROM email_subs WHERE owner=?").get(F) as any;
+      if (subF && (!subI || (!subI.confirmed && subF.confirmed))) { q("DELETE FROM email_subs WHERE owner=?").run(I); run("email_subs", "UPDATE email_subs SET owner=? WHERE owner=?", I, F); }
+      const sugI = q("SELECT verified FROM email_suggest WHERE owner=?").get(I) as any, sugF = q("SELECT verified FROM email_suggest WHERE owner=?").get(F) as any;
+      if (sugF && (!sugI || (!sugI.verified && sugF.verified))) { q("DELETE FROM email_suggest WHERE owner=?").run(I); run("email_suggest", "UPDATE email_suggest SET owner=? WHERE owner=?", I, F); }
+      const ea = q("SELECT email_sealed FROM email_accounts WHERE profile_id=?").get(F) as any;   // an email page: its address signs in to the survivor
+      if (ea?.email_sealed) { try { mail.suggest(I, unseal(ea.email_sealed), true, "email-signup"); moved.email_account = 1; } catch { /* sealed with another key: nothing to carry */ } }
+      // GitHub: the sign-up page becomes a claimed account pointing at the survivor, so signing in with GitHub lands there
+      for (const g of rows("SELECT gh_id, login FROM gh_accounts WHERE profile_id=?", F)) {
+        run("gh_accounts", "UPDATE gh_accounts SET profile_id=?, handle=?, claimed=COALESCE(claimed, ?), key_sealed='', token_sealed='', claim_code=NULL, claim_expires=NULL WHERE gh_id=?", I, into.handle, now(), g.gh_id);
+        run("gh_links", "INSERT OR REPLACE INTO gh_links VALUES (?,?,?,?)", g.gh_id, g.login, I, now());
+        run("gh_sessions", "DELETE FROM gh_sessions WHERE gh_id=?", g.gh_id);   // its sessions were for the hosted page: sign in again, land on the survivor
+      }
+      run("gh_links", "UPDATE gh_links SET profile_id=? WHERE profile_id=?", I, F);
+      // website snippets keep working: the keys move (and the survivor's plugin sync leaves them alone)
+      for (const s of rows("SELECT key FROM traffic_sites WHERE owner=?", F)) q("INSERT OR IGNORE INTO merged_sites VALUES (?,?,?)").run(s.key, F, now());
+      run("traffic_sites", "UPDATE traffic_sites SET owner=? WHERE owner=?", I, F);
+      if (!q("SELECT 1 FROM agent_keys WHERE owner=?").get(I)) run("agent_keys", "UPDATE agent_keys SET owner=? WHERE owner=?", I, F);
+      run("agents", "UPDATE OR IGNORE agents SET owner=? WHERE owner=?", I, F);
+      if (from.handle && into.handle) run("page_views", "UPDATE page_views SET handle=? WHERE handle=?", into.handle, from.handle);
+      run("handle_aliases", "UPDATE handle_aliases SET id=? WHERE id=?", I, F);   // an earlier merge into the old profile follows along
+      // the old profile goes (the same erase as Delete my page / admin remove), its handle points at the survivor
+      erase(F);
+      if (from.handle) {
+        q("INSERT OR REPLACE INTO handle_aliases VALUES (?,?,?,?)").run(from.handle, I, String(reason).slice(0, 300), now());
+        q("DELETE FROM moderation WHERE handle=? AND action<>'hidden'").run(from.handle);
+      }
+      q("INSERT INTO profile_merges VALUES (?,?,?,?,?,?,?)").run(F, from.handle || null, I, into.handle || null, String(reason).slice(0, 300), JSON.stringify(moved), now());
+      db.exec("COMMIT");
+    } catch (e) { try { db.exec("ROLLBACK"); } catch { /* already rolled back */ } throw e; }
+    worldCache = null; try { FEED?.invalidate(); } catch { /* fine */ }
+    console.log(`merged @${from.handle} (${F}) into @${into.handle} (${I}): ${reason} ${JSON.stringify(moved)}`);
+    return { merged: from.handle, into: into.handle, from: F, id: I, reason, moved, friends: (q("SELECT COUNT(*) n FROM friends WHERE a=?").get(I) as any).n as number };
+  }
+
+  /** The live member who owns this address, if any: their email page, a confirmed daily-summary address, or a verified one
+   *  (GitHub's, or an email sign-up's). One person, one page: every sign-up path asks this before making a profile. */
+  function memberByEmail(email: string): any | null {
+    const em = String(email || "").trim().toLowerCase(); if (!em) return null;
+    const h1 = mail.hashOf(em), ids = [EMP?.accountByEmail(em)?.profile_id,
+      ...(q("SELECT owner FROM email_subs WHERE hash=? AND confirmed=1").all(h1) as any[]).map(r => r.owner),
+      ...(q("SELECT owner FROM email_suggest WHERE hash=? AND verified=1").all(h1) as any[]).map(r => r.owner)];
+    for (const id of ids) { if (!id) continue; const pr = profile(id); if (pr?.handle && !modOf(pr.handle, pr.id)) return pr; }
+    return null;
+  }
+  /** "You already have a Caldera page": the way back into THAT page, whichever way it was made. */
+  function existingMemberMail(live: any, email: string, back = "", startBack = "", inv = ""): { subject: string; title: string; html: string; text: string } {
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+    const pubB = (opts.publicUrl || "https://caldera.social").replace(/\/$/, ""), qs = (o: Record<string, string>) => { const s = new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString(); return s ? "?" + s : ""; };
+    const btn = (href: string, label: string) => `<p><a href="${e(href)}" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${e(label)}</a></p>`;
+    const h = String(live.handle), ea = EMP?.accountByEmail(email), isGh = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? LIMIT 1").get(live.id);
+    let link = "", how = "";
+    if (ea && ea.profile_id === live.id) { link = EMP!.signinLinkFor(email, startBack, inv); how = "Open this link to sign in. It works once, for 48 hours."; }
+    else if (isGh) { link = `${pubB}/auth/github${qs({ back })}`; how = "Your page was made with GitHub, so sign in with the same GitHub account."; }
+    else if (mail.matches(live.id, email) || q("SELECT 1 FROM email_suggest WHERE owner=? AND hash=? AND verified=1").get(live.id, mail.hashOf(email))) {
+      const code = crypto.randomBytes(24).toString("base64url");
+      q("DELETE FROM signin_links WHERE expires < ?").run(Date.now()); q("INSERT INTO signin_links VALUES (?,?,?)").run(hashToken(code), live.id, Date.now() + 15 * 60_000);
+      link = `${pubB}/signin/link?c=${encodeURIComponent(code)}`; how = "Open this link to sign in. It works once, for 15 minutes.";
+    } else { link = `${pubB}/signin?h=${encodeURIComponent(h)}`; how = "Open this page to sign in from Obsidian or with GitHub."; }
+    return { subject: "You already have a Caldera page", title: `You're already on Caldera as @${h}`,
+      html: `<p>This email already belongs to <b>@${e(h)}</b>, so there's no need for a second page. ${e(how)}</p>${btn(link, "Sign in as @" + h)}<p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email.</p>`,
+      text: `This email already belongs to @${h} on Caldera. ${how}\n${link}\n\nIf you didn't ask for this, ignore this email.` };
   }
 
   // ---------------------------------------------------------------- operator tools (run on the server: node dist/admin.js)
@@ -905,6 +1063,14 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
     unhide(handle: string) { q("DELETE FROM moderation WHERE handle=?").run(handle); return { restored: handle }; },
     remove(handle: string, reason = "") { const pr = byHandle(handle); if (pr) erase(pr.id); q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, pr?.id || null, "removed", reason, now()); return { removed: handle, id: pr?.id || null }; },
     block(handle: string, reason = "") { q("INSERT OR REPLACE INTO moderation VALUES (?,?,?,?,?)").run(handle, null, "blocked", reason, now()); return { blocked: handle }; },
+    /** same person, two profiles: everything moves into `intoHandle`, the old handle redirects there */
+    merge(fromHandle: string, intoHandle: string, reason = "") {
+      const h = (x: string) => String(x || "").toLowerCase().replace(/^@/, ""), f = byHandle(h(fromHandle)), i = byHandle(h(intoHandle));
+      if (!f || !i) throw new Error(`no profile @${!f ? h(fromHandle) : h(intoHandle)}`);
+      return mergeProfiles(f.id, i.id, reason || "admin merge");
+    },
+    aliases: () => q("SELECT * FROM handle_aliases ORDER BY at DESC").all(),
+    merges: () => q("SELECT * FROM profile_merges ORDER BY at DESC").all(),
     // feed moderation: reported posts first
     "post-list": () => FEED!.admin.postsList(), "post-hide": (id: string) => FEED!.admin.postHide(id), "post-delete": (id: string) => FEED!.admin.postDelete(id), "funnel-report": (days?: number) => FUNNEL.report(Number(days) || 7), "email-nudge": (dry?: boolean) => {
       // GitHub members we have no email for (signed up before sign-in asked GitHub for it): one personal alert each, with a
@@ -1277,7 +1443,8 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
   const circleHooks: { joined?: (id: string) => void; signedIn?: (id: string) => void } = {};
   const FUNNEL = funnel({ q, ipOf, botUa: BOT_UA });
   const GH = github({ listings: () => LISTINGS, track: (req, step, detail) => FUNNEL.track(req, step, detail), accountOk: ext.githubAccountOk, privateMode: PM, searchPref: { on: searchable, set: (o: string, on: boolean) => q("INSERT OR REPLACE INTO search_prefs VALUES (?,?,?)").run(o, on ? 1 : 0, now()) }, q, seal, unseal, accept, erase, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", privateUrl: opts.privateUrl,
-    json, readBody, allowNewProfile, byHandle, reserved: RESERVED, fetch: opts.githubFetch, freshenMs: opts.githubFetch ? 0 : undefined,
+    json, readBody, allowNewProfile, byHandle, reserved: TAKEN, fetch: opts.githubFetch,
+    merge: (from: string, into: string, reason: string) => mergeProfiles(from, into, reason), memberByEmail: (e: string) => memberByEmail(e), freshenMs: opts.githubFetch ? 0 : undefined,
     siteNav: () => siteHeader(),
     owner: { start: (id: string) => startOwner(id), of: (req: http.IncomingMessage) => ownerOf(req), usable: (pr: any) => !modOf(pr.handle, pr.id), bar: (id: string) => { const pr = profile(id); return pr?.handle ? calderaBar(opts.publicUrl || "https://caldera.social", pr.handle, navFor(pr, "private"), undefined, bellFor(id)) : ""; } },
     social: { suggest: suggestFor, openRequests, invitedCount, recordReferral, pageState: pageStateFor, unlockState: unlockStateFor, alerts: { forOwner: (id: string) => alerts.forOwner(id, alertKind(id), 50), markRead: (id: string, ids: string[]) => alerts.markRead(id, ids) }, connections: connectionsFor, friendAct: (me: string, to: string) => friendAct(me, profile(to)), email: { status: mail.status, subscribe: mail.subscribe, unsubscribe: mail.unsubscribe, suggest: mail.suggest, promptFor: mail.promptFor, dismissPrompt: mail.dismissPrompt },
@@ -1808,12 +1975,14 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
   }
 
 
-  EMP = emailPages({ q, seal, unseal, accept, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", reserved: RESERVED, byHandle, profile,
+  EMP = emailPages({ q, seal, unseal, accept, dataDir: opts.dataDir, publicUrl: opts.publicUrl || "https://caldera.social", reserved: TAKEN, byHandle, profile,
     startOwner, memberOf, sameOrigin, allowNewProfile, tooMany, note: (m) => mail.note(m),
     page: (res, status, title, body) => { res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" });
       res.end(navify(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} - Caldera</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap"></head><body>${body}</body></html>`)); },
     hasFollower: (id) => !!q("SELECT 1 FROM friends WHERE a=? OR b=? LIMIT 1").get(id, id) || !!q("SELECT 1 FROM friend_intents WHERE target=? AND kind='add' LIMIT 1").get(id),
     rememberEmail: (owner, email) => { try { mail.suggest(owner, email, true, "email-signup"); } catch { /* fine */ } },
+    memberByEmail: (email) => memberByEmail(email),
+    mailExisting: async (member, email, back, inv) => mail.note({ to: email, ...existingMemberMail(member, email, back, back, inv), src: "signup-email" }),
     eraseProfile: (id) => erase(id), track: (req, step, detail) => FUNNEL.track(req, step, detail),
     onPublished: () => { worldCache = null; }, recordReferral });
   EMP.schedule();
@@ -1953,6 +2122,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       }
       if (req.method === "GET" && /^\/gh\/[A-Za-z0-9-]+\/?$/.test(p)) FUNNEL.track(req, "preview");
       if ((p === "/gh" || p.startsWith("/gh/")) && await GHP.route(req, res, url, p)) return;
+      // a handle merged into another profile: every old link (page, city, notes, badge, card) goes to the survivor
+      { const ma = p.match(/^\/@([a-z0-9-]+)(\/.*)?$/);
+        if (ma && (req.method === "GET" || req.method === "HEAD") && !byHandle(ma[1])) { const al = aliasOf(ma[1]), to = al ? profile(al.id) : null;
+          if (to?.handle && to.handle !== ma[1]) { res.writeHead(302, { location: `/@${to.handle}${ma[2] || "/"}${url.search}`, "cache-control": "no-cache" }); return res.end(); } } }
       { const mb = p.match(/^\/@([a-z0-9-]+)\/badge\.svg$/); if (req.method === "GET" && mb) { await GHP.memberBadge(res, mb[1], url.searchParams.get("style") === "card" ? "card" : "flat"); return; } }
       // every indexable member page and city, for search engines (robots.txt points here)
       if (req.method === "GET" && p === "/sitemap-profiles.xml") {
@@ -2297,24 +2470,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           const startBack = /^\/(messages|messages\/@[a-z0-9-]+|feed|people|world)$/.test(okB) ? okB : "";
           const ghLink = `${pubB}/auth/github${qs({ back: okB, invite: inv })}`, startLink = `${pubB}/start${qs({ back: startBack, invite: inv })}`;
           // an existing page with this address: its own email page, or a confirmed/verified address on a GitHub or Obsidian page
-          const h1 = mail.hashOf(email), ea = EMP?.accountByEmail(email);
-          const ownerId = ea?.profile_id || (q("SELECT owner FROM email_subs WHERE hash=? AND confirmed=1").get(h1) as any)?.owner || (q("SELECT owner FROM email_suggest WHERE hash=? AND verified=1").get(h1) as any)?.owner || null;
-          const pr = ownerId ? profile(ownerId) : null, live = pr?.handle && !modOf(pr.handle, pr.id) ? pr : null;
+          const live = memberByEmail(email);
           const btn = (href: string, label: string) => `<p><a href="${e(href)}" style="display:inline-block;padding:11px 18px;border-radius:999px;background:#6E4FE0;color:#fff;text-decoration:none;font-weight:600">${e(label)}</a></p>`;
           let m: { subject: string; title: string; html: string; text: string };
           if (live) {
-            const h = String(live.handle), isGh = !!q("SELECT 1 FROM gh_accounts WHERE profile_id=? LIMIT 1").get(live.id);
-            let link = "", how = "";
-            if (ea) { link = EMP!.signinLinkFor(email, startBack, inv); how = "Open this link to sign in. It works once, for 48 hours."; }
-            else if (isGh) { link = `${pubB}/auth/github${qs({ back: okB })}`; how = "Your page was made with GitHub, so sign in with the same GitHub account."; }
-            else if (mail.matches(live.id, email)) {
-              const code = crypto.randomBytes(24).toString("base64url");
-              q("DELETE FROM signin_links WHERE expires < ?").run(Date.now()); q("INSERT INTO signin_links VALUES (?,?,?)").run(hashToken(code), live.id, Date.now() + 15 * 60_000);
-              link = `${pubB}/signin/link?c=${encodeURIComponent(code)}`; how = "Open this link to sign in. It works once, for 15 minutes.";
-            } else { link = `${pubB}/signin?h=${encodeURIComponent(h)}`; how = "Open this page to sign in from Obsidian or with GitHub."; }
-            m = { subject: "You already have a Caldera page", title: `You're already on Caldera as @${h}`,
-              html: `<p>This email already belongs to <b>@${e(h)}</b>, so there's no need for a second page. ${e(how)}</p>${btn(link, "Sign in as @" + h)}<p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email.</p>`,
-              text: `This email already belongs to @${h} on Caldera. ${how}\n${link}\n\nIf you didn't ask for this, ignore this email.` };
+            m = existingMemberMail(live, email, okB, startBack, inv);
           } else {
             m = { subject: "Your Caldera sign-up link", title: "Finish joining Caldera",
               html: `<p>Open this on any device where you use GitHub. Your page and your city build themselves in about 10 seconds.</p>${btn(ghLink, "Continue with GitHub")}<p style="color:#777;font-size:13px">Read-only: your public GitHub profile and email. No access to your code or private repos.</p><p>No GitHub? <a href="${e(startLink)}">Make your page with ChatGPT or Claude</a>, or <a href="${e(pubB)}/#obsidian">use the Obsidian plugin</a>.</p><p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email.</p>`,
@@ -2477,14 +2637,16 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           else q("INSERT INTO traffic_sites VALUES (?,?,?,?,?,?)").run(key, m[1], project, s.public ? 1 : 0, crypto.randomBytes(18).toString("hex"), now());
           keep.add(key);
         }
-        for (const r of sitesOf(m[1])) if (!keep.has(r.key)) { q("DELETE FROM traffic_sites WHERE key=?").run(r.key); q("DELETE FROM traffic WHERE key=?").run(r.key); }
+        // keys that came with a merged profile aren't the plugin's to prune (their snippets are on someone's website)
+        const merged = new Set((q("SELECT key FROM merged_sites").all() as any[]).map(r => r.key));
+        for (const r of sitesOf(m[1])) if (!keep.has(r.key) && !merged.has(r.key)) { q("DELETE FROM traffic_sites WHERE key=?").run(r.key); q("DELETE FROM traffic WHERE key=?").run(r.key); }
         // agents: one key per owner; the repo -> district map arrives hashed (the hub never needs private repo names to place a drone)
         const rmap: Record<string, string> = {};
         for (const [h, pj] of Object.entries(repos && typeof repos === "object" ? repos : {}).slice(0, 2000)) if (/^[0-9a-f]{16}$/.test(h)) rmap[h] = String(pj).slice(0, 80);
         let ak = q("SELECT key, secret FROM agent_keys WHERE owner=?").get(m[1]) as any;
         if (!ak) { ak = { key: crypto.randomBytes(9).toString("hex"), secret: crypto.randomBytes(18).toString("hex") }; q("INSERT INTO agent_keys VALUES (?,?,?,?,?)").run(ak.key, m[1], ak.secret, JSON.stringify(rmap), now()); }
         else if (repos) q("UPDATE agent_keys SET repos=? WHERE owner=?").run(JSON.stringify(rmap), m[1]);
-        return json(res, 200, { sites: q("SELECT key, project, public, secret FROM traffic_sites WHERE owner=?").all(m[1]), agent: { key: ak.key, secret: ak.secret } });
+        return json(res, 200, { sites: q("SELECT key, project, public, secret FROM traffic_sites WHERE owner=? AND key NOT IN (SELECT key FROM merged_sites)").all(m[1]), agent: { key: ak.key, secret: ak.secret } });
       }
       m = p.match(/^\/v1\/owner\/(cal:[1-9A-HJ-NP-Za-km-z]+)\/live$/);
       if (req.method === "GET" && m) {
