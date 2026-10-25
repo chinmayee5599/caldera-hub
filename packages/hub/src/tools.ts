@@ -188,7 +188,7 @@ m.className='tl-msg ok';m.textContent=x.j.status==='pending'?'Saved. Your first 
       .filter(([k]) => all.some(t => t.platforms.split(",").includes(k))).map(([k, v]) => `<a href="/tools?platform=${k}"${platform === k ? ' class="on"' : ""}>${esc(v)}</a>`).join("")}</nav>`;
     const review = isFounder(me) ? (q("SELECT * FROM tools WHERE status='pending' ORDER BY created").all() as Tool[]).map(t => { const pr = c.profile(t.owner); return pr ? card({ ...t, handle: pr.handle, makerName: pr.name, since: String(pr.created || "").slice(0, 7) }, { maker: true, viewer: me, review: true }) : ""; }).join("") : "";
     const own = me ? mine(me).filter(t => t.status === "pending").map(t => card(t, { viewer: me })).join("") : "";
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Free tools - Caldera</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Free tools - Caldera</title><link rel="canonical" href="${hub}/tools">
 <meta name="description" content="Free software made by Caldera members: apps, command-line tools, Obsidian plugins and more. Every download links to the maker's own release."><style>${CSS}</style></head>
 <body><main class="wrap" style="max-width:1080px;margin:0 auto;padding:28px 20px 60px"><h1 style="margin:0">Free tools</h1>
 <p class="lede" style="max-width:68ch">Software Caldera members made and give away. Each listing links to the maker's own release, so you download from the source. Look for the open-source badge to see the code first.</p>
@@ -204,7 +204,7 @@ ${filters}<div class="tl-grid">${list.map(t => card(t, { maker: true, viewer: me
   function downloadsPage(me: string | null) {
     const rel = c.plugin ? c.plugin() : null, ts = live().slice(0, 12);
     const dl = (title: string, ver: string, body: string, acts: string) => `<article class="dl-card"><div class="dl-h"><b>${title}</b>${ver ? `<span class="tl-chip">${ver}</span>` : ""}</div>${body}<div class="tl-acts">${acts}</div></article>`;
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Downloads - Caldera</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Downloads - Caldera</title><link rel="canonical" href="${hub}/downloads">
 <meta name="description" content="Download Caldera for Obsidian, set up your AI agents and live visitors on your map, and find free tools made by Caldera members."><style>${CSS}
 .dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:16px 0}.dl-card{display:flex;flex-direction:column;gap:8px;padding:18px;border:1px solid var(--line,#2a2a2e);border-radius:14px;background:var(--bg-raised,#1d1d21)}
 .dl-card.main{border-color:#7a58f0}.dl-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.dl-h b{font-size:17px;color:var(--text-strong,#f2f2f5)}.dl-card p{margin:0;font-size:14px;color:var(--text,#dadadf)}

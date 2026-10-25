@@ -818,7 +818,7 @@ var mw=$('.fd-more');if(mw)mw.hidden=!x.j.more;tip(n?n+' new':'Up to date')})})}
     const t = FILTER[type] ? type : "all", items = page(t, "", me, 30, author), meH = me ? c.profile(me)?.handle || "" : "";
     const people = me && !author ? peopleHtml(me, "rail") : "";
     const tabs = [["all", "All"], ["posts", "Asks"], ["recommends", "Recommends"], ["members", "New members"], ["cities", "Cities"], ["kudos", "Kudos"]].map(([k, l]) => `<a href="/feed${k === "all" ? "" : "?type=" + k}"${k === t ? ' aria-current="page"' : ""}>${l}</a>`).join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Feed - Caldera</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Feed - Caldera</title><link rel="canonical" href="${hub}/feed">
 <meta name="description" content="What's happening on Caldera: new members, new cities, kudos, and what people are looking for."><link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><div class="fd-wrap${people ? " has-rail" : ""}"><main class="fd">
@@ -836,7 +836,7 @@ ${author ? `<p class="fd-shared">Showing posts and activity from <a href="/@${es
     const v = postView(row, me), meH = me ? c.profile(me)?.handle || "" : "", invBy = inv ? c.byHandle(inv) : null;
     const og = c.ogTags ? c.ogTags({ url: v.url, image: `${hub}/feed/p/${id}.png`, title: v.text, description: v.detail || `On Caldera, the social network for GitHub and Obsidian.` }) : "";
     const shared = !me && invBy && visible(invBy) ? `<div class="fd-shared"><b>${esc(invBy.name || "@" + invBy.handle)}</b> shared this with you. <a rel="nofollow" href="/auth/github?invite=${encodeURIComponent(invBy.handle)}&back=${encodeURIComponent("/feed/p/" + id)}">Sign up with GitHub</a> to reply, and you'll start as friends.</div>` : "";
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(v.text)} - Caldera</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(v.text)} - Caldera</title><link rel="canonical" href="${hub}/feed/p/${esc(id)}">
 <meta name="description" content="${esc(v.detail || v.text)}">${og}<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
 <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/site.css">${CSS}</head><body><main class="fd">

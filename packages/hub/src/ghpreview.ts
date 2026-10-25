@@ -167,7 +167,7 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
       .replace('<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">', '<link rel="icon" href="/favicon.svg" type="image/svg+xml">')
       .replace('href="assets/theme.css"', 'href="/gh/assets/theme.css"').replace('href="assets/profile.css"', 'href="/gh/assets/profile.css"')
       .replace(/href="index\.html"/g, `href="${esc(p.html_url)}" target="_blank" rel="noopener"`)
-      .replace("</head>", `<style>${PAGE_CSS}</style></head>`)
+      .replace("</head>", `<link rel="canonical" href="${esc(url)}"><style>${PAGE_CSS}</style></head>`)
       .replace(/<body([^>]*)>/, (_m, a) => `<body${a}>${c.header}`)
       .replace('<main class="note"><div class="c-main">', `<main class="note"><div class="c-main">${banner}`)
       .replace(" The houses around each district are the Obsidian notes about that project.", " Here, districts are languages.")
