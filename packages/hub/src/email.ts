@@ -16,12 +16,10 @@ export interface DigestData {
   handle: string; name: string; hosted: boolean;
   views24: number; visitors24: number; views7: number; visitors7: number;
   requests: { handle: string; name: string; note: string; why?: string }[]; friends: { handle: string; name: string; kind?: string; why?: string; joined?: boolean }[];
-  /** from the vault (journal entries + notes edited since the last email) and the city (commits this week) */
-  vault?: { journal: number; notes: number }; cityCommits?: number;
   /** the ONE most valuable missing piece of setup, with the exact place to do it */
   setup?: { label: string; why: string; how: string; url: string };
   gravity: { handle: string; reason: string }[]; links: number; invited: { handle: string }[]; credits: number;
-  suggestions: { handle: string; name: string; why: string; joined?: boolean }[]; newMembers: { handle: string; name: string }[];
+  suggestions: { handle: string; name: string; why: string; joined?: boolean }[];
   /** days since a vault-published page last updated (3+), takes the place of the finish-your-page step */
   stale?: number;
   /** kudos received since the last email, and the page's all-time views (one per visitor per day) */
@@ -39,15 +37,33 @@ export interface DigestData {
   recommends?: { handle: string; name: string; sentence: string; why: string; link: string; url: string }[];
   /** unread direct messages (who from, how many, a 120-character preview); absent when the member turned these emails off */
   messages?: { unread: number; from: { handle: string; name: string; count: number; preview: string; request: boolean }[]; url: string };
-  /** what happened on Caldera since the last email (the same for everyone), and the day's AI news */
+  /** the reader's own numbers (Caldera, their vault, their code): the header tiles, the "Your week" table and the subject */
+  you?: You;
+  /** bulletin-board and feed posts since the last email, and the day's AI news. Never network size or growth. */
   network?: Network; news?: NewsItem[];
-  /** false when nothing happened to this member personally (the subject then leads with the network) */
+  /** false when nothing happened to this member personally (the subject then leads with their own numbers) */
   personal?: boolean;
 }
+/** The reader's own stats. "day" = the last 24 hours (daily-bucketed counts: yesterday and today), "week" = the last 7 days.
+ *  A field left out means "we don't know" (that row is omitted), never 0. */
+export interface You {
+  caldera: {
+    views: { day: number; week: number; all: number }; visitors: { day: number; week: number; all: number };
+    cityViews?: { day: number; week: number; all: number };
+    kudos: { day: number; week: number; all: number }; followers: { week: number; all: number }; connections: { week: number; all: number };
+    gravity: { week: number }; linksIn?: number; messages: { week: number };
+    /** check-ins: days they were on Caldera (site, their page or Obsidian talking to us) */
+    checkins: { week: number; all: number; today: boolean };
+    /** when their page last published */
+    updated?: string;
+  };
+  vault?: { notes: { day: number; week: number }; journal: { day: number; week: number }; sessions?: { day: number; week: number };
+    meetings?: number; emails?: number; docs?: number; totals?: { notes: number; words: number; links: number; activeDays: number } };
+  code?: { commits: { day: number; week: number }; activeRepos?: number; repos?: number; top?: { name: string; url?: string; week: number }; languages: string[];
+    /** lines of code added/removed: absent when unknown */
+    lines?: { added: number; removed: number; dayAdded?: number; dayRemoved?: number } };
+}
 export interface Network {
-  joinedNew: number; joinedWeek: number; members: { handle: string; name: string; headline: string }[];
-  cities: number; citiesNew: number; newCities: { handle: string; url: string }[];
-  tools: { name: string; pitch: string; platforms: string[]; url: string; by: string }[]; toolsNew: number;
   boards: { group: string; groupName: string; by: string; text: string; replies: number; url: string }[];
   posts: { by: string; text: string; tags: string[]; comments: number; url: string }[];
 }
@@ -66,6 +82,54 @@ export interface EmailCtx {
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const ascii = (s: string) => s.normalize("NFKD").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/[^\n\x20-\x7e]/g, "");
 const DAY = 86_400_000;
+const fmt = (n: number) => n.toLocaleString("en-US");
+const plural = (n: number, one: string, many = one + "s") => `${fmt(n)} ${n === 1 ? one : many}`;
+/** "today", "yesterday", "3 days ago" */
+function ago(iso: string): string {
+  const t = Date.parse(iso); if (!t) return "";
+  const days = Math.floor((Date.now() - t) / DAY);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+}
+/** the reader's numbers, or the page-view numbers every digest carries when the hub sent no more */
+const youOf = (d: DigestData): You => d.you || { caldera: { views: { day: d.views24, week: d.views7, all: d.viewsAll || 0 }, visitors: { day: d.visitors24, week: d.visitors7, all: d.viewsAll || 0 },
+  kudos: { day: 0, week: d.kudos?.length || 0, all: 0 }, followers: { week: d.requests.length, all: 0 }, connections: { week: d.friends.length, all: 0 }, gravity: { week: d.gravity.length },
+  messages: { week: d.messages?.unread || 0 }, checkins: { week: 0, all: 0, today: false } } };
+/** subjects that say nothing about the reader (or talk about the network): replaced by the reader's own numbers */
+const GENERIC_SUBJECT = /^Caldera:\s*(your daily summary|this week on caldera|meet \d+ new people.*|\d+ new members?.*|one step for your page.*)?$/i;
+/** The subject on a day without one big personal event: the reader's own numbers, e.g.
+ *  "Caldera Daily: 42 people viewed your page, 31 commits this week". Nothing personal -> the top AI story, or "your week in numbers". */
+export function youSubject(d: DigestData): string {
+  const y = youOf(d), bits: string[] = [];
+  const views = y.caldera.visitors.week;
+  if (views) bits.push(`${plural(views, "person", "people")} viewed your page`);
+  const k = y.code, v = y.vault;
+  if (k?.commits.week) bits.push(`${plural(k.commits.week, "commit")} this week`);
+  else if (k?.lines && (k.lines.added || k.lines.removed)) bits.push(`+${fmt(k.lines.added)} lines of code this week`);
+  if (bits.length < 2 && v?.notes.week) bits.push(`${plural(v.notes.week, "note")} edited this week`);
+  if (bits.length < 2 && v?.sessions?.week) bits.push(`${plural(v.sessions.week, "AI session")} this week`);
+  if (bits.length < 2 && y.caldera.kudos.week) bits.push(`${plural(y.caldera.kudos.week, "kudos", "kudos")} this week`);
+  if (bits.length) return `Caldera Daily: ${bits.slice(0, 2).join(", ")}`;
+  const top = d.news?.find(x => x.src === "HN");
+  return `Caldera Daily: ${top ? top.title.slice(0, 90) : "your week in numbers"}`;
+}
+/** The four header tiles: the reader's own numbers, the busiest first, with steady fallbacks so there are always four. */
+export function youTiles(d: DigestData): { n: string; label: string; accent?: boolean; good?: boolean }[] {
+  const y = youOf(d), c = y.caldera, k = y.code, v = y.vault, out: { n: string; label: string; accent?: boolean; good?: boolean; v: number }[] = [];
+  const put = (v0: number | undefined, n: string, label: string, extra: { accent?: boolean; good?: boolean } = {}) => { if (v0 != null) out.push({ v: v0, n, label, ...extra }); };
+  put(c.visitors.week, fmt(c.visitors.week), "people viewed your page", { accent: c.visitors.day > 0 });
+  if (k) put(k.commits.week, fmt(k.commits.week), "commits this week", { good: k.commits.week > 0 });
+  if (k?.lines) put(k.lines.added + k.lines.removed, `+${fmt(k.lines.added)}`, `lines of code &middot; -${fmt(k.lines.removed)}`, { good: true });
+  if (v) put(v.notes.week, fmt(v.notes.week), "notes edited this week");
+  if (v?.sessions) put(v.sessions.week, fmt(v.sessions.week), "AI sessions this week");
+  put(c.kudos.week, fmt(c.kudos.week), "kudos this week");
+  put(c.connections.week, fmt(c.connections.week), "new connections");
+  const live = out.filter(t => t.v > 0).slice(0, 4);
+  const fallbacks = [{ v: 0, n: fmt(c.views.all), label: "page views, all time" }, { v: 0, n: `${c.checkins.week}/7`, label: "days on Caldera" },
+    { v: 0, n: fmt(c.connections.all), label: "connections" }, { v: 0, n: fmt(c.kudos.all), label: "kudos, all time" }];
+  if (!live.includes(out[0]!)) live.unshift(out[0]!);   // page views always lead
+  for (const f of fallbacks) { if (live.length >= 4) break; if (!live.some(t => t.label === f.label)) live.push(f); }
+  return live.slice(0, 4).map(({ v: _v, ...t }) => t);
+}
 
 /** Attribution: add src=<kind> to every link back to the hub in an email (HTML hrefs and plain-text URLs). One-time and
  *  account links (unsubscribe, confirm, sign-in, /v1 API) and legal pages are left alone; other sites are never touched. */
@@ -200,7 +264,9 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const page = `${hub}/@${d.handle}/`, at = (h: string) => `${hub}/@${encodeURIComponent(h)}/`;
     const pl = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
     const cons = d.friends, net = d.network, news = d.news || [];
-    const subject = ascii(d.personal === false && net ? netSubject(d) : rank.subject(d)).replace(/ {2,}/g, " ").replace(/ +$/, "");
+    // the subject is about the reader: the one thing that happened to them, else their own numbers. Never network size.
+    const lead = d.personal === false ? "" : rank.subject(d);
+    const subject = ascii(lead && !GENERIC_SUBJECT.test(lead) ? lead : youSubject(d)).replace(/ {2,}/g, " ").replace(/ +$/, "");
     // GitHub-style boxes: a gray header bar (an <h2>) over rows. Tables and inline styles only, so Gmail and Outlook render it.
     const F = "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif", M = "ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace";
     const INK = "#1f2328", MUT = "#59636e", LINE = "#d0d7de", ROWL = "#d8dee4", BG = "#f6f8fa", LINK = "#0969da", ACC = "#6e4fe0";
@@ -233,6 +299,7 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     for (const i of d.invited) { N.push([`${who(i.handle)} joined from your invite`, btn(at(i.handle), "Say hi")]); NT.push(`@${i.handle} joined from your invite (${at(i.handle)})`); }
     for (const g of d.gravity) { N.push([`${who(g.handle)} sent you gravity${g.reason ? mut(esc(g.reason)) : ""}`, btn(at(g.handle), "See their page")]); NT.push(`@${g.handle} sent you gravity${g.reason ? ": " + g.reason : ""} - ${at(g.handle)}`); }
     if (N.length) sec("Notifications", pl(N.length, "new item"), N, NT.join("\n"));
+    const weekAt = H.length, weekAtT = T.length;   // "Your week" goes right under the inbox and notifications
     // Picked for you: posts that match you, then the newest feed posts
     const P: [string, string?][] = [], PT: string[] = [], seen = new Set<string>();
     for (const x of d.lookingFor || []) { seen.add(x.url); P.push([`${a(x.url, esc(x.sentence), true)}${mut(`You match: ${esc(x.why)}`)}`, btn(x.url, "See the post")]); PT.push(`${x.sentence} (you match: ${x.why}) ${x.url}`); }
@@ -242,33 +309,71 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     // Bulletin boards
     if (net?.boards.length) sec("Bulletin boards", "since your last email", net.boards.map(b => [`<span style="font:12px ${M};color:${MUT}">#${esc(b.group)}</span> ${a(b.url, esc(b.text))}${mut(`@${esc(b.by)}`)}`, `<span style="color:${MUT};font-size:12px">${pl(b.replies, "reply", "replies")}</span>`] as [string, string]),
       net.boards.map(b => `#${b.group}: ${b.text} (@${b.by}, ${pl(b.replies, "reply", "replies")}) ${b.url}`).join("\n"));
-    // New members
-    if (net?.members.length) sec("New members", a(`${hub}/people?sort=new`, `See all ${net.joinedWeek} this week`), net.members.map(m => [`${who(m.handle, m.name)}${m.headline ? mut(esc(m.headline)) : ""}`, btn(at(m.handle), "Say hi")] as [string, string]),
-      net.members.map(m => `@${m.handle}${m.headline ? ` - ${m.headline}` : ""}: ${at(m.handle)}`).join("\n") + `\nEveryone new: ${hub}/people?sort=new`);
     // People to meet (picked for you from your repos and tags)
-    const met = new Set((net?.members || []).map(m => m.handle));
-    const sug = d.suggestions.filter(x => !met.has(x.handle)).slice(0, 3);
+    const sug = d.suggestions.slice(0, 3);
     if (sug.length) sec("People to meet", "", sug.map(x => [`${who(x.handle, x.name)}${x.why ? mut(esc(x.why)) : ""}`, btn(at(x.handle), "Follow")] as [string, string]),
       sug.map(x => `@${x.handle}${x.why ? ` (${x.why})` : ""} - follow: ${at(x.handle)}`).join("\n"));
-    // New cities | New tools, side by side
-    const cityCell = net?.newCities.length ? box("New cities", "", rows(net.newCities.map(c => [`${a(c.url, `@${esc(c.handle)}'s city`, true)}${mut("Their public repos as a living city")}`, btn(c.url, "Walk it")] as [string, string]))) : "";
-    const toolCell = net?.tools.length ? box("New tools", "", rows(net.tools.map(t => [`${a(t.url, esc(t.name), true)}${t.pitch ? mut(esc(t.pitch)) : ""}${t.platforms.length ? `<div>${t.platforms.map(chip).join("")}</div>` : ""}`, btn(t.url, "Download", "green")] as [string, string]))) : "";
-    if (cityCell || toolCell) {
-      H.push(cityCell && toolCell ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="cd-half" width="50%" style="vertical-align:top;padding-right:8px">${cityCell}</td><td class="cd-half" width="50%" style="vertical-align:top;padding-left:8px">${toolCell}</td></tr></table>` : cityCell || toolCell);
-      if (net!.newCities.length) T.push(`NEW CITIES\n${net!.newCities.map(c => `@${c.handle}'s city: ${c.url}`).join("\n")}`);
-      if (net!.tools.length) T.push(`NEW TOOLS\n${net!.tools.map(t => `${t.name}${t.pitch ? ` - ${t.pitch}` : ""}: ${t.url}`).join("\n")}`);
-    }
     // AI & agents today
     if (news.length) sec("AI &amp; agents today", "Hacker News &middot; GitHub &middot; Hugging Face", news.map(n => [`<span style="display:inline-block;width:56px;font:12px ${M};color:${MUT}">${esc(n.src)}</span>${a(n.url, esc(n.title))}${mut(`<span style="display:inline-block;width:56px"></span>${esc(n.meta)}`)}`] as [string]),
       news.map(n => `[${n.src}] ${n.title} (${n.meta}) ${n.url}`).join("\n"));
-    // Your page: one stat strip
-    const pg: string[] = [], pt: string[] = [];
-    const stat = (n: number | string, label: string) => `<span style="display:inline-block;white-space:nowrap;margin-right:14px"><b style="font-family:${M};color:${INK}">${n}</b> ${label}</span>`;
-    if (d.views7 || d.visitors24) { pg.push(stat(d.visitors24, "visitors today"), stat(d.visitors7, "this week")); const all = d.viewsAll && d.viewsAll > d.visitors7 ? d.viewsAll : 0; if (all) pg.push(stat(all.toLocaleString("en-US"), "all time")); pt.push(`${d.visitors24} people in the last day, ${d.visitors7} this week${all ? `, ${all} all time` : ""}`); }
-    if (d.vault && (d.vault.journal || d.vault.notes)) { pg.push(stat(d.vault.journal, d.vault.journal === 1 ? "journal entry" : "journal entries"), stat(d.vault.notes, d.vault.notes === 1 ? "note edited" : "notes edited")); pt.push(`From your vault: ${pl(d.vault.journal, "journal entry", "journal entries")}, ${pl(d.vault.notes, "note")} edited`); }
-    if (d.cityCommits) { pg.push(stat(d.cityCommits.toLocaleString("en-US"), "commits on your city")); pt.push(`Your city: ${pl(d.cityCommits, "commit")} this week`); }
-    if (d.links) { pg.push(stat(d.links, d.links === 1 ? "new link in" : "new links in")); pt.push(`${pl(d.links, "new link")} into your page`); }
-    if (pg.length) { H.push(box("Your page", `${a(page, "Your page")} &middot; ${a(`${page}city.html`, "your city")}`, `<tr><td colspan="2" style="padding:10px 14px;font-size:13px;color:${MUT};line-height:1.9">${pg.join("")}</td></tr>`)); T.push(`YOUR PAGE\n${pt.join("\n")}\n${page}`); }
+    // Your week: the reader's own numbers, one row each (last 24 hours / 7 days / all time); unknown numbers leave the row out
+    const y: You | undefined = d.you || (d.views7 || d.visitors24 || d.viewsAll ? youOf(d) : undefined), n0 = (n: number | undefined) => n == null ? "" : n.toLocaleString("en-US");
+    const W: { label: string; c: [string, string, string]; group?: string; t?: string }[] = [];
+    const add = (group: string, label: string, day?: number | string, week?: number | string, all?: number | string, t?: string) => {
+      const f = (v: number | string | undefined) => typeof v === "number" ? n0(v) : v || "";
+      W.push({ group, label, c: [f(day), f(week), f(all)], t }); };
+    if (y) {
+      const c = y.caldera, CAL = "On Caldera";
+      add(CAL, "Page views", c.views.day, c.views.week, c.views.all);
+      add(CAL, "Unique visitors", c.visitors.day, c.visitors.week, c.visitors.all);
+      if (c.cityViews && (c.cityViews.all || c.cityViews.week)) add(CAL, "City views", c.cityViews.day, c.cityViews.week, c.cityViews.all);
+      add(CAL, "Kudos received", c.kudos.day, c.kudos.week, c.kudos.all);
+      add(CAL, "Followers", undefined, c.followers.week ? `+${n0(c.followers.week)}` : 0, c.followers.all, `${n0(c.followers.all)} (+${n0(c.followers.week)} in 7 days)`);
+      add(CAL, "Connections", undefined, c.connections.week ? `+${n0(c.connections.week)}` : 0, c.connections.all, `${n0(c.connections.all)} (+${n0(c.connections.week)} in 7 days)`);
+      if (c.messages.week) add(CAL, "Messages received", undefined, c.messages.week);
+      if (c.gravity.week) add(CAL, "Gravity received", undefined, c.gravity.week);
+      if (c.linksIn) add(CAL, "Links into your garden", undefined, undefined, c.linksIn);
+      add(CAL, "Check-ins (days on Caldera)", c.checkins.today ? "yes" : "-", `${c.checkins.week} of 7`, c.checkins.all || "",
+        `${c.checkins.today ? "here today, " : ""}${c.checkins.week} of the last 7 days${c.checkins.all ? `, ${n0(c.checkins.all)} days in all` : ""}`);
+      if (y.vault) {
+        const v = y.vault, VA = "In your vault";
+        add(VA, "Notes edited", v.notes.day, v.notes.week);
+        add(VA, "Journal entries", v.journal.day, v.journal.week);
+        if (v.sessions && (v.sessions.week || v.sessions.day)) add(VA, "AI sessions", v.sessions.day, v.sessions.week);
+        if (v.meetings) add(VA, "Meetings", undefined, v.meetings);
+        if (v.emails) add(VA, "Emails sent", undefined, v.emails);
+        if (v.docs) add(VA, "Docs", undefined, v.docs);
+        if (v.totals?.notes) add(VA, "Notes in your vault", undefined, undefined, v.totals.notes);
+        if (v.totals?.words) add(VA, "Words written", undefined, undefined, v.totals.words);
+        if (v.totals?.activeDays) add(VA, "Active days", undefined, undefined, v.totals.activeDays);
+      }
+      if (y.code) {
+        const k = y.code, CO = "In your code";
+        add(CO, "Commits", k.commits.day, k.commits.week);
+        if (k.lines) add(CO, "Lines of code", k.lines.dayAdded != null ? `+${n0(k.lines.dayAdded)} / -${n0(k.lines.dayRemoved || 0)}` : "", `+${n0(k.lines.added)} / -${n0(k.lines.removed)}`);
+        if (k.activeRepos != null) add(CO, "Repos (active / all)", undefined, k.activeRepos, k.repos || "", `${n0(k.activeRepos)} active in the last 7 days${k.repos ? ` of ${n0(k.repos)}` : ""}`);
+        if (k.top) add(CO, "Most active repo", undefined, k.top.url ? a(k.top.url, esc(k.top.name)) : esc(k.top.name));
+        if (k.languages.length) add(CO, "Languages", undefined, esc(k.languages.slice(0, 4).join(", ")));
+      }
+    }
+    if (W.length) {
+      const th = (t: string, al = "right") => `<th style="padding:6px 8px;font-size:11px;font-weight:600;color:${MUT};text-align:${al};border-bottom:1px solid ${ROWL};white-space:nowrap">${t}</th>`;
+      const td = (t: string, al = "right", last = false, mono = true) => `<td style="padding:6px 8px;font-size:13px;${mono ? `font-family:${M};` : ""}text-align:${al};${last ? "" : `border-bottom:1px solid ${ROWL};`}vertical-align:top;${mono ? "white-space:nowrap;" : ""}color:${t === "-" || t === "" ? MUT : INK}">${t || "&nbsp;"}</td>`;
+      let rowsH = "", grp = "";
+      W.forEach((w, i) => {
+        if (w.group !== grp) { grp = w.group!; rowsH += `<tr><td colspan="4" style="padding:8px 8px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:${MUT};border-bottom:1px solid ${ROWL}">${esc(grp)}</td></tr>`; }
+        const last = i === W.length - 1, text = /^(Most active repo|Languages)$/.test(w.label);
+        rowsH += `<tr>${td(esc(w.label), "left", last, false)}${text ? `<td colspan="3" style="padding:6px 8px;font-size:13px;text-align:right;${last ? "" : `border-bottom:1px solid ${ROWL};`}">${w.c[1]}</td>` : w.c.map(x => td(x, "right", last)).join("")}</tr>`;
+      });
+      const upd = y?.caldera.updated ? ago(y.caldera.updated) : "";
+      H.splice(weekAt, 0, box("Your week", `${a(page, "Your page")} &middot; ${a(`${page}city.html`, "your city")}`, `<tr><td colspan="2" style="padding:0 6px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>${th("", "left")}${th("24h")}${th("7 days")}${th("All time")}</tr>${rowsH}</table>${upd ? `<div style="padding:6px 8px 4px;font-size:12px;color:${MUT}">Your page last published ${esc(upd)}.</div>` : ""}</td></tr>`));
+      const tx = (v: string) => v.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
+      let tg = ""; const TL: string[] = [];
+      for (const w of W) { if (w.group !== tg) { tg = w.group!; TL.push(`${tg}:`); }
+        const parts = w.t ? [w.t] : /^(Most active repo|Languages)$/.test(w.label) ? [tx(w.c[1])] : [w.c[0] && w.c[0] !== "-" ? `${tx(w.c[0])} in 24h` : "", w.c[1] ? `${tx(w.c[1])} in 7 days` : "", w.c[2] ? `${tx(w.c[2])} all time` : ""].filter(Boolean);
+        TL.push(`  ${w.label}: ${parts.join(", ") || "-"}`); }
+      T.splice(weekAtT, 0, `YOUR WEEK\n${TL.join("\n")}${upd ? `\nYour page last published ${upd}.` : ""}\n${page}`);
+    }
     if (!H.length && !d.setup) return null;
     // exactly one setup step (a page that stopped updating comes first)
     const callout = (bg: string, border: string, inner: string) => H.push(`<div style="margin:0 0 16px;padding:12px 14px;border:1px solid ${border};border-radius:6px;background:${bg};font-size:14px;color:${INK}">${inner}</div>`);
@@ -283,9 +388,10 @@ ${unsub ? `<p style="max-width:560px;margin:14px auto 0;color:#8A8794;font-size:
     const invite = `${hub}/?invite=${encodeURIComponent(d.handle)}`;
     T.push(`Bring a friend: ${invite}`);
     // header: breadcrumb + the four numbers that matter today
-    const day = new Date().toISOString().slice(0, 10), unread = d.messages?.unread || 0;
+    const day = new Date().toISOString().slice(0, 10);
     const tile = (n: string, label: string, color: string, last = false) => `<td class="cd-tile" width="25%" style="padding:12px 14px;${last ? "" : `border-right:1px solid ${LINE};`}vertical-align:top"><div style="font:700 22px/1.2 ${M};color:${color}">${n}</div><div style="font-size:12px;color:${MUT}">${label}</div></td>`;
-    const tiles = net ? `<tr><td style="padding:0;border-bottom:1px solid ${LINE}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${tile(String(unread), "unread messages", unread ? ACC : INK)}${tile(`+${net.joinedNew}`, `joined &middot; ${net.joinedWeek} this week`, INK)}${tile(String(net.cities), net.citiesNew ? `cities &middot; +${net.citiesNew} new` : "cities on the map", INK)}${tile(String(net.toolsNew || net.tools.length), net.toolsNew ? (net.toolsNew === 1 ? "new tool" : "new tools") : "tools this week", net.tools.length ? "#1a7f37" : INK, true)}</tr></table></td></tr>` : "";
+    const tl = youTiles(d);
+    const tiles = tl.length ? `<tr><td style="padding:0;border-bottom:1px solid ${LINE}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${tl.map((t, i) => tile(t.n, t.label, t.accent ? ACC : t.good ? "#1a7f37" : INK, i === tl.length - 1)).join("")}</tr></table></td></tr>` : "";
     const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><style>@media (max-width:520px){.cd-tile{display:inline-block!important;width:50%!important;box-sizing:border-box;border-right:0!important;border-bottom:1px solid #d0d7de}.cd-half{display:block!important;width:100%!important;padding:0!important}.cd-pad{padding-left:12px!important;padding-right:12px!important}}a{word-break:break-word}</style></head><body style="margin:0;background:${BG};padding:20px 10px;font:14px/1.5 ${F};color:${INK}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border:1px solid ${LINE};border-radius:6px;border-collapse:separate;text-align:left">
 <tr><td style="padding:14px 20px;border-bottom:1px solid ${LINE}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="font:14px ${M};color:${INK}"><span style="display:inline-block;width:24px;height:24px;line-height:24px;border-radius:6px;background:${ACC};color:#fff;text-align:center;font-weight:700;margin-right:8px">C</span><span style="color:${MUT}">caldera /</span> <b>${quiet ? "weekly" : "daily"}</b> <span style="color:${MUT}">/ ${day}</span></td><td style="text-align:right">${btn(page, "Open Caldera")}</td></tr></table></td></tr>
@@ -297,17 +403,6 @@ ${tiles}<tr><td class="cd-pad" style="padding:16px 20px 0">${H.join("\n")}</td><
     return { to: "", subject, html, text: ascii(`${T.join("\n\n")}\n\n--\nUnsubscribe in one click: ${unsub}\nCaldera is run by mjonesone, LLC. Privacy: ${hub}/privacy`), src: quiet ? "email-weekly" : "email-digest",
       headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } };
   }
-  /** Subject on a day with nothing personal: what happened on Caldera, then the top AI story. */
-  function netSubject(d: DigestData): string {
-    const n = d.network!, pl = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`, bits: string[] = [];
-    if (n.joinedNew) bits.push(`${pl(n.joinedNew, "new member")}`);
-    if (n.toolsNew) bits.push(`${pl(n.toolsNew, "new tool")}`);
-    if (n.boards.length) bits.push(`${pl(n.boards.length, "board post")}`);
-    if (n.posts.length) bits.push(`${pl(n.posts.length, "feed post")}`);
-    const top = d.news?.find(x => x.src === "HN");
-    return `Caldera Daily: ${bits.length ? bits.join(", ") : "today in AI and agents"}${top ? ` | ${top.title.slice(0, 70)}` : ""}`;
-  }
-
   /** One pass over every confirmed subscriber. `force` ignores the once-a-day guard (tests, manual runs). */
   async function runDigest(force = false): Promise<{ sent: number; skipped: number; errors: number }> {
     const today = new Date().toISOString().slice(0, 10);
@@ -324,10 +419,13 @@ ${tiles}<tr><td class="cd-pad" style="padding:16px 20px 0">${H.join("\n")}</td><
       const newLinks = r.last_links == null ? 0 : Math.max(0, d.links - r.last_links), totalLinks = d.links; d.links = newLinks;
       const personal = rank.active(d);
       if (ctx.network) { d.network = ctx.network(r.owner, since); d.news = news; d.personal = personal; }
-      // the network counts too: someone joined, a new tool, a board or feed post since the last email
-      const n = d.network, active = personal || !!(n && (n.joinedNew || n.toolsNew || n.boards.length || n.posts.length));
-      const quietOk = !r.last_quiet || Date.parse(r.last_quiet) < Date.now() - 7 * DAY;   // people to meet / one setup step alone: at most weekly
-      if (!active && !(quietOk && (d.suggestions.length || d.newMembers.length || d.setup || d.nudge))) { skipped++; q("UPDATE email_subs SET last_links=? WHERE owner=?").run(totalLinks, r.owner); continue; }
+      // active = something happened to them, or they did something themselves in the last day (their own numbers moved).
+      // What happens elsewhere on Caldera (someone joined, a new tool, posts in the feed) never makes a day active by itself.
+      const y = d.you, own = !!y && !!(y.vault?.notes.day || y.vault?.journal.day || y.vault?.sessions?.day || y.code?.commits.day || y.code?.lines?.dayAdded);
+      const active = personal || own;
+      const weekly = !!y && !!(y.caldera.visitors.week || y.code?.commits.week || y.vault?.notes.week || y.caldera.kudos.week);
+      const quietOk = !r.last_quiet || Date.parse(r.last_quiet) < Date.now() - 7 * DAY;   // people to meet / one setup step / their week alone: at most weekly
+      if (!active && !(quietOk && (d.suggestions.length || d.setup || d.nudge || weekly))) { skipped++; q("UPDATE email_subs SET last_links=? WHERE owner=?").run(totalLinks, r.owner); continue; }
       const m = compose(d, unsubUrl(r.token), !active); if (!m) { skipped++; continue; }
       try {
         await send({ ...m, to });

@@ -340,13 +340,17 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   const repos = [{ name: "web", full_name: "octo-cat/web", language: "TypeScript", private: false, fork: false, html_url: "https://github.com/octo-cat/web", pushed_at: now, created_at: now, size: 10, description: "My site" },
     { name: "tool", full_name: "octo-cat/tool", language: "Go", private: false, fork: false, html_url: "https://github.com/octo-cat/tool", pushed_at: now, created_at: now, size: 5, description: "" },
     { name: "forked", full_name: "octo-cat/forked", language: "C", private: false, fork: true, html_url: "x", pushed_at: now, size: 1 }];
+  const codeFreqOther = [];
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json" } });
   const fake = async (u, init = {}) => {
     u = String(u); const tok = String(init.headers?.authorization || "").replace("Bearer ", "");
     if (u === "https://github.com/login/oauth/access_token") { const b = JSON.parse(init.body); return J({ access_token: "tok" + b.code, expires_in: 28800, refresh_token: "r" }); }
     if (u.endsWith("/user")) return J(users[tok]);
     if (u.includes("/repos?type=owner")) return J(users[tok].id === 42 ? repos : []);
+    if (u.includes("/repos/octo-cat/web/stats/commit_activity")) return J(weeks.map((w, i) => i === 51 ? { ...w, total: 6 } : w));   // busy this week
     if (u.includes("/stats/commit_activity")) return J(weeks);
+    if (u.includes("/repos/octo-cat/web/stats/code_frequency")) { const t = new Date(), wk = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - t.getUTCDay()) / 1000; return J([[wk - 604800, 5000, -4000], [wk, 120, -30]]); }
+    if (u.includes("/stats/code_frequency")) { codeFreqOther.push(u); return J([]); }
     if (u.includes("/events")) return J([{ type: "PushEvent", created_at: now, payload: { size: 3 } }]);
     if (u.includes("avatars.githubusercontent.com")) return new Response(Buffer.from("png"), { status: 200 });
     if (u.includes("/applications/cid/grant")) return new Response(null, { status: 204 });
@@ -379,6 +383,13 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   // auto-filled from public GitHub: an About paragraph, facts and topics, with nothing typed in
   assert.match(pageHtml, /has been on GitHub since/); assert.match(pageHtml, /At a glance/); assert.match(pageHtml, /Public repos/);
   assert.doesNotMatch(pageHtml, /octo-cat\/forked/, "forked repos never named");
+  // lines of code for the daily email: this week's additions/deletions, only for repos with commits this week, cached with the account
+  { const id = h.db.prepare("SELECT profile_id FROM gh_accounts WHERE login='octo-cat'").get().profile_id;
+    assert.equal(JSON.parse(h.db.prepare("SELECT cache FROM gh_accounts WHERE login='octo-cat'").get().cache).loc.added, 120);
+    assert.deepEqual(codeFreqOther, [], "quiet repos aren't asked for code frequency");
+    const y = h.digestFor(id, new Date(Date.now() - 86_400_000).toISOString()).you;
+    assert.deepEqual(y.code.lines, { added: 120, removed: 30 }); assert.equal(y.vault, undefined, "no vault numbers for a GitHub page");
+    assert.match(h.mail.compose(h.digestFor(id, new Date().toISOString()), "http://hub.test/u", false).html, /\+120 \/ -30/); }
   const city = await (await fetch(base + "/@octo-cat/city.html")).text();
   assert.ok(city.includes('"name":"web"') && city.includes("TypeScript") && !city.includes("forked"), "city from public, non-fork repos");
   // just claimed: straight to the city (the "aha"), with one short welcome line; settings stay one tap away

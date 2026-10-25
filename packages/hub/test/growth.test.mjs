@@ -189,20 +189,20 @@ test("GitHub sign-up from an invite + group: referral, friend request to the inv
 });
 
 test("email text part keeps its line breaks", async () => {
-  const m = hub.mail.compose({ handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [] }, "http://hub.test/u", false);
-  assert.ok(m.text.split("\n").length > 3 && m.text.startsWith("YOUR PAGE\n"));
+  const m = hub.mail.compose({ handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], you: YOU() }, "http://hub.test/u", false);
+  assert.ok(m.text.split("\n").length > 3 && m.text.startsWith("YOUR WEEK\n"));
 });
 
 test("every digest section links back to the page it's about (HTML and plain text)", async () => {
   const p = (h) => ({ handle: h, name: h.toUpperCase() });
   const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, viewsAll: 40, links: 2, credits: 0, stale: 0,
-    vault: { journal: 1, notes: 2 }, cityCommits: 3,
+    you: YOU(),
     messages: { unread: 1, from: [{ ...p("ma"), count: 1, preview: "hi", request: false }], url: "x" },
     kudos: [{ ...p("ku"), emoji: "*" }], postKudos: [{ ...p("pk"), emoji: "*", url: "http://hub.test/feed/p1" }],
     requests: [{ ...p("rq"), note: "" }], intros: [{ ...p("in"), tag: "ai" }],
     postWaiting: [{ ...p("pw"), text: "t", kind: "help", url: "http://hub.test/feed/p2" }], suggestions: [{ ...p("su"), why: "w" }],
     lookingFor: [{ ...p("lf"), sentence: "s", why: "w", url: "http://hub.test/feed/p3" }], recommends: [{ ...p("rc"), sentence: "s", why: "w", link: "", url: "http://hub.test/feed/p4" }],
-    friends: [{ ...p("fr"), kind: "repo", why: "x/y" }, { ...p("fj"), joined: true }], invited: [{ handle: "iv" }], gravity: [{ handle: "gr", reason: "helped" }], newMembers: [] };
+    friends: [{ ...p("fr"), kind: "repo", why: "x/y" }, { ...p("fj"), joined: true }], invited: [{ handle: "iv" }], gravity: [{ handle: "gr", reason: "helped" }] };
   const m = hub.mail.compose(d, "http://hub.test/u", false);
   const sections = m.html.split(/<h2[^>]*>/).slice(1);
   assert.ok(sections.length >= 5, "all sections rendered: " + sections.length);   // inbox, notifications, picked for you, people to meet, your page
@@ -225,20 +225,91 @@ test("email links back to the hub carry src=<email kind>; one-time links and oth
   assert.equal(tagLinks(`@iv (${H}/@iv/), see ${H}/people?sort=new.`, H, "email-x", false), `@iv (${H}/@iv/?src=email-x), see ${H}/people?sort=new&src=email-x.`);
   assert.equal(tagLinks(`${H}/@a/?src=other`, H, "email-x", false), `${H}/@a/?src=other`);
   // compose marks the kind; send() tags every hub link with it
-  const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [{ handle: "rq", name: "RQ", note: "" }], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [] };
+  const d = { handle: "mike", name: "Mike", hosted: false, views24: 3, visitors24: 2, views7: 5, visitors7: 4, requests: [{ handle: "rq", name: "RQ", note: "" }], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [] };
   const m = hub.mail.compose(d, "http://hub.test/v1/email/unsub?t=z", false);
   assert.equal(m.src, "email-digest");
 });
 
-test("Caldera Daily: stat tiles, network boxes and AI news render, and a network-only day leads the subject with the network", async () => {
-  const d = { handle: "mike", name: "Mike", hosted: false, views24: 0, visitors24: 0, views7: 0, visitors7: 0, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [], newMembers: [], personal: false,
+// the reader's own numbers, as digestFor builds them (Obsidian member with code)
+const YOU = (o = {}) => ({
+  caldera: { views: { day: 9, week: 57, all: 1234 }, visitors: { day: 7, week: 42, all: 900 }, cityViews: { day: 2, week: 11, all: 140 }, kudos: { day: 1, week: 3, all: 20 },
+    followers: { week: 2, all: 30 }, connections: { week: 1, all: 25 }, gravity: { week: 0 }, messages: { week: 4 }, checkins: { week: 6, all: 40, today: true }, updated: new Date().toISOString() },
+  vault: { notes: { day: 28, week: 190 }, journal: { day: 1, week: 5 }, sessions: { day: 10, week: 350 }, meetings: 2, emails: 200, docs: 30, totals: { notes: 8904, words: 2561881, links: 28446, activeDays: 140 } },
+  code: { commits: { day: 3, week: 31 }, activeRepos: 4, repos: 36, top: { name: "caldera", url: "https://github.com/x/caldera", week: 20 }, languages: ["TypeScript", "Python"], ...o.code }, ...o.you });
+// anything that would reveal how big Caldera is or how fast it grows
+const NETWORK_SIZE = [/\bjoined\b/i, /new members?/i, /\bmembers\b/i, /sign-?ups?/i, /\bcities\b/i, /new tools?/i, /tools this week/i, /See all \d+/i, /people\?sort=new/, /New cities/, /Walk it/];
+
+test("Caldera Daily is about the reader: their stats in the tiles and Your week, never network size or growth", async () => {
+  const d = { handle: "mike", name: "Mike", hosted: false, views24: 9, visitors24: 7, views7: 57, visitors7: 42, viewsAll: 900, requests: [], friends: [], gravity: [], links: 0, invited: [], credits: 0, suggestions: [{ handle: "su", name: "Su", why: "Also into AI", joined: true }], personal: false,
+    you: YOU({ code: { lines: { added: 1520, removed: 340, dayAdded: 120, dayRemoved: 15 } } }),
+    // an older network object (with growth numbers) must not leak into the email even if a caller still passes one
     network: { joinedNew: 2, joinedWeek: 9, members: [{ handle: "nu", name: "New One", headline: "Agents at a fintech" }], cities: 31, citiesNew: 1, newCities: [{ handle: "nu", url: "http://hub.test/@nu/city.html" }],
       tools: [{ name: "Dictate", pitch: "Local push-to-talk", platforms: ["macOS"], url: "http://hub.test/tools#t-1", by: "mike" }], toolsNew: 1,
       boards: [{ group: "ai-model-discussion", groupName: "AI model discussion", by: "bo", text: "Which local model for tool calls?", replies: 3, url: "http://hub.test/messages/groups/ai-model-discussion/p1" }],
       posts: [{ by: "cy", text: "@cy is looking for a co-founder.", tags: ["ai agents"], comments: 2, url: "http://hub.test/feed/p/x1" }] },
     news: [{ src: "HN", title: "An agent story", url: "https://example.com/a", meta: "400 points" }, { src: "Paper", title: "A paper", url: "https://huggingface.co/papers/1", meta: "9 upvotes" }] };
   const m = hub.mail.compose(d, "http://hub.test/u", false);
-  for (const s of ["unread messages", "+2", "31", "New members", "Say hi", "New cities", "New tools", "Download", "Bulletin boards", "#ai-model-discussion", "3 replies", "Picked for you", "co-founder", "AI &amp; agents today", "An agent story", "caldera /</span> <b>daily</b>"]) assert.ok(m.html.includes(s), s);
-  assert.match(m.subject, /^Caldera Daily: 2 new members, 1 new tool, 1 board post, 1 feed post \| An agent story$/);
-  assert.match(m.text, /AI & AGENTS TODAY\n\[HN\] An agent story/); assert.ok(/^[\x00-\x7e]*$/.test(m.text), "ascii text part");
+  // the subject: the reader's own numbers
+  assert.equal(m.subject, "Caldera Daily: 42 people viewed your page, 31 commits this week");
+  // the four tiles are theirs
+  const tiles = [...m.html.matchAll(/class="cd-tile"[^>]*><div[^>]*>([^<]+)<\/div><div[^>]*>([^<]+)</g)].map(x => [x[1], x[2]]);
+  assert.equal(tiles.length, 4);
+  assert.deepEqual(tiles.map(t => t[0]), ["42", "31", "+1,520", "190"]);
+  assert.match(tiles[0][1], /people viewed your page/); assert.match(tiles[1][1], /commits this week/); assert.match(tiles[2][1], /lines of code &middot; -340/); assert.match(tiles[3][1], /notes edited/);
+  // Your week: right under the notifications, one row per stat
+  assert.ok(m.html.includes(">Your week</h2>"));
+  for (const s of ["Page views", "1,234", "City views", "Kudos received", "Followers", "+2", "Connections", "Messages received", "Check-ins (days on Caldera)", "6 of 7", "Notes edited", "Journal entries", "AI sessions", "Notes in your vault", "8,904", "Words written", "2,561,881",
+    "Commits", "Lines of code", "+1,520 / -340", "+120 / -15", "Repos (active / all)", "Most active repo", "https://github.com/x/caldera", "TypeScript, Python"]) assert.ok(m.html.includes(s), s);
+  assert.match(m.text, /YOUR WEEK\n/); assert.match(m.text, /Lines of code: \+120 \/ -15 in 24h, \+1,520 \/ -340 in 7 days/); assert.match(m.text, /Page views: 9 in 24h, 57 in 7 days, 1,234 all time/);
+  // still there: boards, feed, people to meet (no counts), AI news
+  for (const s of ["Bulletin boards", "#ai-model-discussion", "Picked for you", "co-founder", "People to meet", "@su", "AI &amp; agents today", "An agent story"]) assert.ok(m.html.includes(s), s);
+  // gone: anything about how many people joined, cities on the map, tools, network totals
+  for (const re of NETWORK_SIZE) for (const [k, v] of [["html", m.html], ["text", m.text], ["subject", m.subject]]) assert.doesNotMatch(v, re, `${k} reveals network size: ${re}`);
+  assert.doesNotMatch(m.html, /New One|Dictate/);
+  assert.ok(/^[\x00-\x7e]*$/.test(m.text), "ascii text part"); assert.ok(/^[\x00-\x7e]*$/.test(m.subject), "ascii subject");
+  // lines of code: the row only when we know it (never a made-up 0)
+  const noLoc = hub.mail.compose({ ...d, you: YOU() }, "http://hub.test/u", false);
+  assert.doesNotMatch(noLoc.html, /Lines of code|lines of code/); assert.doesNotMatch(noLoc.text, /Lines of code/);
+  // a quiet day with nothing of theirs: the subject is the top AI story, never the network
+  const quiet = hub.mail.compose({ ...d, views7: 0, visitors7: 0, you: { caldera: { ...YOU().caldera, visitors: { day: 0, week: 0, all: 0 }, kudos: { day: 0, week: 0, all: 0 } } } }, "http://hub.test/u", true);
+  assert.equal(quiet.subject, "Caldera Daily: An agent story");
+  const none = hub.mail.compose({ ...d, news: [], views7: 0, visitors7: 0, you: { caldera: { ...YOU().caldera, visitors: { day: 0, week: 0, all: 0 }, kudos: { day: 0, week: 0, all: 0 } } } }, "http://hub.test/u", true);
+  assert.equal(none.subject, "Caldera Daily: your week in numbers");
+});
+
+test("digest data: the reader's numbers from page views, check-ins, the manifest and the city; lines of code only when known", async () => {
+  const day = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const vee = C.newIdentity();
+  const daily = [6, 3, 1, 0].map(n => ({ date: day(n), score: 5, headline: n === 1 ? "A good day" : "", counts: { notes: 4, prompts: 10, commits: 5, emails: 2, ...(n <= 1 ? { linesAdded: 100, linesRemoved: 20 } : {}) } }));
+  const city = { districts: [{ name: "Tools", notes: 0, repos: [
+    { name: "secret-thing", project: "Tools", public: false, priv: true, language: "Go", commits: 90, weeks: [], week: 40, today: 2 },
+    { name: "open-tool", project: "Tools", public: true, language: "TypeScript", commits: 50, weeks: [], week: 12, today: 1, url: "https://github.com/vee/open-tool" },
+    { name: "old", project: "Tools", public: true, language: "Rust", commits: 5, weeks: [], week: 0, today: 0 }] }], private: false };
+  const files = { "index.html": Buffer.from("<html><body>vee</body></html>").toString("base64"), "city.html": Buffer.from(`<html><script type="application/json" id="city-data">${JSON.stringify(city)}</script></html>`).toString("base64") };
+  const r = await post(`/v1/profiles/${vee.id}/bundle`, { manifest: C.sign(vee, "profile.manifest", { name: "Vee", handle: "vee", boxKey: vee.boxPublic, daily, stats: { notes: 120, words: 5000, links: 300, activeDays: 12 }, languages: ["Go", "TypeScript"] }), files });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  for (let i = 0; i < 3; i++) await get("/@vee/");
+  await get("/@vee/city.html");
+  const y = hub.digestFor(vee.id, new Date(Date.now() - 86_400_000).toISOString()).you;
+  assert.ok(y.caldera.views.all >= 3 && y.caldera.views.week >= 3, JSON.stringify(y.caldera.views));
+  assert.ok(y.caldera.cityViews && y.caldera.cityViews.all >= 1);
+  assert.equal(y.vault.notes.week, 16); assert.equal(y.vault.journal.week, 1); assert.equal(y.vault.sessions.week, 40); assert.equal(y.vault.totals.words, 5000);
+  assert.equal(y.code.commits.week, 20); assert.equal(y.code.activeRepos, 2); assert.equal(y.code.repos, 3);
+  assert.deepEqual(y.code.lines, { added: 200, removed: 40, dayAdded: 200, dayRemoved: 40 });
+  // the busiest repo is private: counted, never named
+  assert.equal(y.code.top, undefined); assert.ok(!JSON.stringify(y).includes("secret-thing"));
+  const m = hub.mail.compose(hub.digestFor(vee.id, new Date(Date.now() - 86_400_000).toISOString()), "http://hub.test/u", false);
+  assert.ok(!m.html.includes("secret-thing") && !m.text.includes("secret-thing"));
+  assert.match(m.html, /Lines of code/);
+  // no lines in the manifest: no lines of code at all (not 0)
+  const daily2 = daily.map(x => ({ ...x, counts: { notes: 1, commits: 2 } }));
+  await post(`/v1/profiles/${vee.id}/bundle`, { manifest: C.sign(vee, "profile.manifest", { name: "Vee", handle: "vee", boxKey: vee.boxPublic, daily: daily2, ts2: 1 }), files });
+  const y2 = hub.digestFor(vee.id, new Date(Date.now() - 86_400_000).toISOString()).you;
+  assert.equal(y2.code.lines, undefined);
+  assert.doesNotMatch(hub.mail.compose(hub.digestFor(vee.id, new Date(Date.now() - 86_400_000).toISOString()), "http://hub.test/u", false).html, /Lines of code/);
+  // the busiest public repo is named when it leads
+  const city2 = { ...city, districts: [{ ...city.districts[0], repos: city.districts[0].repos.filter(x => x.public) }] };
+  await post(`/v1/profiles/${vee.id}/bundle`, { manifest: C.sign(vee, "profile.manifest", { name: "Vee", handle: "vee", boxKey: vee.boxPublic, daily: daily2, ts2: 2 }), files: { ...files, "city.html": Buffer.from(`<html><script type="application/json" id="city-data">${JSON.stringify(city2)}</script></html>`).toString("base64") } });
+  assert.equal(hub.digestFor(vee.id, new Date(Date.now() - 86_400_000).toISOString()).you.code.top.name, "open-tool");
+  assert.equal("newMembers" in hub.digestFor(vee.id, new Date().toISOString()), false);
 });

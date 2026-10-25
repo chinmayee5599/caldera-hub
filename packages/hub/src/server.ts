@@ -34,7 +34,7 @@ import { listings, type Lookup, type safeGet } from "./listings";
 import { mapPanel } from "./mapprompt";
 import { ghPreview } from "./ghpreview";
 export { cleanText, renderText } from "./messages";
-import { emailer, type Mail } from "./email";
+import { emailer, type Mail, type You } from "./email";
 export { tagLinks } from "./email";
 import { weatherService, dayStats, ownerSetup, extrasScript } from "./cityextra";
 import { buildWorld, foldLive, worldPage, type World, type WorldMemberIn } from "./world";
@@ -1381,13 +1381,65 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
     return ext.digestSetup({ hosted, hasCity: fs.existsSync(path.join(opts.dataDir, "profiles", pr.handle, "city.html")), hasSites: !!q("SELECT 1 FROM traffic_sites WHERE owner=? LIMIT 1").get(owner),
       live: !!u.live, agents: !!u.agents, account: `${(opts.publicUrl || "https://caldera.social").replace(/\/$/, "")}/settings` });
   }
-  /** From the signed manifest's daily counts: journal entries + notes edited since the last email, commits this week. */
-  function workFor(pr: any, since: string) {
-    let daily: any[] = []; try { daily = JSON.parse(pr.manifest).body.daily || []; } catch { /* none */ }
-    const s0 = since.slice(0, 10), w0 = new Date(Date.now() - 7 * DAY).toISOString().slice(0, 10);
-    const recent = daily.filter(d => String(d.date) >= s0), week = daily.filter(d => String(d.date) >= w0);
-    return { journal: recent.filter(d => d.headline || (Number(d.score) || 0) > 0).length, notes: recent.reduce((a, d) => a + (Number(d.counts?.notes) || 0), 0),
-      commits: week.reduce((a, d) => a + (Number(d.counts?.commits) || 0), 0) };
+  /** The reader's own numbers for the daily email (header tiles, "Your week" table, subject). Read-only and cheap: page
+   *  views, kudos, follows, check-ins from the database; vault and code counts from their signed manifest's daily entries;
+   *  repos from their city; lines of code from the manifest (Obsidian) or the GitHub build's cache (GitHub sign-ups).
+   *  Private repos are only ever counted, never named. */
+  function youFor(owner: string, pr: any, hosted: boolean): You {
+    const h = pr.handle as string, d1 = new Date(Date.now() - DAY).toISOString(), d7 = new Date(Date.now() - 7 * DAY).toISOString();
+    const n = (sql: string, ...args: (string | number)[]) => Number((q(sql).get(...args) as any)?.n) || 0;
+    const pv = (since: string, city = false) => q(`SELECT COUNT(*) n, COUNT(DISTINCT visitor || substr(ts,1,10)) u FROM page_views WHERE handle=? AND ts > ?${city ? " AND path='city.html'" : ""}`).get(h, since) as any;
+    const [p1, p7, pA] = [pv(d1), pv(d7), pv("")], [c1, c7, cA] = [pv(d1, true), pv(d7, true), pv("", true)];
+    const fc = followCounts(owner), inc = openRequests(owner).incoming;
+    const fromDay = (iso: string) => iso.slice(0, 10), today = new Date().toISOString().slice(0, 10);
+    const caldera: You["caldera"] = {
+      views: { day: p1.n, week: p7.n, all: pA.n }, visitors: { day: p1.u, week: p7.u, all: pA.u },
+      cityViews: cA.n ? { day: c1.n, week: c7.n, all: cA.n } : undefined,
+      kudos: { day: n("SELECT COUNT(*) n FROM kudos WHERE recipient=? AND ts > ?", owner, d1), week: n("SELECT COUNT(*) n FROM kudos WHERE recipient=? AND ts > ?", owner, d7), all: n("SELECT COUNT(*) n FROM kudos WHERE recipient=?", owner) },
+      followers: { week: inc.filter(r => r.ts > d7).length, all: fc.followers },
+      connections: { week: n("SELECT COUNT(*) n FROM friends WHERE a=? AND ts > ? AND COALESCE(kind,'request')<>'founder' AND b IN (SELECT id FROM profiles)", owner, d7), all: fc.friends },
+      gravity: { week: n("SELECT COUNT(*) n FROM gravity WHERE recipient=? AND ts > ?", owner, d7) },
+      linksIn: C.gardenEnabled() ? n("SELECT COUNT(*) n FROM garden_links WHERE dst_handle=? AND src_handle<>?", h, h) || undefined : undefined,
+      messages: { week: (() => { try { return n("SELECT COUNT(*) n FROM msg_messages m JOIN msg_threads t ON t.id=m.thread WHERE (t.a=? OR t.b=?) AND m.sender<>? AND m.ts > ?", owner, owner, owner, d7); } catch { return 0; } })() },
+      checkins: { week: n("SELECT COUNT(*) n FROM member_days WHERE owner=? AND day > ?", owner, fromDay(d7)), all: n("SELECT COUNT(*) n FROM member_days WHERE owner=?", owner),
+        today: !!q("SELECT 1 FROM member_days WHERE owner=? AND day=?").get(owner, today) },
+      updated: pr.updated || undefined };
+    // daily entries from the signed manifest: "24h" = yesterday and today (the owner's calendar days), "7 days" = the last 7 days
+    const b = body(pr), daily: any[] = (Array.isArray(b.daily) ? b.daily : []).filter((x: any) => typeof x?.date === "string");
+    const dayFrom = fromDay(d1), weekFrom = new Date(Date.now() - 6 * DAY).toISOString().slice(0, 10);
+    const D = daily.filter(x => x.date >= dayFrom), Wk = daily.filter(x => x.date >= weekFrom);
+    const sum = (xs: any[], k: string) => xs.reduce((s0, x) => s0 + (Number(x.counts?.[k]) || 0), 0);
+    const has = (k: string) => daily.some(x => typeof x.counts?.[k] === "number");
+    const journal = (xs: any[]) => xs.filter(x => x.headline).length;
+    const st = b.stats || {};
+    const vault: You["vault"] = hosted ? undefined : {
+      notes: { day: sum(D, "notes"), week: sum(Wk, "notes") }, journal: { day: journal(D), week: journal(Wk) },
+      sessions: has("prompts") ? { day: sum(D, "prompts"), week: sum(Wk, "prompts") } : undefined,
+      meetings: sum(Wk, "meetings") || undefined, emails: sum(Wk, "emails") || undefined, docs: sum(Wk, "docs") || undefined,
+      totals: { notes: Number(st.notes) || 0, words: Number(st.words) || 0, links: Number(st.links) || 0, activeDays: Number(st.activeDays) || 0 } };
+    // repos: from their own city (every repo counted; a name only when the repo is public)
+    let code: You["code"];
+    const cityRaw = (() => { try { const html = fs.readFileSync(path.join(opts.dataDir, "profiles", h, "city.html"), "utf8");
+      const m = html.match(/<script type="application\/json" id="city-data">([\s\S]{1,3000000}?)<\/script>/); return m ? JSON.parse(m[1]) : null; } catch { return null; } })();
+    const repos: any[] = Array.isArray(cityRaw?.districts) ? cityRaw.districts.flatMap((x: any) => Array.isArray(x?.repos) ? x.repos : []).filter((r: any) => r && !r.kind) : [];
+    const commitsKnown = has("commits") || repos.length > 0;
+    if (commitsKnown) {
+      // active = pushed in the last 7 days or commits in GitHub's current week (which restarts on Sunday, so the busiest
+      // repo is ranked on this week plus last week)
+      const wk = (r: any) => (Number(r.week) || 0) + (Array.isArray(r.weeks) && r.weeks.length > 1 ? Number(r.weeks[r.weeks.length - 2]) || 0 : 0);
+      const active = repos.filter(r => (Number(r.week) || 0) > 0 || (typeof r.pushed === "string" && r.pushed > d7)).sort((x, y2) => wk(y2) - wk(x));
+      const top = active[0], topPublic = top && top.public === true && !top.locked && !top.priv && typeof top.name === "string" && top.name ? top : undefined;
+      const langs: string[] = Array.isArray(b.languages) && b.languages.length ? b.languages.filter((l: unknown) => typeof l === "string") : [...new Set(repos.filter(r => r.public === true && r.language && r.language !== "Other" && r.language !== "Private").map(r => String(r.language)))];
+      let lines: NonNullable<You["code"]>["lines"];
+      if (has("linesAdded") || has("linesRemoved")) lines = { added: sum(Wk, "linesAdded"), removed: sum(Wk, "linesRemoved"), dayAdded: sum(D, "linesAdded"), dayRemoved: sum(D, "linesRemoved") };
+      else if (hosted) { const acct = q("SELECT cache FROM gh_accounts WHERE profile_id=? AND claimed IS NULL").get(owner) as any;
+        let loc: any; try { loc = JSON.parse(acct?.cache || "{}").loc; } catch { loc = undefined; }
+        if (loc && typeof loc.added === "number" && Date.parse(loc.at) > Date.now() - 2 * DAY) lines = { added: loc.added, removed: Number(loc.removed) || 0 }; }
+      code = { commits: { day: sum(D, "commits"), week: sum(Wk, "commits") }, activeRepos: repos.length ? active.length : undefined, repos: repos.length || undefined,
+        top: topPublic ? { name: String(topPublic.name).slice(0, 80), url: typeof topPublic.url === "string" && /^https:\/\//.test(topPublic.url) ? topPublic.url : undefined, week: wk(topPublic) } : undefined,
+        languages: langs.slice(0, 6), lines };
+    }
+    return { caldera, vault, code };
   }
 
   function digestFor(owner: string, since: string) {
@@ -1401,7 +1453,7 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
     return { alerts: fresh.length ? fresh : undefined, stale: stale || undefined, nudge: stale ? undefined : nudgeFor(owner, hosted), handle: h, name: pr.name, hosted, views24: v1.n, visitors24: v1.u, views7: v7.n, visitors7: v7.u,
       requests: openRequests(owner).incoming.filter(r => r.ts > since).map(r => ({ handle: r.handle || "someone", name: r.name || "", note: r.note, why: whyPair(owner, r.id) })),
       setup: stale ? undefined : setupStepFor(owner, hosted),
-      vault: hosted ? undefined : (() => { const w = workFor(pr, since); return { journal: w.journal, notes: w.notes }; })(), cityCommits: workFor(pr, since).commits || undefined,
+      you: youFor(owner, pr, hosted),
       friends: (q("SELECT p.handle, p.name, f.kind, f.why, p.created FROM friends f JOIN profiles p ON p.id=f.b WHERE f.a=? AND f.ts > ? AND COALESCE(f.kind,'request')<>'founder'").all(owner, since) as any[])
         .map(r => ({ handle: r.handle, name: r.name, kind: r.kind, why: r.why, joined: !!r.created && r.created > since })),
       gravity: (q("SELECT p.handle, g.reason FROM gravity g LEFT JOIN profiles p ON p.id=g.sender WHERE g.recipient=? AND g.ts > ?").all(owner, since) as any[]).map(g => ({ handle: g.handle || "friend", reason: g.reason || "" })),
@@ -1409,7 +1461,6 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
       invited: q("SELECT p.handle FROM referrals r JOIN profiles p ON p.id=r.invitee WHERE r.inviter=? AND r.ts > ?").all(owner, since) as any[],
       credits: (q("SELECT COALESCE(SUM(delta),0) s FROM ledger WHERE who=? AND reason LIKE 'invited%' AND ts > ?").get(owner, since) as any).s,
       suggestions: suggestFor(owner, 3).map(x => ({ handle: x.handle, name: x.name, why: x.why, joined: !!byHandle(x.handle)?.created && byHandle(x.handle).created > since })),
-      newMembers: (q("SELECT * FROM profiles WHERE handle IS NOT NULL AND created > ? AND id<>? ORDER BY created DESC").all(d7, owner) as any[]).filter(listed).map(p => ({ handle: p.handle, name: p.name })),
       kudos: kudosFor(owner, since).map(k => ({ handle: k.from || "someone", name: k.name, emoji: k.emoji })), viewsAll: viewsOf(h),
       intros: B.pendingFor(owner, since).map(i => ({ handle: i.handle, name: i.name, tag: i.tag })),
       messages: MSG ? MSG.digestFor(owner, since) : undefined,
@@ -1418,17 +1469,11 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
           postKudos: n.kudos.map(k => ({ handle: k.from.handle, name: k.from.name, emoji: k.emoji, url: k.url })),
           postWaiting: n.waiting.map(w => ({ handle: w.from.handle, name: w.from.name, text: w.text, kind: w.kind, url: w.url })) }; })() };
   }
-  /** The daily email's network half: who joined, new cities and tools, bulletin-board and feed posts since the last email
-   *  (`since`); the member and tool lists fall back to the past week so the boxes aren't empty on a slow day. */
+  /** The daily email's feed half: bulletin-board and feed posts since the last email (`since`). Never who joined or how
+   *  many: the email doesn't talk about the network's size or growth. */
   function networkFor(owner: string, since: string) {
-    const d7 = new Date(Date.now() - 7 * DAY).toISOString(), s = since;
-    const hasCity = (h: string) => fs.existsSync(path.join(opts.dataDir, "profiles", h, "city.html"));
-    const all = (q("SELECT * FROM profiles WHERE handle IS NOT NULL ORDER BY created DESC").all() as any[]).filter(listed);
-    const week = all.filter(p => p.id !== owner && p.created && p.created > d7), fresh = week.filter(p => p.created > s);
+    const s = since;
     const who = (id: string) => { const p = profile(id); return p?.handle && listed(p) ? { handle: p.handle as string, name: String(p.name || "") } : null; };
-    const head = (p: any) => String(p.headline || body(p).headline || "").replace(/\s+/g, " ").trim().slice(0, 90);
-    const tools = (q("SELECT * FROM tools WHERE status='live' AND created > ? ORDER BY created DESC LIMIT 2").all(d7) as any[])
-      .map(t => ({ name: String(t.name), pitch: String(t.pitch || ""), platforms: String(t.platforms || "").split(",").filter(Boolean), url: `${PUB()}/tools#t-${t.id}`, by: who(t.owner)?.handle || "", fresh: t.created > s }));
     const boards = CHAT ? (q("SELECT * FROM chat_posts WHERE status='ok' AND parent IS NULL AND author<>? AND (ts > ? OR last_reply > ?) ORDER BY COALESCE(last_reply, ts) DESC LIMIT 6").all(owner, s, s) as any[])
       .map(p => { const g = CHAT!.nameOf(p.grp), a = who(p.author); return g && a ? { group: p.grp as string, groupName: g, by: a.handle, text: String(p.body || "").replace(/\s+/g, " ").slice(0, 110), replies: Number(p.replies) || 0, url: `${PUB()}/messages/groups/${p.grp}/${p.id}` } : null; })
       .filter(Boolean).slice(0, 3) as { group: string; groupName: string; by: string; text: string; replies: number; url: string }[] : [];
@@ -1436,11 +1481,7 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
       .map(r => { const a = who(r.author); if (!a) return null; let f: any = {}; try { f = JSON.parse(r.fields); } catch { /* bad row */ }
         return { by: a.handle, text: sentenceText(a.handle, f), tags: postTags(f).slice(0, 4), comments: (q("SELECT COUNT(*) n FROM post_comments WHERE post=? AND status='ok'").get(r.id) as any).n as number, url: `${PUB()}/feed/p/${r.id}` }; })
       .filter(Boolean).slice(0, 3) as { by: string; text: string; tags: string[]; comments: number; url: string }[];
-    const cityMembers = (fresh.length ? fresh : week).filter(p => hasCity(p.handle));
-    return { joinedNew: fresh.length, joinedWeek: week.length, members: (fresh.length ? fresh : week).slice(0, 4).map(p => ({ handle: p.handle as string, name: String(p.name || ""), headline: head(p) })),
-      cities: all.filter(p => hasCity(p.handle)).length, citiesNew: fresh.filter(p => hasCity(p.handle)).length,
-      newCities: cityMembers.slice(0, 2).map(p => ({ handle: p.handle as string, url: `${PUB()}/@${p.handle}/city.html` })),
-      tools, toolsNew: tools.filter(t => t.fresh).length, boards, posts };
+    return { boards, posts };
   }
   const mail = emailer({ q, seal, unseal, hub: opts.publicUrl || "https://caldera.social", pepper: PRIV_KEY, send: opts.email?.send, resendKey: opts.email?.resendKey, digest: digestFor, network: networkFor, news: opts.email?.schedule ? () => newsToday(q) : undefined, rank: { active: d => ext.digestActive(d), subject: d => ext.digestSubject(d) } });
   if (opts.email?.schedule) mail.schedule();

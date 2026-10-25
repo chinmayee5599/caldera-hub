@@ -300,6 +300,30 @@ export function github(ctx: GhCtx) {
     return { headline, summary: parts.join(" "), properties, now, topics, timeline };
   }
 
+  /** Lines of code this week (for the member's daily email): GitHub's weekly additions/deletions (code_frequency) for the
+   *  repos with commits this week, the busiest LOC_REPOS of them, 4 at a time. Stored as one aggregate with the account
+   *  (private repos only ever as part of the total; per-repo numbers stay server-side, keyed like the commit stats, so a
+   *  repo GitHub is still computing keeps last time's numbers). The week is GitHub's: since Sunday 00:00 UTC. */
+  const LOC_REPOS = 8;
+  async function linesThisWeek(repos: any[], stats: Record<string, { week: number }>, token: string, prev: any) {
+    const now = new Date(), wk = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - now.getUTCDay()) / 1000);
+    const busy = repos.filter(r => (stats[r.full_name]?.week || 0) > 0).sort((a, b) => (stats[b.full_name]?.week || 0) - (stats[a.full_name]?.week || 0)).slice(0, LOC_REPOS);
+    if (!busy.length) return { week: wk, added: 0, removed: 0, repos: 0, at: now.toISOString(), per: {} };
+    const old: Record<string, { w: number; a: number; d: number }> = prev && prev.per && typeof prev.per === "object" ? prev.per : {}, per: Record<string, { w: number; a: number; d: number }> = {};
+    for (let i = 0; i < busy.length; i += 4) await Promise.all(busy.slice(i, i + 4).map(async r => {
+      try {
+        const f = await gh(r._token || token, `/repos/${r.full_name}/stats/code_frequency`) as any;
+        const row = Array.isArray(f) ? f.find((x: any) => Array.isArray(x) && Number(x[0]) === wk) : undefined;
+        if (row) per[r.full_name] = { w: wk, a: Math.abs(Number(row[1]) || 0), d: Math.abs(Number(row[2]) || 0) };
+        else if (Array.isArray(f)) per[r.full_name] = { w: wk, a: 0, d: 0 };
+        else if (old[r.full_name]?.w === wk) per[r.full_name] = old[r.full_name]!;   // GitHub is still computing (202): keep this week's last numbers
+      } catch { if (old[r.full_name]?.w === wk) per[r.full_name] = old[r.full_name]!; }   // too many commits (422) or an error: last good numbers
+    }));
+    const xs = Object.values(per);
+    if (!xs.length) return prev && prev.week === wk ? prev : undefined;   // nothing known yet: the email leaves the row out
+    return { week: wk, added: xs.reduce((s0, x) => s0 + x.a, 0), removed: xs.reduce((s0, x) => s0 + x.d, 0), repos: xs.length, at: now.toISOString(), per };
+  }
+
   async function build(acct: any): Promise<string> {
     const token = await tokenFor(acct), me = await gh(token, "/user") as any, edits = JSON.parse(acct.edits || "{}"), cache = JSON.parse(acct.cache || "{}");
     // no email on file yet (signed up before we asked GitHub for it): try again on every refresh until we have one
@@ -322,6 +346,7 @@ export function github(ctx: GhCtx) {
         if (Array.isArray(w) && w.length) { const t52 = w.slice(-52).map((x: any) => x.total); stats[r.full_name] = { weeks: t52.slice(-12), commits: t52.reduce((a: number, b: number) => a + b, 0), week: w[w.length - 1].total }; }
       } catch { /* keep cached */ }
     }));
+    const loc = await linesThisWeek(repos, stats, token, cache.loc);
     const cityRepos: CityRepo[] = repos.map(r => { const s = stats[r.full_name] || { weeks: [], commits: 0, week: 0 };
       return { name: r.name, project: r.language || "Other", public: !r.private, language: r.language || "Other", commits: s.commits || (r.size ? 1 : 0), weeks: s.weeks, week: s.week, today: 0,
         pushed: r.pushed_at, created: r.created_at, size: r.size, url: r.private ? undefined : r.html_url, description: r.private ? undefined : (r.description || "").slice(0, 200), sites: cleanSites(r.homepage) }; });
@@ -384,7 +409,7 @@ export function github(ctx: GhCtx) {
     const rmap = Object.fromEntries(cityRepos.map(r => [crypto.createHash("sha256").update(r.name.toLowerCase()).digest("hex").slice(0, 16), r.project]));
     if (q("SELECT 1 FROM agent_keys WHERE owner=?").get(id.id)) q("UPDATE agent_keys SET repos=? WHERE owner=?").run(JSON.stringify(rmap), id.id);
     else q("INSERT INTO agent_keys VALUES (?,?,?,?,?)").run(crypto.randomBytes(9).toString("hex"), id.id, crypto.randomBytes(18).toString("hex"), JSON.stringify(rmap), new Date().toISOString());
-    q("UPDATE gh_accounts SET cache=?, refreshed=?, login=? WHERE gh_id=?").run(JSON.stringify({ stats, sig: cache.sig }), new Date().toISOString(), me.login, acct.gh_id);
+    q("UPDATE gh_accounts SET cache=?, refreshed=?, login=? WHERE gh_id=?").run(JSON.stringify({ stats, sig: cache.sig, ...(loc ? { loc } : {}) }), new Date().toISOString(), me.login, acct.gh_id);
     return `${pub}/@${handle}/`;
   }
 
