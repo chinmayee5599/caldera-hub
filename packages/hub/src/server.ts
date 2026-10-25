@@ -123,10 +123,13 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   if (c) stats.push(`<span title="Friends follow each other">${pl(c.friends, "friend", "friends")}</span>`, `<span>${pl(c.followers, "follower", "followers")}</span>`, `<span>${n(c.following)} following</span>`);
   if (so.showViews || so.owner) stats.push(`<span class="cb-views" title="${so.views.toLocaleString("en-US")} views${so.showViews ? "" : " (hidden: only you see this)"}">${pl(so.views, "view", "views")}${so.showViews ? "" : " (only you see this)"}</span>`);
   const count = (k: string) => so.tally.find(([x]) => x === k)?.[1] || 0;
+  // Share: anyone can pass this page to a friend (the public address; the page's preview card does the rest)
+  const shName = String(so.name || "").trim().slice(0, 60) || "@" + handle;
+  const share = `<span class="cb-sh"><button type="button" class="cb-shb" aria-haspopup="menu" aria-expanded="false" data-url="${e(base)}/@${e(handle)}/" data-nm="${e(shName)}" title="Share ${so.owner ? "your page" : e(shName) + "'s page"} with a friend"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>Share</button><div class="cb-shp" role="menu" hidden></div></span>`;
   if (so.owner) {
     const tally = so.tally.filter(([, v]) => v > 0).map(([k, v]) => `${KUDOS[k] || ""}&nbsp;${compact(v)}`).join(" &nbsp;");
     if (tally) stats.push(`<span title="Kudos people sent you">${tally}</span>`);
-    return `<div class="cb-social"><div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div></div>`;
+    return `<div class="cb-social"><div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div><div class="cb-acts">${share}</div></div>`;
   }
   // everyone else: follow, message and kudos act right here on the page (signed-in members, with the action token)
   const v = so.viewer || null, sent = v?.sent || null;
@@ -136,7 +139,7 @@ function socialChips(base: string, handle: string, so: BarSocial): string {
   const msg = fs === "self" ? "" : `<a class="cb-msg" href="${e(base)}/messages/@${e(handle)}" target="_blank" rel="noopener" title="Send @${e(handle)} a message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</a>`;
   // how you're connected reads as a quiet note next to the stats, not stuffed into the button
   if (fs === "friends" && v?.why) stats.push(`<span class="cb-why">Friends: ${e(v.why)}</span>`);
-  return `<div class="cb-social"${v ? ` data-act="${e(v.token)}"` : ` data-nm="${e(String(so.name || "").trim().slice(0, 60) || "@" + handle)}"${so.avatar ? ` data-av="${e(base + so.avatar)}"` : ""}`} data-api="${e(base)}" data-h="${e(handle)}">${stats.length ? `<div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div>` : ""}<div class="cb-acts">${fr}${msg}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span></div></div>`;
+  return `<div class="cb-social"${v ? ` data-act="${e(v.token)}"` : ` data-nm="${e(String(so.name || "").trim().slice(0, 60) || "@" + handle)}"${so.avatar ? ` data-av="${e(base + so.avatar)}"` : ""}`} data-api="${e(base)}" data-h="${e(handle)}">${stats.length ? `<div class="cb-stats">${stats.join('<i aria-hidden="true">&middot;</i>')}</div>` : ""}<div class="cb-acts">${fr}${msg}${share}<span class="cb-kd" role="group" aria-label="Send kudos">${kd}</span></div></div>`;
 }
 
 /** Inline kudos + friend for hosted pages: talks to /v1/act with the token the hub put in the page (the page is sandboxed
@@ -158,7 +161,25 @@ document.querySelectorAll('[data-caldera-friend]').forEach(function(f){f.addEven
 if((st==='requested'||st==='queued')&&!f.getAttribute('data-sure')){f.setAttribute('data-sure','1');var l=f.textContent;f.textContent='Tap again to unfollow';setTimeout(function(){if(f.getAttribute('data-sure')){f.removeAttribute('data-sure');f.textContent=l}},3500);return}
 post({action:st==='incoming'?'accept':st==='none'?'friend':'unfollow'}).then(function(x){if(x.ok){setF(x.j.state);tip(f,x.j.state==='friends'?'You and @'+H+' follow each other: you are friends now.':x.j.state==='none'?'You unfollowed @'+H+'.':'You follow @'+H+'. If they follow you back, you are friends.')}else tip(f,x.j.error||'Could not do that.')})})})}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
 
-const BAR_ACT_CSS = `<style>.cb-row{margin:14px 0 20px}.cb-social{display:flex;flex-direction:column;gap:14px}.cb-stats{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;color:var(--text-muted,#9A9AA6);font:400 14px/1.4 'IBM Plex Sans',Arial,sans-serif;font-variant-numeric:tabular-nums}.cb-stats b{color:var(--text-strong,#F2F2F5);font-weight:600}.cb-stats>i{font-style:normal;opacity:.6}.cb-stats .cb-why{color:var(--accent-text,#B9A6FF)}.cb-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.cb-social .cb-kd{display:inline-flex;gap:2px;margin-left:auto;padding:2px;border-radius:999px;border:1px solid var(--line,#2A2A2E)}
+/** The Share menu on every profile and city (owner and visitors): copy link, the phone's share sheet, text, email and
+ *  the big networks. Pages are sandboxed, so every link opens as a popup and copying falls back to a selected field. */
+const SHARE_JS = `(function(){function go(){document.querySelectorAll('.cb-shb').forEach(function(b){if(b.dataset.wired)return;b.dataset.wired='1';var pop=b.parentNode.querySelector('.cb-shp'),u=b.getAttribute('data-url'),nm=b.getAttribute('data-nm'),e=encodeURIComponent,t='Check out '+nm+' on Caldera';
+function close(){pop.hidden=true;b.setAttribute('aria-expanded','false')}
+function item(label,href,fn){var a=document.createElement(href?'a':'button');a.textContent=label;a.setAttribute('role','menuitem');if(href){a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.addEventListener('click',close)}else{a.type='button';a.addEventListener('click',fn)}pop.appendChild(a);return a}
+function build(){pop.textContent='';
+var cp=item('Copy link',null,function(){function ok(){cp.textContent='Link copied';setTimeout(close,900)}function manual(){var f=pop.querySelector('input')||document.createElement('input');f.readOnly=true;f.value=u;f.setAttribute('aria-label','Profile link');if(!f.parentNode)pop.insertBefore(f,pop.firstChild);f.focus();f.select();cp.textContent='Press copy on the selected link'}
+try{navigator.clipboard.writeText(u).then(ok,manual)}catch(x){manual()}});
+if(navigator.share)item('Share...',null,function(){try{navigator.share({title:nm+' on Caldera',text:t,url:u}).catch(function(){})}catch(x){}close()});
+item('Text message','sms:?&body='+e(t+': '+u));item('Email','mailto:?subject='+e(t)+'&body='+e(t+':\\n\\n'+u));item('WhatsApp','https://wa.me/?text='+e(t+': '+u));
+item('Post on X','https://twitter.com/intent/tweet?text='+e(t)+'&url='+e(u));item('Share on LinkedIn','https://www.linkedin.com/sharing/share-offsite/?url='+e(u))}
+b.addEventListener('click',function(ev){ev.stopPropagation();if(!pop.hidden)return close();build();pop.style.left='0';pop.style.right='auto';pop.hidden=false;var rc=pop.getBoundingClientRect();if(rc.right>innerWidth-8){pop.style.left='auto';pop.style.right='0';rc=pop.getBoundingClientRect();if(rc.left<8){pop.style.right='auto';pop.style.left=(8-b.getBoundingClientRect().left)+'px'}}b.setAttribute('aria-expanded','true');var f=pop.querySelector('button,a');if(f)f.focus()});
+document.addEventListener('click',function(ev){if(!pop.hidden&&!b.parentNode.contains(ev.target))close()});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&!pop.hidden){close();b.focus()}})})}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
+
+const BAR_ACT_CSS = `<style>.cb-sh{position:relative;display:inline-flex}.cb-social .cb-shb{all:unset;cursor:pointer;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line,#2A2A2E);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap}.cb-social .cb-shb:hover{border-color:var(--accent,#5B47B8)}.cb-social .cb-shb:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
+.cb-shp{position:absolute;left:0;top:calc(100% + 6px);z-index:90;min-width:200px;display:flex;flex-direction:column;padding:6px;background:#18171D;border:1px solid #2E2A40;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.45)}.cb-shp[hidden]{display:none}
+.cb-shp a,.cb-shp button{all:unset;cursor:pointer;box-sizing:border-box;display:block;padding:9px 10px;border-radius:8px;color:#E6E6EA!important;font:500 13.5px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important}.cb-shp a:hover,.cb-shp button:hover,.cb-shp a:focus-visible,.cb-shp button:focus-visible{background:#26232F}
+.cb-shp input{box-sizing:border-box;width:100%;margin:2px 0 6px;padding:7px 9px;border-radius:8px;border:1px solid #2E2A40;background:#111113;color:#F2F2F5;font:500 12.5px 'IBM Plex Sans',Arial,sans-serif}.cb-row{margin:14px 0 20px}.cb-social{display:flex;flex-direction:column;gap:14px}.cb-stats{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;color:var(--text-muted,#9A9AA6);font:400 14px/1.4 'IBM Plex Sans',Arial,sans-serif;font-variant-numeric:tabular-nums}.cb-stats b{color:var(--text-strong,#F2F2F5);font-weight:600}.cb-stats>i{font-style:normal;opacity:.6}.cb-stats .cb-why{color:var(--accent-text,#B9A6FF)}.cb-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.cb-social .cb-kd{display:inline-flex;gap:2px;margin-left:auto;padding:2px;border-radius:999px;border:1px solid var(--line,#2A2A2E)}
 .cb-social .cb-k{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;min-height:26px;padding:0 7px;border-radius:999px;font-size:14px;line-height:1;transition:transform .15s,background .15s}.cb-social .cb-k i{font:500 11.5px 'IBM Plex Sans',Arial,sans-serif;font-style:normal;color:var(--text-muted,#B8B8C2);font-variant-numeric:tabular-nums}
 .cb-social .cb-k:hover:not(:disabled){background:var(--bg-sunken,#2A2636);transform:translateY(-1px) scale(1.08)}.cb-social .cb-k:disabled{cursor:default;opacity:.55}.cb-social .cb-k.on{opacity:1;background:var(--accent-soft,#3A2F5C)}.cb-social .cb-k.pop{animation:cbpop .45s ease-out}
 @keyframes cbpop{40%{transform:scale(1.35)}}.cb-social .cb-k:focus-visible,.cb-social .cb-fr:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
@@ -175,7 +196,7 @@ export function socialRow(hub: string, handle: string, so: BarSocial, back = "")
   // signed out: the sign-up panel is built in the browser (signupgate.ts), so the page carries no sign-up link for crawlers to follow
   const need = !so.owner && !so.viewer ? GATE_CSS + `<script>${GATE_JS}</script>` : "";
   const chips = socialChips(base, handle, so), bk = /^\/@[a-z0-9-]+\/[\w./-]*$/.test(back) ? back : "";
-  return BAR_ACT_CSS + `<div class="cb-row">${bk && need ? chips.replace('<div class="cb-social"', `<div class="cb-social" data-back="${bk}"`) : chips}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`);
+  return BAR_ACT_CSS + `<div class="cb-row">${bk && need ? chips.replace('<div class="cb-social"', `<div class="cb-social" data-back="${bk}"`) : chips}</div>` + need + (so.owner ? "" : `<script>${BAR_ACT_JS}</script>`) + `<script>${SHARE_JS}</script>`;
 }
 
 /** THE Caldera bar: one component on every page that has one. Anonymous: logo, Owner? Sign in, Get your own page. Owner
