@@ -176,6 +176,8 @@ b.addEventListener('click',function(ev){ev.stopPropagation();if(!pop.hidden)retu
 document.addEventListener('click',function(ev){if(!pop.hidden&&!b.parentNode.contains(ev.target))close()});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&!pop.hidden){close();b.focus()}})})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();`;
 
+/** Member city pages on a phone: crumbs, title, then the city itself, then everything else in its usual order. */
+const CITY_PHONE_CSS = `<style>@media (max-width:600px){.c-main{display:flex;flex-direction:column}.c-main>*{order:4}.c-main>.c-crumbs{order:1}.c-main>.c-title{order:2}.c-main>.c-stage{order:3;margin-bottom:16px}}</style>`;
 const BAR_ACT_CSS = `<style>.cb-sh{position:relative;display:inline-flex}.cb-social .cb-shb{all:unset;cursor:pointer;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line,#2A2A2E);color:var(--text-strong,#F2F2F5);font:600 12.5px 'IBM Plex Sans',Arial,sans-serif;white-space:nowrap}.cb-social .cb-shb:hover{border-color:var(--accent,#5B47B8)}.cb-social .cb-shb:focus-visible{outline:2px solid #8B6CF6;outline-offset:1px}
 .cb-shp{position:absolute;left:0;top:calc(100% + 6px);z-index:90;min-width:200px;display:flex;flex-direction:column;padding:6px;background:#18171D;border:1px solid #2E2A40;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.45)}.cb-shp[hidden]{display:none}
 .cb-shp a,.cb-shp button{all:unset;cursor:pointer;box-sizing:border-box;display:block;padding:9px 10px;border-radius:8px;color:#E6E6EA!important;font:500 13.5px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important}.cb-shp a:hover,.cb-shp button:hover,.cb-shp a:focus-visible,.cb-shp button:focus-visible{background:#26232F}
@@ -2254,6 +2256,8 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }
           if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1])));
+          // phones: the city right under its title, above the follow bar, tags, explainer and stats (any plugin version)
+          if (rel === "city.html") html = html.replace(/<\/head>/i, CITY_PHONE_CSS + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;
