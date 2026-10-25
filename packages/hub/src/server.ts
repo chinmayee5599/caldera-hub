@@ -1011,6 +1011,10 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       run("handle_aliases", "UPDATE handle_aliases SET id=? WHERE id=?", I, F);   // an earlier merge into the old profile follows along
       // the old profile goes (the same erase as Delete my page / admin remove), its handle points at the survivor
       erase(F);
+      // what erase leaves behind for a merged-away id (read marks, tags, the setup guide, activity days): their copies live on the survivor
+      for (const [t, col] of [["alert_reads", "owner"], ["member_tags", "member"], ["tag_edits", "member"], ["member_days", "owner"], ["feed_seen", "member"], ["setup_guide", "member"], ["chat_reads", "member"], ["msg_emailed", "owner"], ["msg_emailed", "sender"], ["gh_circle", "member"]])
+        run("cleanup", `DELETE FROM ${t} WHERE ${col}=?`, F);
+      run("cleanup", "DELETE FROM intros WHERE a=? OR b=?", F, F);
       if (from.handle) {
         q("INSERT OR REPLACE INTO handle_aliases VALUES (?,?,?,?)").run(from.handle, I, String(reason).slice(0, 300), now());
         q("DELETE FROM moderation WHERE handle=? AND action<>'hidden'").run(from.handle);

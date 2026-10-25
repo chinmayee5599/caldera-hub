@@ -156,6 +156,10 @@ test("admin merge: friends, kudos, messages and credit move, welcome bonus doesn
   const out = h.admin.merge("@kyle-old", "kyle-new", "same person");
   assert.equal(out.merged, "kyle-old"); assert.equal(out.into, "kyle-new");
   assert.equal(idOf(h, "kyle-old"), undefined);
+  // nothing still points at the merged-away id except the merge log
+  for (const { name } of h.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('profile_merges','merged_sites','sqlite_sequence')").all())
+    for (const { name: col } of h.db.prepare(`PRAGMA table_info('${name}')`).all())
+      assert.equal(h.db.prepare(`SELECT COUNT(*) n FROM "${name}" WHERE "${col}"=?`).get(a.id).n, 0, `${name}.${col} still has the old id`);
   const friendsOf = id => h.db.prepare("SELECT b FROM friends WHERE a=? ORDER BY b").all(id).map(r => r.b);
   assert.deepEqual(friendsOf(b.id), [ana.id, bo.id].sort(), "union of both friend lists, no self-friendship");
   assert.equal(out.friends, 2);
