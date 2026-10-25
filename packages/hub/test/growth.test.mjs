@@ -275,6 +275,17 @@ test("Caldera Daily is about the reader: their stats in the tiles and Your week,
   assert.equal(quiet.subject, "Caldera Daily: An agent story");
   const none = hub.mail.compose({ ...d, news: [], views7: 0, visitors7: 0, you: { caldera: { ...YOU().caldera, visitors: { day: 0, week: 0, all: 0 }, kudos: { day: 0, week: 0, all: 0 } } } }, "http://hub.test/u", true);
   assert.equal(none.subject, "Caldera Daily: your week in numbers");
+  // every variant: daily, weekly/quiet, nothing-personal day, and a personal day: no member/join/city/tool counts,
+  // no "this week" join totals, no "See all N" or /people?sort=new links
+  const personalDay = hub.mail.compose({ ...d, personal: true, kudos: [{ handle: "ku", name: "Ku", emoji: "*" }] }, "http://hub.test/u", false);
+  const weeklyPersonal = hub.mail.compose({ ...d, personal: true }, "http://hub.test/u", true);
+  const variants = { daily: m, quietWeekly: quiet, nothingPersonal: none, personalDay, weeklyPersonal };
+  assert.match(quiet.html, /<b>weekly<\/b>/); assert.match(m.html, /<b>daily<\/b>/);
+  const COUNTS = [...NETWORK_SIZE, /\d+\s+(new\s+)?(members?|people|sign-?ups?)\s+(joined|this week|on Caldera)/i, /joined[^<\n]{0,20}\d+[^<\n]{0,12}this week/i, /\+\d+\s*(<[^>]+>\s*)*joined/i];
+  for (const [name, x] of Object.entries(variants)) for (const [k, v] of [["html", x.html], ["text", x.text], ["subject", x.subject]]) for (const re of COUNTS) assert.doesNotMatch(v, re, `${name} ${k} reveals network size: ${re}`);
+  // welcome lines about ONE person stay
+  const one = hub.mail.compose({ ...d, personal: true, friends: [{ handle: "fj", name: "FJ", joined: true }], invited: [{ handle: "iv" }] }, "http://hub.test/u", false);
+  assert.match(one.html, /just joined Caldera - you're connected/); assert.match(one.text, /@iv joined from your invite/);
 });
 
 test("digest data: the reader's numbers from page views, check-ins, the manifest and the city; lines of code only when known", async () => {
