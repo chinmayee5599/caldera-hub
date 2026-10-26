@@ -1,6 +1,14 @@
 {
   "releases": [
     {
+      "version": "0.28.14",
+      "date": "2026-10-26",
+      "title": "The live panel no longer cuts off",
+      "items": [
+        "When the LIVE panel on your city has more rows than fit, it scrolls inside itself instead of hiding the last lines."
+      ]
+    },
+    {
       "version": "0.28.13",
       "date": "2026-10-26",
       "title": "Your city as a GitHub README badge",
