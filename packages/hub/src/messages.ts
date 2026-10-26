@@ -425,7 +425,7 @@ const CSS = `.ms{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;min-
 .ms-row-btns{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.ms-row-btns .ms-btn{height:38px;font-size:14px}
 .ms-tip{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9;padding:9px 14px;border-radius:10px;background:#18171D;border:1px solid #2E2A40;color:#E6E6EA;font-size:13.5px}
 @media (max-width:760px){.ms{padding:0;min-height:calc(100vh - 120px)}.ms-list{width:100%;border-right:0}.ms.is-thread .ms-list,.ms.is-list .ms-none{display:none}.ms-back{display:inline-flex}.hide-sm{display:none}
-.ms-th-h{padding:8px 8px 8px 4px}.ms-msgs{padding:16px;max-height:none}.ms-compose{padding:10px 12px 8px;position:sticky;bottom:0;z-index:2;background:var(--bg,#161618)}.ms-note,.ms-wait{margin:0 12px 12px}.ms-b{max-width:85%}}
+.ms-th-h{padding:8px 8px 8px 4px;position:sticky;top:env(safe-area-inset-top,0px);z-index:3;background:var(--bg,#161618)}.ms-compose textarea{font-size:16px}.ms-msgs{padding:16px;max-height:none}.ms-compose{padding:10px 12px 8px;position:sticky;bottom:0;z-index:2;background:var(--bg,#161618)}.ms-note,.ms-wait{margin:0 12px 12px}.ms-b{max-width:85%}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}`;
 
 const JS = `(function(){var T=document.querySelector('.ms-thread[data-h]');var box=document.getElementById('ms-msgs');
@@ -438,7 +438,7 @@ var last=(function(){var b=box&&box.querySelectorAll('.ms-b[data-ts]');return b&
 var F=document.getElementById('ms-form'),ta=document.getElementById('ms-text');
 function add(m){var e=box.querySelector('.ms-empty');if(e)e.remove();var d=document.createElement('div');d.className='ms-b '+(m.mine?'me':'them');d.innerHTML=m.html;if(m.ts){d.setAttribute('data-ts',m.ts);last=m.ts}box.appendChild(d);box.scrollTop=box.scrollHeight;return d}
 if(F&&ta){ta.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();F.requestSubmit?F.requestSubmit():F.dispatchEvent(new Event('submit',{cancelable:true}))}});
-ta.addEventListener('input',function(){ta.style.height='auto';ta.style.height=Math.min(180,ta.scrollHeight)+'px'});ta.focus();
+ta.addEventListener('input',function(){ta.style.height='auto';ta.style.height=Math.min(180,ta.scrollHeight)+'px'});if(innerWidth>760)ta.focus();
 F.addEventListener('submit',function(e){e.preventDefault();var v=ta.value.trim();if(!v)return;var btn=F.querySelector('button');btn.disabled=true;
 post('/v1/messages/send',{to:h,text:v}).then(function(x){btn.disabled=false;if(!x.ok){tip(x.j.error||'Could not send that.');return}ta.value='';ta.style.height='';add(x.j.message);
 if(x.j.state==='requested'){F.hidden=true;var w=document.createElement('p');w.className='ms-wait';w.textContent='Request sent. You can send more once @'+h+' accepts.';F.after(w);tip('Request sent to @'+h+'.')}})})}
