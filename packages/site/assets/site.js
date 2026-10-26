@@ -107,3 +107,14 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
     var cta = document.querySelector('.nav > a.btn'); if (cta && s.page) { cta.textContent = "Your page"; cta.href = s.page; }   // signed in: the header button goes to your page
   }).catch(function () {});
 })();
+
+// Feedback button (2026-10-26, Mike: one product-feedback queue across Human Architecture, Caldera and Inbox Hero,
+// reviewed at mjonesone.com/control/feedback). The signed-in hub header loads the same widget, so only once; never on
+// sandboxed pages (origin null), where the post would be refused. Raised only when the phone bottom nav is showing.
+(function () {
+  if (self.origin === 'null' || document.querySelector('script[src*="/fb/widget.js"]')) return;
+  var bn = document.querySelector('.ch-bn'), up = bn && getComputedStyle(bn).display !== 'none';
+  var s = document.createElement('script'); s.src = 'https://mjonesone.com/fb/widget.js'; s.defer = true;
+  s.setAttribute('data-position', 'right'); s.setAttribute('data-offset', up ? '84' : '20');
+  document.body.appendChild(s);
+})();
