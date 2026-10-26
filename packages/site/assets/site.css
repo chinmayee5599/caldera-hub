@@ -288,6 +288,9 @@ section h2 { line-height: 1.12; }
 .footer-big .fcol a:hover { color: var(--text-strong); text-decoration: underline; }
 .footer-big .fbase { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
 .footer-big .fbase a { color: var(--text-muted); }
+.footer-big .fmore { margin-top: 26px; font-size: 12.5px; line-height: 1.7; color: var(--text-muted); }
+.footer-big .fmore a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+.footer-big .fmore a:hover { color: var(--text-strong); }
 @media (max-width: 900px) { .footer-big .fgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .footer-big .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 18px; } }
 
