@@ -2303,7 +2303,11 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1])));
           // phones: the city right under its title, above the follow bar, tags, explainer and stats (any plugin version)
           if (rel === "city.html") html = html.replace(/<\/head>/i, CITY_PHONE_CSS + "</head>");
-          if (rel === "city.html") { const pr = byHandle(m[1]); if (pr && hasLive(pr.id)) html = injectLive(html, { url: `/v1/live/${m[1]}`, mode: "public" });
+          if (rel === "city.html") { const pr = byHandle(m[1]);
+            // the owner on their own public city sees counts (a token only their page carries); everyone else keeps the bars
+            const ownLive = !!(pr && own && memberOf(req) === pr.id);
+            if (pr && hasLive(pr.id)) html = injectLive(html, ownLive ? { url: `/v1/live/${m[1]}?t=${liveToken(m[1])}`, mode: "private" } : { url: `/v1/live/${m[1]}`, mode: "public" });
+            if (ownLive) { (headers as any)["cache-control"] = "private, no-store"; (headers as any)["vary"] = "Cookie"; }
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
           if (inPage && soc && rowAt) { const hd = m[1], meV = !own ? memberOf(req) : null;
             const build = prS ? B.CHIP_CSS + B.chips(PUB(), prS, !!own, viewer && meV ? { me: meV, token: viewer.token } : null) : "";
@@ -2712,6 +2716,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
       m = p.match(/^\/v1\/live\/([a-z0-9-]+)$/);
       if (req.method === "GET" && m) {
         const pr = byHandle(m[1]); if (!pr || modOf(pr.handle, pr.id)) return json(res, 404, { error: "not found" });
+        if (liveTokenOk(m[1], url.searchParams.get("t") || "")) {   // the owner's own public city page: full numbers, never cached; a bad token falls through to public levels
+          res.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store", "access-control-allow-origin": "*" });
+          return res.end(JSON.stringify(liveStats(pr.id, true, url.searchParams.get("since")) || { at: now(), private: true, districts: {}, events: [] }));
+        }
         return json(res, 200, scrubPrivateLive(liveStats(pr.id, false, url.searchParams.get("since")), PM.modeFor(pr)) || { at: now(), districts: {} });
       }
       // the pixel: GET /v1/t/KEY.gif?k=view|signup|buy (also POST, for sendBeacon)

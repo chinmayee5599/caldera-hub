@@ -297,6 +297,26 @@ test("live traffic: owner registers sites, pixel + secret-signed events count, p
   assert.equal((await (await pget("/@rae/" + url)).json()).districts["Secret Lab"].buys, 1);
   assert.equal((await (await pget("/@rae/" + url + "&view=public")).json()).districts["Secret Lab"], undefined);
   assert.ok((await (await fetch(base + "/t.js")).text()).includes("data-site"));
+  // the owner on their own PUBLIC city sees numbers (tokened URL, never cached); logged-out visitors, other members and bad tokens get levels
+  const sessFor = (id) => { const t = crypto.randomBytes(32).toString("hex");
+    h.db.prepare("INSERT INTO owner_sessions VALUES (?,?,?,?)").run(crypto.createHash("sha256").update(t).digest("hex"), id.id, new Date().toISOString(), Date.now() + 86_400_000);
+    return { cookie: "cal_own=" + t, "user-agent": "Mozilla/5.0" }; };
+  const ownPage = await fetch(base + "/@rae/city.html", { headers: sessFor(rae) }), ownHtml = await ownPage.text();
+  assert.ok(ownHtml.includes('"mode":"private"'), "owner: private mode");
+  assert.match(ownPage.headers.get("cache-control") || "", /private/); assert.match(ownPage.headers.get("cache-control") || "", /no-store/);
+  const ownUrl = ownHtml.match(/"url":"(\/v1\/live\/rae\?t=[0-9a-f]+)"/)[1];
+  const ownLive = await fetch(base + ownUrl), ownJ = await ownLive.json();
+  assert.equal(ownLive.headers.get("cache-control"), "private, no-store");
+  assert.equal(ownJ.districts.Shop.views, 3); assert.equal(ownJ.districts["Secret Lab"].buys, 1);
+  const since = await (await fetch(base + ownUrl + "&since=" + encodeURIComponent(new Date(Date.now() - 3600e3).toISOString()))).json();
+  assert.ok(since.districts.Shop.views >= 0, "owner URL takes since");
+  for (const [who, headers] of [["logged out", { "user-agent": "Mozilla/5.0" }], ["another member", sessFor(sly)]]) {
+    const html = await (await fetch(base + "/@rae/city.html", { headers })).text();
+    assert.ok(html.includes('window.CALDERA_LIVE={"url":"/v1/live/rae","mode":"public"}') && !html.includes("/v1/live/rae?t="), who + ": public levels, no token");
+  }
+  const bad = await (await fetch(base + "/v1/live/rae?t=" + "0".repeat(24))).json();
+  assert.equal(bad.districts.Shop.views, undefined); assert.equal(bad.districts["Secret Lab"], undefined); assert.equal(bad.events, undefined);
+  assert.equal(bad.districts.Shop.level, 1, "bad token: public levels");
   h.server.close(); h.privateServer.close(); fs.rmSync(d, { recursive: true, force: true });
 });
 
