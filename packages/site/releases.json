@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.28.13",
+      "date": "2026-10-26",
+      "title": "Your city as a GitHub README badge",
+      "items": [
+        "The share window now offers your city as a badge for your GitHub profile README. Copy the Markdown, paste it into github.com/<you>/<you>, and the badge keeps itself up to date.",
+        "Anyone can see any GitHub user's city at caldera.social/gh/<username>, now with the city on the first screen and the badge right under it.",
+        "A link to star Caldera on GitHub, so more people find it."
+      ]
+    },
+    {
       "version": "0.28.10",
       "date": "2026-10-25",
       "title": "Storefront signs you can always see",
