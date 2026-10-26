@@ -20,7 +20,7 @@ export interface GhPreviewCtx {
   memberCity: (handle: string) => CityData | null;
   pause?: number;
 }
-interface Preview { login: string; name: string; bio: string; html_url: string; fetched: string; city: CityData; repos: number; commits: number }
+interface Preview { org?: boolean; login: string; name: string; bio: string; html_url: string; fetched: string; city: CityData; repos: number; commits: number }
 type Got = { ok: true; p: Preview } | { ok: false; status: 404 | 422 | 429 | 502; why: string };
 
 export const LOGIN_RX = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -86,9 +86,12 @@ export function ghPreview(c: GhPreviewCtx) {
     const u = await gh(token, `/users/${encodeURIComponent(login)}`);
     if (u.status === 404) return { ok: false, status: 404, why: "missing" };
     if (u.status !== 200 || !u.body?.login) return { ok: false, status: 502, why: "github" };
-    if (u.body.type !== "User") return { ok: false, status: 422, why: "org" };
+    // people and organizations (company cities); bots and anything else are refused
+    const org = u.body.type === "Organization";
+    if (u.body.type !== "User" && !org) return { ok: false, status: 422, why: "org" };
     const me = u.body, repos: any[] = [];
-    for (let pg = 1; pg <= 1; pg++) { const r = await gh(token, `/users/${encodeURIComponent(me.login)}/repos?type=owner&sort=pushed&per_page=100&page=${pg}`); if (r.status !== 200 || !Array.isArray(r.body)) break; repos.push(...r.body); }
+    const list = org ? `/orgs/${encodeURIComponent(me.login)}/repos?type=public&sort=pushed` : `/users/${encodeURIComponent(me.login)}/repos?type=owner&sort=pushed`;
+    for (let pg = 1; pg <= 1; pg++) { const r = await gh(token, `${list}&per_page=100&page=${pg}`); if (r.status !== 200 || !Array.isArray(r.body)) break; repos.push(...r.body); }
     const own = repos.filter(r => !r.fork && !r.private && !r.archived).slice(0, 100);
     const stats: Record<string, { weeks: number[]; commits: number; week: number }> = {};
     // commit stats for the 20 most recently pushed repos, 10 at a time with a short timeout (was one by one: 5-11s cold);
@@ -106,7 +109,7 @@ export function ghPreview(c: GhPreviewCtx) {
     city.private = false;   // public data only: no "private view" wording
     const st = cityStats(city);
     // only public profile fields we show; never the email
-    const p: Preview = { login: me.login, name: String(me.name || me.login).slice(0, 80), bio: String(me.bio || "").slice(0, 200), html_url: me.html_url, fetched: new Date().toISOString(), city, repos: st.repos, commits: st.commits };
+    const p: Preview = { ...(org ? { org: true } : {}), login: me.login, name: String(me.name || me.login).slice(0, 80), bio: String(me.bio || "").slice(0, 200), html_url: me.html_url, fetched: new Date().toISOString(), city, repos: st.repos, commits: st.commits };
     fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file(login, ".json"), JSON.stringify(p)); fs.rmSync(file(login, ".png"), { force: true });
     return { ok: true, p };
   }
@@ -140,12 +143,12 @@ export function ghPreview(c: GhPreviewCtx) {
     const ex = ["torvalds", "sindresorhus", "karpathy", "simonw", "antirez", "tj"];
     return sitePage("See any GitHub as a city - Caldera", `<h1>See any GitHub as a city</h1>
 <p class="lede">Type a GitHub username. Every public repo becomes a building: taller means more commits this year, lit windows mean work this week. Built from public data only.</p>
-${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${l}</a>`).join(" &middot; ")}</p>
+${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${l}</a>`).join(" &middot; ")}</p><p class="ghp-ex">Or a company: ${["vercel", "supabase", "huggingface", "anthropics"].map(l => `<a href="/gh/${l}">@${l}</a>`).join(" &middot; ")}</p>
 <p class="ghp-small">Want yours to come alive, with live visitors, your AI agents flying over the repos they're working in, and people who build the same things? <a rel="nofollow" href="/auth/github?back=/me">Sign up with GitHub</a>.</p>`,
       ogTags({ url: `${c.hub()}/gh`, image: `${c.hub()}/world/preview.png`, title: "See any GitHub as a city", description: "Type a GitHub username and walk their public repos as a living city. Caldera, the social network for GitHub and Obsidian." }));
   }
   function notFound(login: string, why: string): string {
-    const msg = why === "org" ? `@${esc(login)} is an organization. Org cities aren't supported yet: try a person's username.`
+    const msg = why === "org" ? `@${esc(login)} isn't a person or an organization, so there's no city to draw.`
       : why === "busy" ? "Lots of cities are being drawn right now. Try again in a few minutes."
       : why === "github" ? "GitHub didn't answer just now. Try again in a minute."
       : `There's no GitHub user called @${esc(login)}.`;
@@ -159,10 +162,10 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
     let html = renderCity({ name: p.name || p.login, github: p.html_url, theme: "dark" }, p.city);
     const md = snippet(url, `${url}/badge.svg?style=card`, "My GitHub city on Caldera"), share = `${who}'s public GitHub as a living city`;
     // above the city: one short line + the claim button, so the city itself is on the first screen (phones too)
-    const top = `<section class="ghp-top" aria-label="About this preview"><span class="ghp-pill">Preview</span><span class="ghp-top-t"><b>@${esc(p.login)}'s public GitHub as a city.</b> <span class="ghp-mut">Not on Caldera yet.</span></span><a rel="nofollow" class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a></section>`;
+    const top = `<section class="ghp-top" aria-label="About this preview"><span class="ghp-pill">Preview</span><span class="ghp-top-t"><b>@${esc(p.login)}'s public GitHub as a city.</b> <span class="ghp-mut">Not on Caldera yet.</span></span>${p.org ? `<a class="ghp-btn ghost" href="#ghp-md">Put it on your site</a>` : `<a rel="nofollow" class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a>`}</section>`;
     // under the city: the README badge in plain view (the main way a city spreads), sharing, another lookup, the fine print
     const below = `<section class="ghp-banner ghp-below" aria-label="Share this city">
-<div class="ghp-badge open"><h2 class="ghp-h">Put this city in your GitHub README</h2><p class="ghp-mut">Paste this into your profile README (github.com/${esc(p.login)}/${esc(p.login)}). It stays up to date on its own.</p><img src="/gh/${esc(p.login)}/badge.svg?style=card" alt="GitHub city badge" width="420" height="92"><pre id="ghp-md">${esc(md)}</pre><button class="ghp-btn" type="button" data-copy-el="ghp-md">Copy Markdown</button> <span class="ghp-mut">A smaller one: <code>/badge.svg</code> without <code>?style=card</code>.</span></div>
+<div class="ghp-badge open">${p.org ? `<h2 class="ghp-h">Put this city in your README or careers page</h2><p class="ghp-mut">Paste this into the org profile README (github.com/${esc(p.login)}/.github, profile/README.md) or link it from your engineering or careers page. It stays up to date on its own.</p>` : `<h2 class="ghp-h">Put this city in your GitHub README</h2><p class="ghp-mut">Paste this into your profile README (github.com/${esc(p.login)}/${esc(p.login)}). It stays up to date on its own.</p>`}<img src="/gh/${esc(p.login)}/badge.svg?style=card" alt="GitHub city badge" width="420" height="92"><pre id="ghp-md">${esc(md)}</pre><button class="ghp-btn" type="button" data-copy-el="ghp-md">Copy Markdown</button> <span class="ghp-mut">A smaller one: <code>/badge.svg</code> without <code>?style=card</code>.</span></div>
 <div class="ghp-b-actions"><span class="ghp-share"><a class="ghp-btn ghost" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(share)}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="ghp-btn ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a><a class="ghp-btn ghost" href="https://bsky.app/intent/compose?text=${encodeURIComponent(share + " " + url)}" target="_blank" rel="noopener">Bluesky</a><button class="ghp-btn ghost" type="button" data-copy="${esc(url)}">Copy link</button></span></div>
 <div class="ghp-b-see"><p class="ghp-mut" style="margin:0 0 6px">See anyone's city:</p>${seeForm()}</div>
 <p class="ghp-small" style="margin:8px 0 0">&#128274; Claiming is read-only: your public profile and email. Caldera can't see your code or private repos; GitHub enforces it. <a href="/security">How we keep it safe</a></p>
