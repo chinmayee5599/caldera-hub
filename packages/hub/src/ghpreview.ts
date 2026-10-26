@@ -158,12 +158,14 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
     const hub = c.hub(), url = `${hub}/gh/${p.login}`, who = p.name && p.name !== p.login ? `${p.name} (@${p.login})` : `@${p.login}`;
     let html = renderCity({ name: p.name || p.login, github: p.html_url, theme: "dark" }, p.city);
     const md = snippet(url, `${url}/badge.svg?style=card`, "My GitHub city on Caldera"), share = `${who}'s public GitHub as a living city`;
-    const banner = `<section class="ghp-banner" aria-label="About this preview"><div class="ghp-b-top"><span class="ghp-pill">Preview</span><b>@${esc(p.login)}'s public GitHub as a city.</b> <span class="ghp-mut">A preview from public data. Not on Caldera yet.</span></div>
-<div class="ghp-b-actions"><a rel="nofollow" class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a>
-<span class="ghp-share"><a class="ghp-btn ghost" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(share)}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="ghp-btn ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a><button class="ghp-btn ghost" type="button" data-copy="${esc(url)}">Copy link</button></span></div>
+    // above the city: one short line + the claim button, so the city itself is on the first screen (phones too)
+    const top = `<section class="ghp-top" aria-label="About this preview"><span class="ghp-pill">Preview</span><span class="ghp-top-t"><b>@${esc(p.login)}'s public GitHub as a city.</b> <span class="ghp-mut">Not on Caldera yet.</span></span><a rel="nofollow" class="ghp-btn" href="/auth/github?back=${encodeURIComponent(back)}">Is this you? Claim it with GitHub</a></section>`;
+    // under the city: the README badge in plain view (the main way a city spreads), sharing, another lookup, the fine print
+    const below = `<section class="ghp-banner ghp-below" aria-label="Share this city">
+<div class="ghp-badge open"><h2 class="ghp-h">Put this city in your GitHub README</h2><p class="ghp-mut">Paste this into your profile README (github.com/${esc(p.login)}/${esc(p.login)}). It stays up to date on its own.</p><img src="/gh/${esc(p.login)}/badge.svg?style=card" alt="GitHub city badge" width="420" height="92"><pre id="ghp-md">${esc(md)}</pre><button class="ghp-btn" type="button" data-copy-el="ghp-md">Copy Markdown</button> <span class="ghp-mut">A smaller one: <code>/badge.svg</code> without <code>?style=card</code>.</span></div>
+<div class="ghp-b-actions"><span class="ghp-share"><a class="ghp-btn ghost" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(share)}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="ghp-btn ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a><a class="ghp-btn ghost" href="https://bsky.app/intent/compose?text=${encodeURIComponent(share + " " + url)}" target="_blank" rel="noopener">Bluesky</a><button class="ghp-btn ghost" type="button" data-copy="${esc(url)}">Copy link</button></span></div>
+<div class="ghp-b-see"><p class="ghp-mut" style="margin:0 0 6px">See anyone's city:</p>${seeForm()}</div>
 <p class="ghp-small" style="margin:8px 0 0">&#128274; Claiming is read-only: your public profile and email. Caldera can't see your code or private repos; GitHub enforces it. <a href="/security">How we keep it safe</a></p>
-<div class="ghp-b-see">${seeForm()}</div>
-<details class="ghp-badge"><summary>Put this city in a README</summary><img src="/gh/${esc(p.login)}/badge.svg?style=card" alt="GitHub city badge" width="420" height="92"><pre id="ghp-md">${esc(md)}</pre><button class="ghp-btn ghost" type="button" data-copy-el="ghp-md">Copy Markdown</button><p class="ghp-mut">A smaller one: <code>/badge.svg</code> without <code>?style=card</code>.</p></details>
 <p class="ghp-fine">Built from public GitHub data only (${fmt(p.repos)} public repos, ${fmt(p.commits)} commits in the last year across the 20 most recently pushed), refreshed daily. Want it removed? Email hello@caldera.social.</p></section>`;
     html = html.replace('<meta name="robots" content="noindex, nofollow">', "")
       .replace(/<title>[^<]*<\/title>/, `<title>@${esc(p.login)}'s GitHub city - Caldera</title>` + ogTags({ url, image: `${url}/card.png?v=${Date.parse(p.fetched) % 1e8}`, title: `@${p.login}'s GitHub city`, description: `${p.bio ? p.bio + " " : ""}${fmt(p.repos)} public repos as a living city on Caldera.` }))
@@ -172,7 +174,8 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
       .replace(/href="index\.html"/g, `href="${esc(p.html_url)}" target="_blank" rel="noopener"`)
       .replace("</head>", `<link rel="canonical" href="${esc(url)}"><style>${PAGE_CSS}</style></head>`)
       .replace(/<body([^>]*)>/, (_m, a) => `<body${a}>${c.header}`)
-      .replace('<main class="note"><div class="c-main">', `<main class="note"><div class="c-main">${banner}`)
+      .replace('<main class="note"><div class="c-main">', `<main class="note"><div class="c-main">${top}`)
+      .replace(/(<div class="c-stats">(?:<div>.*?<\/div>){4}<\/div>)([\s\S]*?)(<div class="c-table-wrap")/, (_m, st, mid, tw) => `${mid}${below}${st}${tw}`)
       .replace(" The houses around each district are the Obsidian notes about that project.", " Here, districts are languages.")
       .replace("<div><b>0</b><span>notes in town</span></div>", `<div><b>${new Set(p.city.districts.flatMap(d => d.repos.map(r => r.language))).size}</b><span>languages</span></div>`)
       .replace("</body>", `<script>${COPY_JS}</script><script src="/assets/site.js" defer></script></body>`);
@@ -229,7 +232,7 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
 const COPY_JS = `document.addEventListener('click',function(e){var b=e.target.closest('[data-copy],[data-copy-el]');if(!b)return;var t=b.getAttribute('data-copy')||((document.getElementById(b.getAttribute('data-copy-el'))||{}).textContent||'');
 var done=function(){var l=b.textContent;b.textContent='Copied';setTimeout(function(){b.textContent=l},1600)};if(navigator.clipboard)navigator.clipboard.writeText(t).then(done,function(){});});`;
 
-const PAGE_CSS = `.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+const PAGE_CSS = `.ghp-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 14px;padding:10px 14px;border:1px solid rgba(139,108,246,.35);border-radius:12px;background:rgba(139,108,246,.08)}.ghp-top-t{flex:1 1 220px}.ghp-below{margin:18px 0}.ghp-h{font-size:18px;margin:0 0 4px}.ghp-badge.open img{display:block;max-width:100%;height:auto;margin:10px 0}.ghp-badge.open pre{white-space:pre-wrap;word-break:break-all}.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .ghp-land{max-width:720px;margin:0 auto;padding:56px 16px 80px;text-align:center}.ghp-land h1{font-family:'Source Serif 4',Georgia,serif;font-size:clamp(2rem,6vw,2.8rem);margin:0 0 12px;color:var(--text-strong,#F2F2F5)}
 .ghp-land .lede{color:var(--text-muted,#B8B8C2);font-size:1.05rem;max-width:56ch;margin:0 auto 26px}.ghp-ex{margin:16px 0 0;color:var(--text-muted,#9A9AA6)}.ghp-ex a{color:var(--accent-text,#B9A6FF)}
 .ghp-small{margin:34px auto 0;max-width:52ch;color:var(--text-muted,#9A9AA6);font-size:.95rem}.ghp-small a{color:var(--accent-text,#B9A6FF)}
