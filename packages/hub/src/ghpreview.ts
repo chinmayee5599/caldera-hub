@@ -73,10 +73,10 @@ export function ghPreview(c: GhPreviewCtx) {
   const file = (login: string, ext: string) => path.join(dir, login.toLowerCase() + ext);
   const inflight = new Map<string, Promise<Got>>(); let running = 0; const waiters: (() => void)[] = [];
 
-  async function gh(token: string | null, p: string): Promise<{ status: number; body: any }> {
-    const r = await c.fetch("https://api.github.com" + p, { headers: { accept: "application/vnd.github+json", "user-agent": "caldera-hub", ...(token ? { authorization: "Bearer " + token } : {}) } });
+  async function gh(token: string | null, p: string): Promise<{ status: number; body: any; left: number }> {
+    const r = await c.fetch("https://api.github.com" + p, { headers: { accept: "application/vnd.github+json", "user-agent": "caldera-hub", ...(token ? { authorization: "Bearer " + token } : {}) }, signal: AbortSignal.timeout(8000) });
     let body: any = null; try { body = await r.json(); } catch { /* 202 / empty */ }
-    return { status: r.status, body };
+    return { status: r.status, body, left: Number(r.headers?.get?.("x-ratelimit-remaining") ?? NaN) };
   }
   function cached(login: string, maxAge = DAY): Preview | { missing: string } | null {
     try { const j = JSON.parse(fs.readFileSync(file(login, ".json"), "utf8")); if (Date.now() - Date.parse(j.fetched) > (j.missing ? 6 * 3600_000 : maxAge)) return null; return j; } catch { return null; }
@@ -91,11 +91,14 @@ export function ghPreview(c: GhPreviewCtx) {
     for (let pg = 1; pg <= 1; pg++) { const r = await gh(token, `/users/${encodeURIComponent(me.login)}/repos?type=owner&sort=pushed&per_page=100&page=${pg}`); if (r.status !== 200 || !Array.isArray(r.body)) break; repos.push(...r.body); }
     const own = repos.filter(r => !r.fork && !r.private && !r.archived).slice(0, 100);
     const stats: Record<string, { weeks: number[]; commits: number; week: number }> = {};
-    for (const r of own.slice(0, 20)) {
-      try { const w = await gh(token, `/repos/${r.full_name}/stats/commit_activity`);
-        if (w.status === 200 && Array.isArray(w.body) && w.body.length) { const t52 = w.body.slice(-52).map((x: any) => Number(x.total) || 0); stats[r.full_name] = { weeks: t52.slice(-12), commits: t52.reduce((a: number, b: number) => a + b, 0), week: Number(w.body[w.body.length - 1].total) || 0 }; } } catch { /* fall back */ }
-      if (c.pause) await new Promise(r => setTimeout(r, c.pause));
-    }
+    // commit stats for the 20 most recently pushed repos, 10 at a time with a short timeout (was one by one: 5-11s cold);
+    // skipped when the API budget runs low so a traffic spike still draws a city (from sizes) instead of failing
+    const want = Number.isFinite(u.left) && u.left < 600 ? [] : own.slice(0, 20);
+    const one = async (r: any) => {
+      try { const w = await Promise.race([gh(token, `/repos/${r.full_name}/stats/commit_activity`), new Promise<null>(ok => setTimeout(() => ok(null), 4000))]);
+        if (w && w.status === 200 && Array.isArray(w.body) && w.body.length) { const t52 = w.body.slice(-52).map((x: any) => Number(x.total) || 0); stats[r.full_name] = { weeks: t52.slice(-12), commits: t52.reduce((a: number, b: number) => a + b, 0), week: Number(w.body[w.body.length - 1].total) || 0 }; } } catch { /* fall back */ }
+    };
+    for (let i = 0; i < want.length; i += 10) { await Promise.all(want.slice(i, i + 10).map(one)); if (c.pause && i + 10 < want.length) await new Promise(r => setTimeout(r, c.pause)); }
     const cityRepos: CityRepo[] = own.map(r => { const s = stats[r.full_name];
       return { name: r.name, project: r.language || "Other", public: true, language: r.language || "Other", commits: s ? s.commits : (r.size ? 1 : 0), weeks: s?.weeks || [], week: s?.week || 0, today: 0,
         pushed: r.pushed_at, created: r.created_at, size: r.size, url: r.html_url, description: String(r.description || "").slice(0, 200) }; });
@@ -107,7 +110,7 @@ export function ghPreview(c: GhPreviewCtx) {
     fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file(login, ".json"), JSON.stringify(p)); fs.rmSync(file(login, ".png"), { force: true });
     return { ok: true, p };
   }
-  /** cached preview, or a fresh build (2 at a time; per-IP and global limits on fresh builds) */
+  /** cached preview, or a fresh build (4 at a time; per-IP and global limits on fresh builds) */
   async function get(login: string, req: http.IncomingMessage | null): Promise<Got> {
     const hit = cached(login);
     if (hit && "missing" in hit) return { ok: false, status: hit.missing === "org" ? 422 : 404, why: hit.missing };
@@ -115,7 +118,7 @@ export function ghPreview(c: GhPreviewCtx) {
     const key = login.toLowerCase(), live = inflight.get(key); if (live) return live;
     if (req && (c.tooMany("ghprev:" + c.ipOf(req), 20) || c.tooMany("ghprev:all", 400))) return { ok: false, status: 429, why: "busy" };
     const job = (async (): Promise<Got> => {
-      if (running >= 2) await new Promise<void>(r => waiters.push(r));
+      if (running >= 4) await new Promise<void>(r => waiters.push(r));
       running++;
       try {
         const g = await build(login);
