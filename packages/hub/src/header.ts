@@ -154,6 +154,11 @@ var bt=h.getAttribute('data-bt'),same=false;try{same=!!hub&&new URL(hub).origin=
 var busy=0;function tick(){if(busy||document.hidden)return;busy=1;fetch(same?'/v1/me/badges':hub+'/v1/me/badges?t='+encodeURIComponent(bt),{credentials:same?'same-origin':'omit',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){busy=0;if(j&&typeof j.messages==='number')show(j.messages,j.alerts||0,(j.from||[]).map(function(x){return '@'+x}).join(', '),j.feed,j.groups||0)},function(){busy=0})}
 if(same||(hub&&bt)){setInterval(tick,30000);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});window.addEventListener('focus',tick)}`;
 
+/** Feedback button for signed-in members (2026-10-26, Mike: one product-feedback queue across HA, Caldera and Inbox
+ *  Hero, reviewed at mjonesone.com/control/feedback). Not on sandboxed pages (origin "null"), where the post would be
+ *  refused. Raised to clear the phone bottom nav. Viewers carry no email here, so the form asks for one (optional). */
+const FEEDBACK_JS = `<script>(function(){if(self.origin==='null'||document.querySelector('script[src*="/fb/widget.js"]'))return;var s=document.createElement('script');s.src='https://mjonesone.com/fb/widget.js';s.defer=true;s.setAttribute('data-position','right');s.setAttribute('data-offset',innerWidth<760?'84':'20');document.body.appendChild(s)})()</script>`;
+
 /** The header for one request's viewer. Same markup and CSS everywhere: the regression test compares these. */
 export function appHeader(o: HeaderOpts): string {
   const hub = o.hub.replace(/\/$/, ""), v = o.viewer || null, cur = o.current || "";
@@ -213,7 +218,7 @@ document.addEventListener('click',function(ev){ds.forEach(function(d){if(d.open&
 document.addEventListener('keydown',function(ev){if(ev.key==='Escape')ds.forEach(function(d){d.open=false})});
 ${BADGE_JS}})()</script>`;
   return `${HEADER_CSS}<header class="ch" id="caldera-bar" data-state="${own ? "own" : "in"}" data-hub="${e(hub)}"${v.badgeToken ? ` data-bt="${e(v.badgeToken)}"` : ""} data-m="${mu}" data-g="${mg}" data-a="${v.unread}" data-from="${e(from.join(", "))}">${mobile}${brand}<nav class="ch-nav" aria-label="Main">${navLinks.join("")}</nav>`
-    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${bottom}${js}`;
+    + `<div class="ch-right">${stale}${seg}${items}${bell}${acct}</div></header>${strip}${bottom}${js}${FEEDBACK_JS}`;
 }
 
 /** Which nav item a path belongs to. */
