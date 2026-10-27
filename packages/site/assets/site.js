@@ -118,3 +118,27 @@ document.querySelectorAll(".prompt-expand").forEach(function (b) {
   s.setAttribute('data-position', 'right'); s.setAttribute('data-offset', up ? '84' : '20');
   document.body.appendChild(s);
 })();
+
+// Came back from GitHub without finishing (2026-10-27): ~95% of "Sign up with GitHub" clicks never return from GitHub
+// (no account there, or not signed in on this device). /auth/github leaves a cal_ghtry marker for 30 minutes and the
+// GitHub callback clears it, so if it's still here they left GitHub unfinished: offer email sign-up, once per try.
+(function () {
+  function shown() {
+    if (!/(?:^|;\s*)cal_ghtry=1/.test(document.cookie) || document.querySelector('.gh-return')) return;
+    var gh = document.querySelector('a[href^="/auth/github"], form[action="/auth/github"]'); if (!gh) return;
+    var src = new URLSearchParams(gh.tagName === 'A' ? (gh.getAttribute('href').split('?')[1] || '') : new FormData(gh)), q = new URLSearchParams({ via: 'gh-return' });
+    ['back', 'invite'].forEach(function (k) { if (src.get(k)) q.set(k, src.get(k)); });
+    var clear = function () { document.cookie = 'cal_ghtry=; Path=/; Max-Age=0; SameSite=Lax'; };
+    var bar = document.createElement('div'); bar.className = 'gh-return'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', 'Sign up with email');
+    var bn = document.querySelector('.ch-bn'), up = bn && getComputedStyle(bn).display !== 'none';
+    // above the phone bottom nav and the Feedback button (widget offset 84 with the nav, 20 without; ~40px tall)
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:' + ((up ? 84 : 20) + 48) + 'px;z-index:2147483000;max-width:560px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:12px;background:var(--bg-raised,#fff);color:var(--text,#1a1a1a);border:1px solid var(--line-strong,rgba(0,0,0,.15));box-shadow:0 8px 28px rgba(0,0,0,.18);font-size:15px;line-height:1.35';
+    var t = document.createElement('span'); t.style.cssText = 'flex:1 1 220px'; t.textContent = "Didn't finish with GitHub? Sign up with email instead. No GitHub account needed.";
+    var a = document.createElement('a'); a.className = 'btn'; a.href = '/start?' + q.toString(); a.textContent = 'Sign up with email'; a.addEventListener('click', clear);
+    var x = document.createElement('button'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
+    x.style.cssText = 'background:none;border:0;font-size:22px;line-height:1;cursor:pointer;color:inherit;padding:2px 6px';
+    x.addEventListener('click', function () { clear(); bar.remove(); });
+    bar.appendChild(t); bar.appendChild(a); bar.appendChild(x); document.body.appendChild(bar);
+  }
+  shown(); window.addEventListener('pageshow', function (e) { if (e.persisted) shown(); });   // the Back button restores the page from cache
+})();
