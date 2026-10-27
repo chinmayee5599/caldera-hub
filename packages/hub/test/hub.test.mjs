@@ -303,6 +303,9 @@ test("live traffic: owner registers sites, pixel + secret-signed events count, p
     return { cookie: "cal_own=" + t, "user-agent": "Mozilla/5.0" }; };
   const ownPage = await fetch(base + "/@rae/city.html", { headers: sessFor(rae) }), ownHtml = await ownPage.text();
   assert.ok(ownHtml.includes('"mode":"private"'), "owner: private mode");
+  assert.ok(ownHtml.includes("PCITY"), "owner: their own city opens on the private city");
+  const ownPub = await (await fetch(base + "/@rae/city.html?view=public", { headers: sessFor(rae) })).text();
+  assert.ok(!ownPub.includes("PCITY") && ownPub.includes('"mode":"public"'), "owner ?view=public: what visitors see");
   assert.match(ownPage.headers.get("cache-control") || "", /private/); assert.match(ownPage.headers.get("cache-control") || "", /no-store/);
   const ownUrl = ownHtml.match(/"url":"(\/v1\/live\/rae\?t=[0-9a-f]+)"/)[1];
   const ownLive = await fetch(base + ownUrl), ownJ = await ownLive.json();
@@ -312,7 +315,7 @@ test("live traffic: owner registers sites, pixel + secret-signed events count, p
   assert.ok(since.districts.Shop.views >= 0, "owner URL takes since");
   for (const [who, headers] of [["logged out", { "user-agent": "Mozilla/5.0" }], ["another member", sessFor(sly)]]) {
     const html = await (await fetch(base + "/@rae/city.html", { headers })).text();
-    assert.ok(html.includes('window.CALDERA_LIVE={"url":"/v1/live/rae","mode":"public"}') && !html.includes("/v1/live/rae?t="), who + ": public levels, no token");
+    assert.ok(html.includes('window.CALDERA_LIVE={"url":"/v1/live/rae","mode":"public"}') && !html.includes("/v1/live/rae?t=") && !html.includes("PCITY"), who + ": public levels, no token, no private city");
   }
   const bad = await (await fetch(base + "/v1/live/rae?t=" + "0".repeat(24))).json();
   assert.equal(bad.districts.Shop.views, undefined); assert.equal(bad.districts["Secret Lab"], undefined); assert.equal(bad.events, undefined);

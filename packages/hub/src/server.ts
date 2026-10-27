@@ -1256,6 +1256,12 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
   const liveScript = (cfg: object) => `<script>window.CALDERA_LIVE=${JSON.stringify(cfg).replace(/</g, "\\u003c")}</script>`;
   /** Which build of a member's city a page is showing: when their city was last published (plugin publish or GitHub
    *  rebuild), plus, on the private address, when the private layer was last pushed. */
+  /** The owner's private city (pushed from Obsidian with the private layer), or null. The owner's own city on the public
+   *  address opens on it; ?view=public shows what visitors see. */
+  const privateCityOf = (owner: string): { html: string; built: string } | null => {
+    const row = q("SELECT blob, built FROM owner_private WHERE owner=?").get(owner) as any; if (!row) return null;
+    try { const s = unseal(row.blob); if (!s.startsWith('{"layer"')) return null; const c = JSON.parse(s).pages?.["city.html"]; return typeof c === "string" && c ? { html: c, built: row.built } : null; } catch { return null; }
+  };
   const buildOf = (handle: string, privBuilt?: string | null) => {
     let t = 0; try { t = Math.round(fs.statSync(path.join(opts.dataDir, "profiles", handle, "city.html")).mtimeMs); } catch { /* not built yet */ }
     return `${t}${privBuilt ? "|" + privBuilt : ""}`;
@@ -1658,7 +1664,10 @@ setInterval(check,60000);setInterval(go,5000);document.addEventListener('visibil
     if (viewer && h && viewer.handle === h) {
       const rel = ((pm![2] || "/").slice(1) || "index.html").replace(/\/$/, "/index.html"), nav = ownerBar(req, h, rel);
       if (nav) { const pr = byHandle(h), hosted = pr ? hostedOf(pr.id) : false;
-        own = { view: "public", publicHref: nav.publicHref, privateHref: hosted ? undefined : nav.privateHref, privateExternal: nav.privateExternal, stale: nav.stale }; }
+        own = { view: "public", publicHref: nav.publicHref, privateHref: hosted ? undefined : nav.privateHref, privateExternal: nav.privateExternal, stale: nav.stale };
+        if (rel === "city.html" && pr && privateCityOf(pr.id)) {   // the owner's city opens private; Public shows what visitors see
+          const pubV = (() => { try { return new URL(req.url || "/", "http://hub").searchParams.get("view") === "public"; } catch { return false; } })();
+          own = { ...own, view: pubV ? "public" : "private", publicHref: `${PUB()}/@${h}/city.html?view=public`, privateHref: `${PUB()}/@${h}/city.html`, privateExternal: false, stale: pubV ? own.stale : undefined }; } }
     }
     const items = me && viewer ? headerItems.map(f => { try { return f(me); } catch { return ""; } }).filter(Boolean) : [];
     const header = appHeader({ hub: PUB(), current: currentFor(pathname), viewer, own, items,
@@ -2280,7 +2289,10 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           }
           // signed-in members (not the owner) get inline kudos + Add friend, with an action token for this page's owner only
           const prS = byHandle(m[1]), viewer = !own && prS ? viewerFor(memberOf(req), prS) : null;
-          let html = fs.readFileSync(file, "utf8");
+          // the owner's own city opens in private view (every repo, live counts) when a private city was pushed; ?view=public = what visitors see
+          const ownCity = !!(rel === "city.html" && own && prS && memberOf(req) === prS.id), pubView = url.searchParams.get("view") === "public";
+          const privCity = ownCity && !pubView ? privateCityOf(prS!.id) : null;
+          let html = privCity ? privCity.html : fs.readFileSync(file, "utf8");
           // pages published with the placeholder name (older plugins): show the member's real name instead of "Untitled"
           if (prS?.name && !/^untitled$/i.test(prS.name) && /Untitled/.test(html)) { const nm = String(prS.name).replace(/[&<>"']/g, (c: string) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" } as any)[c]);
             html = html.replace(/<title>Untitled/g, `<title>${nm}`).replace(/>Untitled</g, `>${nm}<`).replace(/Untitled\.md/g, `${nm}.md`).replace(/Untitled's/g, `${nm}'s`).replace(/(<h1 class="title">)Untitled/g, `$1${nm}`)
@@ -2292,7 +2304,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           const bar = calderaBar(opts.publicUrl || "https://caldera.social", m[1], own, soc && (inPage || rel === "index.html" || rel === "city.html") ? { ...soc, inPage } : undefined,
             own && prS ? bellFor(prS.id) : viewer ? bellFor(memberOf(req)) : "");
           html = liveBlocks(m[1], rel, html);
-          if (prS) html = privatePage(prS, rel, html);   // private repos: anonymous or hidden, whatever version built the page
+          if (prS && !privCity) html = privatePage(prS, rel, html);   // private repos: anonymous or hidden, whatever version built the page
           html = rewriteFriendLinks(html, m[1], viewer, !!own);
           if (prS && rel === "index.html") html = realLeaderboard(html, prS, !!own);
           if (rel === "index.html") html = dropHelpExchange(html);
@@ -2300,12 +2312,12 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
           (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl));   // connect-src to this hub only (inline kudos/friends, city feeds); still sandboxed
           if ((rel === "index.html" || rel === "city.html") && !html.includes('property="og:image"')) html = html.replace(/<\/head>/i, previewTags(m[1], rel) + "</head>");
           if ((rel === "index.html" || rel === "city.html") && prS && !own && searchable(prS)) { html = profileSeo(prS, rel, html); (headers as any)["x-robots-tag"] = "index, follow, max-image-preview:large"; }
-          if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1])));
+          if (rel === "city.html") html = withMapPanel(injectBuildWatch(html, `/v1/build/${m[1]}`, buildOf(m[1])));   // a private push reloads on the next public build
           // phones: the city right under its title, above the follow bar, tags, explainer and stats (any plugin version)
           if (rel === "city.html") html = html.replace(/<\/head>/i, CITY_PHONE_CSS + "</head>");
           if (rel === "city.html") { const pr = byHandle(m[1]);
             // the owner on their own public city sees counts (a token only their page carries); everyone else keeps the bars
-            const ownLive = !!(pr && own && memberOf(req) === pr.id);
+            const ownLive = ownCity && !pubView;
             if (pr && hasLive(pr.id)) html = injectLive(html, ownLive ? { url: `/v1/live/${m[1]}?t=${liveToken(m[1])}`, mode: "private" } : { url: `/v1/live/${m[1]}`, mode: "public" });
             if (ownLive) { (headers as any)["cache-control"] = "private, no-store"; (headers as any)["vary"] = "Cookie"; }
             html = cityExtras(html, pr && own && memberOf(req) === pr.id ? pr.id : null); (headers as any)["content-security-policy"] = cityCsp(originOf(opts.publicUrl)); }   // weather for every viewer; setup row for the owner only
