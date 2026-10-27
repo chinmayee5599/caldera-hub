@@ -48,13 +48,22 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
   // which members we saw on which day (signed in on the site, on their own page, or their Obsidian plugin talking to us):
   // "did yesterday's sign-ups come back today?"
   q(`CREATE TABLE IF NOT EXISTS member_days (owner TEXT, day TEXT, via TEXT, PRIMARY KEY (owner, day))`).run();
+  // retention (Privacy Policy): sign-up steps 90 days, active days 12 months; checked at start and about daily after
+  const FUNNEL_KEEP_DAYS = 90, ACTIVE_KEEP_DAYS = 365;
+  let pruned = 0;
+  function prune(t = Date.now()) {
+    pruned = t;
+    try { q("DELETE FROM funnel_events WHERE day < ?").run(funnelDay(t - FUNNEL_KEEP_DAYS * DAY)); q("DELETE FROM member_days WHERE day < ?").run(funnelDay(t - ACTIVE_KEEP_DAYS * DAY)); } catch { /* best effort */ }
+  }
+  prune();
+  const maybePrune = () => { if (Date.now() - pruned > DAY) prune(); };
   const seenMemo = new Set<string>();
   const vidOf = (req: http.IncomingMessage, day: string) => crypto.createHash("sha256").update(salt + "|funnel|" + day + "|" + c.ipOf(req) + "|" + String(req.headers["user-agent"] || "")).digest("hex").slice(0, 16);
   /** count this visitor at this step today (once per day per step) */
   function track(req: http.IncomingMessage, step: Step, detail = "") {
     try {
       const ua = String(req.headers["user-agent"] || ""); if (!ua || c.botUa.test(ua) || looksAutomated(req)) return;
-      const day = funnelDay();
+      const day = funnelDay(); maybePrune();
       q("INSERT OR IGNORE INTO funnel_events VALUES (?,?,?,?,?)").run(day, vidOf(req, day), step, String(detail).slice(0, 80), new Date().toISOString());
     } catch { /* counting never breaks a request */ }
   }
@@ -84,5 +93,5 @@ export function funnel(c: { q: (sql: string) => any; ipOf: (req: http.IncomingMe
     }
     return out;
   }
-  return { track, seen, report };
+  return { track, seen, report, prune };
 }

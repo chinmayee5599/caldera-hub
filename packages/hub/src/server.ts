@@ -899,6 +899,15 @@ p{color:var(--muted)}ul{padding-left:18px}li{margin:6px 0}.card{border:1px solid
       "DELETE FROM email_subs WHERE owner=?", "DELETE FROM email_suggest WHERE owner=?", "DELETE FROM email_prompt WHERE owner=?", "DELETE FROM referrals WHERE invitee=? OR inviter=?", "DELETE FROM invites_sent WHERE inviter=?"]) {
       const n = (sql.match(/\?/g) || []).length; q(sql).run(...Array(n).fill(id));
     }
+    // the rest tied to the account (Privacy Policy, "How long we keep data"): read marks, topic tags and tag edits, the days
+    // they were active, intros, preferences, message-email marks, and GitHub sign-in rows and sessions. Some tables only
+    // exist once their feature has run, so each one is best effort.
+    const del = (sql: string, ...a: unknown[]) => { try { q(sql).run(...a); } catch { /* table not created yet */ } };
+    for (const [t, col] of [["alert_reads", "owner"], ["member_tags", "member"], ["tag_edits", "member"], ["member_days", "owner"], ["feed_seen", "member"], ["search_prefs", "owner"], ["msg_emailed", "owner"], ["msg_emailed", "sender"], ["private_mode_prompted", "owner"]])
+      del(`DELETE FROM ${t} WHERE ${col}=?`, id);
+    del("DELETE FROM intros WHERE a=? OR b=?", id, id);
+    try { for (const g of q("SELECT gh_id FROM gh_accounts WHERE profile_id=?").all(id) as any[]) del("DELETE FROM gh_sessions WHERE gh_id=?", g.gh_id); } catch { /* no GitHub sign-in */ }
+    del("DELETE FROM gh_accounts WHERE profile_id=?", id); del("DELETE FROM gh_links WHERE profile_id=?", id);
   }
 
   // ---------------------------------------------------------------- one person, one profile: merging duplicates
@@ -1936,7 +1945,7 @@ body{overflow-x:hidden}.kd{max-width:440px;margin:0 auto;padding:22px 16px 40px}
   const escAttr = (x: string) => x.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
   const signupCards = (q2: string, after: string, bq: string) => `<div class="card"><h2>Sign up free</h2><p class="mut">Takes about a minute. Your public repos become a living city on the world map, and your page fills itself in from GitHub.</p>
 <form method="get" action="/auth/github" style="margin:0">${q2.split("&").filter(Boolean).map(kv => { const [k, v = ""] = kv.split("="); return `<input type="hidden" name="${escAttr(decodeURIComponent(k))}" value="${escAttr(decodeURIComponent(v))}">`; }).join("")}<input type="hidden" name="digest" value="0">
-<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer"><input type="checkbox" name="digest" value="1" checked style="margin-top:3px;flex:none"><span><b>Send me the Caldera Daily</b><br><span class="mut" style="font-size:13px">Unread messages, new members, new tools and the day's AI news, to your GitHub email. Only on days something happens; one-click unsubscribe.</span></span></label>
+<label style="display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer"><input type="checkbox" name="digest" value="1" style="margin-top:3px;flex:none"><span><b>Send me the Caldera Daily</b><br><span class="mut" style="font-size:13px">Unread messages, new members, new tools and the day's AI news, to your GitHub email. Only on days something happens; one-click unsubscribe.</span></span></label>
 <div class="row"><button class="btn" type="submit" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">${GH_ICON}Sign up with GitHub</button><a class="btn ghost" href="https://community.obsidian.md/plugins/caldera" target="_blank" rel="noopener">Sign up with Obsidian</a></div></form>
 <p class="mut" style="font-size:13px;margin-top:10px">&#128274; Read-only: your public GitHub profile and email. No access to your code or private repos.</p>
 <form method="post" action="/signin/signup-email" style="margin:10px 0 0">${q2.split("&").filter(kv => /^(back|invite)=/.test(kv)).map(kv => { const [k, v = ""] = kv.split("="); return `<input type="hidden" name="${escAttr(k)}" value="${escAttr(decodeURIComponent(v))}">`; }).join("")}<label class="mut" style="font-size:13px;display:block;margin-bottom:6px" for="su-email">Not signed in to GitHub on this device? Get a sign-up link by email.</label><div class="row"><input id="su-email" type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com" style="flex:1;min-width:180px"><button class="btn small ghost" type="submit">Email me a link</button></div></form>
@@ -2958,6 +2967,7 @@ else if(s.state!=='waiting'){clearInterval(t);box.textContent='That code expired
     let n = 0;
     for (const pr of q("SELECT * FROM profiles WHERE handle IS NOT NULL").all() as any[]) {
       if (modOf(pr.handle, pr.id) || PM.modeFor(pr) === "named") continue;
+      if (String(pr.created || "") >= PM.namedSince()) continue;   // the offer is for members from before 2026-10-20; newer members choose in Settings
       if (q("SELECT 1 FROM alerts WHERE target=? AND dkey='private-named-offer'").get(pr.id)) continue;
       const c = publicCityOf(pr.handle); if (!c || !c.districts.some((d: any) => (d.repos || []).some((r: any) => r.locked))) continue;
       alerts.post({ title: "Show your private repos by name?", target: pr.id, key: "private-named-offer", by: "privacy", ctaLabel: "Show them by name", ctaUrl: namedLink(pr.id),

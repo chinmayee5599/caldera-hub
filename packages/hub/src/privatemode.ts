@@ -5,8 +5,9 @@
  *
  * The setting is enforced here, on the hub, when pages and feeds are served - so it holds for every plugin version and
  * for GitHub-hosted pages alike. Where it comes from, latest first: the web setting (/settings, any owner), the signed
- * manifest's privateRepos (Obsidian: Caldera settings or Caldera/profile.md). Unset: "show" for everyone
- * (building sizes and activity are visible, names never are); members who want less choose anonymous or hidden.
+ * manifest's privateRepos (Obsidian: Caldera settings or Caldera/profile.md). Unset: members who joined after this
+ * setting existed get "anonymous" (what the Privacy Policy promises); earlier members keep "show" until they choose.
+ * Names ("named") are only ever shown when the member picks them.
  */
 import { privateModeOf, type PrivateMode } from "../../../../caldera/packages/plugin/src/city";
 
@@ -19,7 +20,7 @@ export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinc
   let since = (q("SELECT v FROM hub_meta WHERE k='private_mode_since'").get() as any)?.v as string | undefined;
   if (sinceOverride) since = sinceOverride;   // tests: treat everyone as joined before (or after) the setting existed
   else if (!since) { since = nowIso(); q("INSERT OR REPLACE INTO hub_meta VALUES ('private_mode_since', ?)").run(since); }
-  // members who join from here on show private repos by name unless they choose otherwise (Mike, 2026-10-20)
+  // when names became an option for new members (2026-10-20); kept for the record and the one-tap offer, never a default
   let namedSince = (q("SELECT v FROM hub_meta WHERE k='private_named_since'").get() as any)?.v as string | undefined;
   if (namedSinceOverride) namedSince = namedSinceOverride;   // tests: when names became the default
   else if (!namedSince) { namedSince = nowIso(); q("INSERT OR REPLACE INTO hub_meta VALUES ('private_named_since', ?)").run(namedSince); }
@@ -36,8 +37,9 @@ export function privateModes(q: Q, nowIso = () => new Date().toISOString(), sinc
   return {
     since,
     chosen,
-    /** what visitors get: the choice, else "named" for members who joined after names became the default, else "show" */
-    modeFor(pr: any): PrivateMode { return chosen(pr) || (String(pr?.created || "") > String(namedSince) ? "named" : "show"); },
+    /** what visitors get: the member's choice, else "anonymous" for members who joined after the setting existed, else "show".
+     *  Never "named" by default: the Privacy Policy promises private repo names are never published unless the member opts in. */
+    modeFor(pr: any): PrivateMode { return chosen(pr) || (String(pr?.created || "") >= String(since) ? "anonymous" : "show"); },
     namedSince: () => namedSince as string,
     /** the web choice and when it was made (Obsidian adopts a newer web choice) */
     web(owner: string): { mode: PrivateMode; ts: string } | null { const r = q("SELECT mode, ts FROM private_modes WHERE owner=?").get(owner) as any; return r && privateModeOf(r.mode) ? { mode: r.mode, ts: r.ts } : null; },

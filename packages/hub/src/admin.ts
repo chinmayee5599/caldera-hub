@@ -8,11 +8,26 @@
  *   ... merge <from> <into> "reason"  one person, two profiles: move <from>'s friends, credit, messages, posts, GitHub and
  *                                  email sign-in and website keys into <into>, erase <from>, and redirect /@from/ to /@into/
  *   ... merges | aliases           past merges / merged-away handles that redirect
+ *   ... gh-remove | gh-restore <login>  take a non-member's caldera.social/gh/<login> preview down (removal request) or back
  * Alerts, the GitHub circle job and other operator commands live in caldera.social's private tools.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { createHub } from "./server.js";
 
 const argv = process.argv.slice(2), cmd = argv[0] || "";
+// removal requests for caldera.social/gh/<login> previews of people who are not members (no hub needed)
+if (cmd === "gh-remove" || cmd === "gh-restore") {
+  const login = String(argv[1] || "").toLowerCase().replace(/^@/, "");
+  if (!/^[a-z0-9-]{1,39}$/.test(login)) { console.log("usage: admin.js gh-remove|gh-restore <github-login>"); process.exit(1); }
+  const dir = path.join(process.env.CALDERA_DATA || "./data", "gh-preview"), f = path.join(dir, "removed.txt");
+  fs.mkdirSync(dir, { recursive: true });
+  const set = new Set((fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "").split(/\r?\n/).map(x => x.trim().toLowerCase()).filter(Boolean));
+  if (cmd === "gh-remove") { set.add(login); for (const ext of [".json", ".png"]) fs.rmSync(path.join(dir, login + ext), { force: true }); } else set.delete(login);
+  fs.writeFileSync(f, [...set].sort().join("\n") + "\n");
+  console.log(JSON.stringify({ ok: true, [cmd === "gh-remove" ? "removed" : "restored"]: login, total: set.size }));
+  process.exit(0);
+}
 const out = (v: unknown) => console.log(JSON.stringify(v, null, 2));
 const usage = () => { console.log("usage: admin.js list | merges | aliases | hide|unhide|remove|block <handle> [reason] | merge <from-handle> <into-handle> [reason]"); process.exit(1); };
 const clean = (h: string) => h.toLowerCase().replace(/^@/, "");

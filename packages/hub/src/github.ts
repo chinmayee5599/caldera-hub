@@ -76,7 +76,7 @@ function privateReposForm(mode: string, chosen: boolean): string {
   return `<form method="post" class="card" id="private-repos"><input type="hidden" name="do" value="private-repos"><b>Private repos on my city</b>
 <p class="mut" style="margin:4px 0 10px">Your public city, the World and your share card. Your private view always shows everything.${chosen ? "" : " <b>You haven't chosen yet</b>, so Caldera's default applies."}</p>
 <style>.pr-opt{display:block;margin:8px 0}.pr-opt span{display:block;margin-left:24px;font-size:13px}</style>
-${opt("named", "Show with names (default for new members)", "Your city looks like your private view: repo names, language colours and activity in their real projects. Nobody can open the code, links or descriptions. (Made your page in Obsidian? Choose this in Caldera settings there too.)")}
+${opt("named", "Show with names", "Your city looks like your private view: repo names, language colours and activity in their real projects. Nobody can open the code, links or descriptions. (Made your page in Obsidian? Choose this in Caldera settings there too.)")}
 ${opt("show", "Show as padlocked", "Nameless locked buildings in place. Visitors can still tell roughly how big and how busy private work is, and which project it sits beside.")}
 ${opt("anonymous", "Anonymous", "One separate padlocked district with no sizes, activity or projects. Visitors only learn that you have private work.")}
 ${opt("hidden", "Hidden", "No trace of private repos anywhere public, including totals.")}
@@ -486,7 +486,7 @@ export function github(ctx: GhCtx) {
 <p class="mut" style="margin:0 0 10px">Who visited your page, new friends and kudos, people to meet, and a nudge when your page needs attention. Only on days something happens, one-click unsubscribe.</p>
 <input type="email" name="email" inputmode="email" autocomplete="email" required placeholder="you@example.com" value="${esc(sug?.email || "")}" style="width:100%">
 ${sug?.verified ? `<p class="mut" style="margin:6px 0 0;font-size:.85em">Your verified GitHub address. Change it if you like.</p>` : ""}
-<label style="margin:10px 0"><input type="checkbox" name="on" checked> Email me a daily summary</label>
+<label style="margin:10px 0"><input type="checkbox" name="on"> Email me a daily summary</label>
 <div class="row"><button class="btn" type="submit">Continue</button><button class="btn ghost small" type="submit" name="do" value="email-dismiss" formnovalidate>Not now</button></div></form>`;
   }
   function mePage(res: http.ServerResponse, a: any, note = "", people: GhPerson[] = [], next = "") {
@@ -715,8 +715,8 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       const prevState = String(cookies(req).cal_oauth || ""), state = /^[0-9a-f]{32}$/.test(prevState) ? prevState : crypto.randomBytes(16).toString("hex"); setCookie(res, "cal_oauth", state, 600);
       setCookie(res, "cal_h", forH, forH ? 600 : 0);   // signing in for a particular page: only that page's owner gets in
       setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
-      // the daily email is opted in by default at sign-up: only an unticked box on the sign-up form (digest=0 alone) opts out
-      const dg = url.searchParams.getAll("digest"); setCookie(res, "cal_dig", dg.length && !dg.includes("1") ? "0" : "1", 600);
+      // the daily email is opt-in (consent must be a positive act): only a ticked box on the sign-up form (digest=1) subscribes
+      const dg = url.searchParams.getAll("digest"); setCookie(res, "cal_dig", dg.includes("1") ? "1" : "0", 600);
       const si = signin() || a; ctx.track?.(req, "click", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
@@ -799,8 +799,8 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
           .run(me.id, me.login, id.id, handle, ctx.seal(JSON.stringify(id)), ctx.seal(JSON.stringify(tok)), JSON.stringify(edits0), "{}", new Date().toISOString());
         acct = q("SELECT * FROM gh_accounts WHERE gh_id=?").get(me.id);
         startSession(res, me.id); const signupEmail = await captureEmail(id.id, tok.access, me);
-        // pre-checked daily email: a GitHub-verified address is on at once, a public one gets a confirmation link
-        if (signupEmail && ck.cal_dig !== "0" && ctx.social?.email?.subscribe) try { await ctx.social.email.subscribe(id.id, signupEmail); } catch (e: any) { console.error("signup digest", e.message); }
+        // daily email only when the box was ticked: a GitHub-verified address is on at once, a public one gets a confirmation link
+        if (signupEmail && ck.cal_dig === "1" && ctx.social?.email?.subscribe) try { await ctx.social.email.subscribe(id.id, signupEmail); } catch (e: any) { console.error("signup digest", e.message); }
         setCookie(res, "cal_dig", "", 0);
         if (ck.cal_inv) setCookie(res, "cal_inv", "", 0);
         if (ck.cal_grp) setCookie(res, "cal_grp", "", 0);

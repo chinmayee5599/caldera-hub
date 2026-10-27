@@ -71,6 +71,15 @@ ${logo(8, 5, 18)}<g font-family="${sans}" font-size="12" font-weight="600"><text
 export function ghPreview(c: GhPreviewCtx) {
   const dir = path.join(c.dataDir, "gh-preview");
   const file = (login: string, ext: string) => path.join(dir, login.toLowerCase() + ext);
+  // removal requests (Privacy Policy): logins listed one per line in <data>/gh-preview/removed.txt get no preview page,
+  // badge or card, and GitHub is never asked about them. Operator: admin.js gh-remove <login> | gh-restore <login>
+  let removedAt = -1, removedSet = new Set<string>();
+  const removed = (login: string) => {
+    try { const f = path.join(dir, "removed.txt"), m = fs.statSync(f).mtimeMs;
+      if (m !== removedAt) { removedAt = m; removedSet = new Set(fs.readFileSync(f, "utf8").split(/\r?\n/).map(x => x.trim().toLowerCase()).filter(Boolean)); } }
+    catch { removedAt = -1; removedSet = new Set(); }
+    return removedSet.has(login.toLowerCase());
+  };
   const inflight = new Map<string, Promise<Got>>(); let running = 0; const waiters: (() => void)[] = [];
 
   async function gh(token: string | null, p: string): Promise<{ status: number; body: any; left: number }> {
@@ -169,7 +178,7 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
 <div class="ghp-b-actions"><span class="ghp-share"><a class="ghp-btn ghost" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(share)}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="ghp-btn ghost" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener">LinkedIn</a><a class="ghp-btn ghost" href="https://bsky.app/intent/compose?text=${encodeURIComponent(share + " " + url)}" target="_blank" rel="noopener">Bluesky</a><button class="ghp-btn ghost" type="button" data-copy="${esc(url)}">Copy link</button></span></div>
 <div class="ghp-b-see"><p class="ghp-mut" style="margin:0 0 6px">See anyone's city:</p>${seeForm()}</div>
 <p class="ghp-small" style="margin:8px 0 0">&#128274; Claiming is read-only: your public profile and email. Caldera can't see your code or private repos; GitHub enforces it. <a href="/security">How we keep it safe</a></p>
-<p class="ghp-fine">Built from public GitHub data only (${fmt(p.repos)} public repos, ${fmt(p.commits)} commits in the last year across the 20 most recently pushed), refreshed daily. Want it removed? Email hello@caldera.social.</p></section>`;
+<p class="ghp-fine">Built from public GitHub data only (${fmt(p.repos)} public repos, ${fmt(p.commits)} commits in the last year across the 20 most recently pushed), refreshed daily. Want it removed? Email privacy@caldera.social from the email on your GitHub profile (say which GitHub account), and we remove it within 7 days.</p></section>`;
     html = html.replace('<meta name="robots" content="noindex, nofollow">', "")
       .replace(/<title>[^<]*<\/title>/, `<title>@${esc(p.login)}'s GitHub city - Caldera</title>` + ogTags({ url, image: `${url}/card.png?v=${Date.parse(p.fetched) % 1e8}`, title: `@${p.login}'s GitHub city`, description: `${p.bio ? p.bio + " " : ""}${fmt(p.repos)} public repos as a living city on Caldera.` }))
       .replace('<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">', '<link rel="icon" href="/favicon.svg" type="image/svg+xml">')
@@ -211,6 +220,11 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
       res.writeHead(302, { location: `/@${member}/city.html` }); res.end(); return true;
     }
     if (m[2] === "/") { res.writeHead(301, { location: `/gh/${login}` }); res.end(); return true; }
+    if (removed(login)) {
+      if (m[2] === "/badge.svg") { send(res, 404, "image/svg+xml; charset=utf-8", badgeSvg({ who: "@" + login, repos: 0, commits: 0, style }), "no-cache"); return true; }
+      if (m[2] === "/card.png") { res.writeHead(302, { location: "/world/preview.png" }); res.end(); return true; }
+      send(res, 410, "text/html; charset=utf-8", sitePage("GitHub city - Caldera", `<h1>Removed</h1><p class="lede">This preview was removed at its owner's request.</p>`, `<meta name="robots" content="noindex">`), "no-cache", { "content-security-policy": CSP }); return true;
+    }
     const g = await get(login, req);
     if (m[2] === "/badge.svg") {
       if (!g.ok) { send(res, g.status === 429 || g.status === 502 ? 503 : 404, "image/svg+xml; charset=utf-8", badgeSvg({ who: "@" + login, repos: 0, commits: 0, style }), "public, max-age=300"); return true; }

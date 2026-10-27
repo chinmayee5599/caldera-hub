@@ -13,6 +13,7 @@ const USERS = {
   ver: { id: 21, login: "ver", email: null, emails: [{ email: "ver@realmail.org", primary: true, verified: true }, { email: "x@realmail.org", primary: false, verified: false }] },
   pub: { id: 22, login: "pub", email: "pub@realmail.org", emails: 403 },
   none: { id: 23, login: "none", email: null, emails: 403 },
+  plain: { id: 24, login: "plain", email: null, emails: [{ email: "plain@realmail.org", primary: true, verified: true }] },
 };
 function setup() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-emailcap-"));
@@ -116,16 +117,19 @@ test("the owner banner subscribes through the page's owner token; the token can'
   if (t2) { const x = await act({ t: t2, action: "email-subscribe", email: "evil@realmail.org" }); assert.notEqual(x.j.ok && x.j.message, true); assert.equal(h.db.prepare("SELECT COUNT(*) n FROM email_subs").get().n, 1); }
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
-test("sign-up: the daily email is pre-checked; a verified address is on at once, a public one gets a confirmation link", async () => {
+test("sign-up: the daily email is opt-in; a ticked box subscribes (verified at once, public gets a confirmation link)", async () => {
   const { h, d, mails } = setup(); const b = "http://127.0.0.1:" + await h.listen(0);
   const sub = (login) => h.db.prepare("SELECT confirmed FROM email_subs WHERE owner=(SELECT profile_id FROM gh_accounts WHERE login=?)").get(login);
   const page = await (await fetch(b + "/signin")).text();
-  assert.match(page, /name="digest" value="1" checked/, "the box is ticked on the sign-up form");
+  assert.match(page, /name="digest" value="1" style/, "the box is on the sign-up form");
+  assert.doesNotMatch(page, /name="digest" value="1" checked/, "and it is NOT pre-ticked");
   await signup(b, "ver", "?digest=0&digest=1");   // the form with the box ticked
   assert.equal(sub("ver").confirmed, 1); assert.equal(mails.length, 0, "verified: nothing to confirm");
-  await signup(b, "pub", "");   // a plain sign-up link elsewhere on the site: on by default
+  await signup(b, "pub", "?digest=0&digest=1");
   assert.equal(sub("pub").confirmed, 0); assert.equal(mails.length, 1); assert.match(mails[0].subject, /Confirm/);
-  await signup(b, "none", "");   // no address from GitHub at all: nothing to subscribe
+  await signup(b, "plain", "");   // a plain sign-up link elsewhere on the site: no box ticked, no subscription
+  assert.equal(sub("plain"), undefined);
+  await signup(b, "none", "?digest=0&digest=1");   // no address from GitHub at all: nothing to subscribe
   assert.equal(sub("none"), undefined);
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });

@@ -42,7 +42,7 @@ test("/gh/<login>: a preview city from public data, cached, never the email; bad
     const h = await r.text();
     assert.match(h, /@Octo's public GitHub as a city/); assert.match(h, /Claim it with GitHub/); assert.match(h, /og:image/);
     assert.match(h, /"name":"agentkit"/); assert.doesNotMatch(h, /forked/, "forks are left out");
-    assert.match(h, /\/gh\/Octo\/badge\.svg\?style=card/); assert.match(h, /hello@caldera\.social/);
+    assert.match(h, /\/gh\/Octo\/badge\.svg\?style=card/); assert.match(h, /privacy@caldera\.social/);
     assert.doesNotMatch(h, /secret@example\.com/);
     const stored = fs.readFileSync(path.join(S.d, "gh-preview", "octo.json"), "utf8"); assert.doesNotMatch(stored, /secret@/, "never stores the email");
     assert.match(JSON.parse(stored).commits.toString(), /^107$/, "52 weeks of commits + the 202 repo counted as 1");

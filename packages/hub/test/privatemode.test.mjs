@@ -17,7 +17,7 @@ const lockedIn = c => c.districts.flatMap(d => d.repos).filter(r => r.locked);
 
 async function hubWithRae() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-pm-"));
-  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z",  dataDir: d });
+  const h = createHub({ privateNamedSince: "9999-12-31T00:00:00Z", privateModeSince: "2999-01-01T00:00:00Z", dataDir: d });   // Rae joined before the setting existed
   const base = "http://127.0.0.1:" + await h.listen(0);
   const rae = C.newIdentity();
   const r = await fetch(`${base}/v1/profiles/${rae.id}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ manifest: C.sign(rae, "profile.manifest", { name: "Rae", handle: "rae", boxKey: rae.boxPublic }), files }) });
@@ -26,7 +26,7 @@ async function hubWithRae() {
   return { h, d, base, rae, get };
 }
 
-test("private repos show (padlocked, in place) by default; every public surface follows the setting, whatever built the page", async () => {
+test("members from before the setting: private repos show (padlocked, in place) by default; every public surface follows the setting, whatever built the page", async () => {
   const { h, d, base, rae, get } = await hubWithRae();
   assert.equal(h.privateModes.modeFor(h.db.prepare("SELECT * FROM profiles WHERE id=?").get(rae.id)), "show", "unset = show, for everyone");
   h.privateModes.set(rae.id, "anonymous");
@@ -73,7 +73,7 @@ test("members from before the setting keep padlocks until they choose, and are a
   h.server.close(); fs.rmSync(d, { recursive: true, force: true });
 });
 
-test("names are the default for new members; existing members get a one-tap offer that Obsidian also picks up", async () => {
+test("new members start Anonymous (names only by choice); existing members get a one-tap offer that Obsidian also picks up", async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-pm-named-"));
   const hub = createHub({ dataDir: d, publicUrl: "http://hub.test" });
   const base = "http://127.0.0.1:" + await hub.listen(0);
@@ -84,7 +84,7 @@ test("names are the default for new members; existing members get a one-tap offe
     hub.db.prepare("UPDATE profiles SET created=? WHERE handle='rae'").run("2026-01-01T00:00:00.000Z");
     const PM = hub.privateModes, pr = h => hub.db.prepare("SELECT * FROM profiles WHERE handle=?").get(h);
     assert.equal(PM.modeFor(pr("rae")), "show", "existing members keep padlocks until they choose");
-    assert.equal(PM.modeFor(pr("neo")), "named", "new members show private repos by name by default");
+    assert.equal(PM.modeFor(pr("neo")), "anonymous", "new members start Anonymous: private repo names are never published by default");
 
     assert.equal(hub.offerNamed(), 1, "only the existing member with padlocks is offered names");
     assert.equal(hub.offerNamed(), 0, "once each");
