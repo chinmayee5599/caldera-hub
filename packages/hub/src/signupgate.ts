@@ -1,6 +1,6 @@
 /**
  * The sign-up gate: a signed-out visitor who taps Follow, Message, Kudos (or comments, helps, replies in the feed) gets a
- * small panel that says what they were about to do and what joining takes, instead of being sent straight to GitHub's
+ * small panel that says what they were about to do and what joining takes (GitHub, or email: no GitHub needed), instead of being sent straight to GitHub's
  * permission screen. Built in the browser, so the page itself carries no /auth/github link for crawlers to follow; with no
  * JavaScript the buttons fall back to their plain links (Message -> the sign-up page that explains the same thing).
  *
@@ -19,6 +19,7 @@ export const GATE_CSS = `<style>.cg-ov{position:fixed;inset:0;z-index:2147483000
 .cg-who{display:flex;align-items:center;gap:12px;margin:0 32px 12px 0}.cg-av{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;background:#8B6CF6;color:#fff;display:grid;place-items:center;font:600 18px 'IBM Plex Sans',Arial,sans-serif}
 .cg-t{margin:0;color:#F2F2F5;font:600 18px/1.3 'Source Serif 4',Georgia,serif;text-wrap:balance}.cg-p{margin:0 0 14px;color:#C9C6D3}.cg-p b{color:#F2F2F5;font-weight:600}
 .cg-gh{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;box-sizing:border-box;min-height:46px;padding:0 16px;border-radius:999px;background:#F2F2F5;color:#111!important;font:600 15px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important}.cg-gh:hover{background:#fff}.cg-gh:focus-visible{outline:2px solid #8B6CF6;outline-offset:2px}
+.cg-em{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:44px;margin-top:10px;padding:0 16px;border-radius:999px;border:1px solid #4A4560;color:#F2F2F5!important;font:600 15px 'IBM Plex Sans',Arial,sans-serif;text-decoration:none!important}.cg-em:hover{background:#25222F}.cg-em:focus-visible{outline:2px solid #8B6CF6;outline-offset:2px}
 .cg-alt{display:flex;flex-wrap:wrap;gap:6px 14px;margin:14px 0 0;font-size:13px}.cg-alt a{color:#B9A6FF!important;text-decoration:none}.cg-alt a:hover{text-decoration:underline}
 @media (max-width:620px){.cg-ov{align-items:flex-end;padding:0}.cg-box{max-width:none;border-radius:18px 18px 0 0;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}}</style>`;
 
@@ -33,7 +34,8 @@ var who=el('div','cg-who'),av;if(o.avatar){av=el('img','cg-av');av.src=o.avatar;
 var h=el('h2','cg-t');h.id='cg-t';h.textContent=o.title||'Join Caldera';who.appendChild(av);who.appendChild(h);box.appendChild(who);
 var p=el('p','cg-p'),b=el('b');b.textContent='Join free with GitHub.';p.appendChild(b);p.appendChild(document.createTextNode(' Read-only: your public profile and email, never your code. About 10 seconds.'));box.appendChild(p);
 var g=el('a','cg-gh');g.href=o.gh;g.rel='nofollow noopener';if(o.blank)g.target='_blank';g.innerHTML=GH;g.appendChild(document.createTextNode('Join free with GitHub'));box.appendChild(g);
-var alt=el('p','cg-alt');[[o.obsidian,'Use Obsidian?'],[o.start,'Start with ChatGPT or Claude'],[o.signin,'Already a member? Sign in']].forEach(function(a){if(!a[0])return;var l=el('a');l.href=a[0];l.rel='nofollow noopener';if(o.blank)l.target='_blank';l.textContent=a[1];alt.appendChild(l)});box.appendChild(alt);
+if(o.start){var m=el('a','cg-em');m.href=o.start;m.rel='nofollow noopener';if(o.blank)m.target='_blank';m.textContent='Sign up with email';box.appendChild(m)}
+var alt=el('p','cg-alt');[[o.obsidian,'Use Obsidian?'],[o.signin,'Already a member? Sign in']].forEach(function(a){if(!a[0])return;var l=el('a');l.href=a[0];l.rel='nofollow noopener';if(o.blank)l.target='_blank';l.textContent=a[1];alt.appendChild(l)});box.appendChild(alt);
 ov.appendChild(box);ov.hidden=false;try{g.focus()}catch(e){}
 var k=o.kind||'join';if(typeof o.api==='string'&&!counted[k]){counted[k]=1;try{fetch(o.api+'/v1/funnel/gate',{method:'POST',headers:{'content-type':'text/plain'},body:k,keepalive:true}).catch(function(){})}catch(e){}}};
 window.calGate.close=close})();`;
