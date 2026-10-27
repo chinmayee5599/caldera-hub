@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.28.16",
+      "date": "2026-10-26",
+      "title": "City labels no longer overlap",
+      "items": [
+        "Names on your city no longer pile on top of each other. District names and live visitor counts come first, then repo names by size; a name that would cover another waits until you zoom in far enough for it to fit.",
+        "On phones the city frame is a little shorter, so the live panel sits above the fold."
+      ]
+    },
+    {
       "version": "0.28.15",
       "date": "2026-10-26",
       "title": "Private repos stay private by default",
