@@ -110,7 +110,7 @@ export interface EmailCtx {
   /** remember the confirmed address so message alerts and the daily summary can reach them */
   rememberEmail: (owner: string, email: string) => void;
   /** count a sign-up funnel step (funnel.ts) */
-  track?: (req: http.IncomingMessage, step: "email-created", detail?: string) => void;
+  track?: (req: http.IncomingMessage, step: "email-created" | "gh-return", detail?: string) => void;
   /** delete the member and everything tied to them (the hub's own erase) */
   eraseProfile: (id: string) => void;
   onPublished?: (id: string, created: boolean) => void;
@@ -246,7 +246,9 @@ ${(q("SELECT key, project FROM traffic_sites WHERE owner=? ORDER BY project").al
   const carry = (back: string, inv: string) => `${back ? `&back=${encodeURIComponent(back)}` : ""}${inv ? `&invite=${encodeURIComponent(inv)}` : ""}`;
 
   async function route(req: http.IncomingMessage, res: http.ServerResponse, url: URL, p: string): Promise<boolean> {
-    if (p === "/start" && req.method === "GET") { startPage(res, "", "", "", okBack(url.searchParams.get("back")), okInv(url.searchParams.get("invite"))); return true; }
+    if (p === "/start" && req.method === "GET") {
+      if (url.searchParams.get("via") === "gh-return") c.track?.(req, "gh-return");   // the offer after leaving GitHub (site.js)
+      startPage(res, "", "", "", okBack(url.searchParams.get("back")), okInv(url.searchParams.get("invite"))); return true; }
     if (p === "/start" && req.method === "POST") {
       if (!c.sameOrigin(req)) { startPage(res, "Wrong origin. Please try again."); return true; }
       const f = await form(req), text = String(f.get("text") || ""), email = String(f.get("email") || "").trim().toLowerCase();

@@ -717,11 +717,15 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       setCookie(res, "cal_back", back, back ? 600 : 0);   // came from someone's page (e.g. to send kudos): go back there after
       // the daily email is opt-in (consent must be a positive act): only a ticked box on the sign-up form (digest=1) subscribes
       const dg = url.searchParams.getAll("digest"); setCookie(res, "cal_dig", dg.includes("1") ? "1" : "0", 600);
+      // a marker the page can read (no HttpOnly, nothing personal): if they come back without finishing at GitHub (no
+      // account, didn't want to sign in), site.js offers email sign-up instead. Cleared when GitHub sends them back.
+      res.appendHeader("set-cookie", `cal_ghtry=1; Path=/; SameSite=Lax; Max-Age=1800${secure ? "; Secure" : ""}`);
       const si = signin() || a; ctx.track?.(req, "click", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {
       const a = app(); if (!a) { redirect(res, "/"); return true; }
+      res.appendHeader("set-cookie", `cal_ghtry=; Path=/; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`);
       ctx.track?.(req, "back", url.searchParams.get("error") ? "denied: " + String(url.searchParams.get("error")).slice(0, 40) : "");
       if (url.searchParams.get("error")) {   // they pressed Cancel on GitHub's screen: no retry loop, just back to the start
         ctx.track?.(req, "fail", "cancelled at GitHub"); setCookie(res, "cal_oauth", "", 0); redirect(res, "/#install"); return true; }

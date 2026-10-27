@@ -110,3 +110,14 @@ test("emailed sign-up link (not signed in to GitHub on this device): email arriv
   const alt = links.find(u => u.includes("/start")); assert.ok(alt, "a no-GitHub way");
   assert.equal((await fetch(alt)).status, 200);
 });
+
+test("left GitHub unfinished: /auth/github leaves a readable cal_ghtry marker, the callback clears it, the email offer opens /start", async () => {
+  const a = await fetch(base + "/auth/github?back=%2Fmessages%2F%40host-person&invite=host-person", { redirect: "manual" });
+  const mark = (a.headers.getSetCookie?.() || []).find(c => c.startsWith("cal_ghtry="));
+  assert.ok(mark && mark.startsWith("cal_ghtry=1;"), "marker set"); assert.doesNotMatch(mark, /HttpOnly/i, "site.js must be able to read it");
+  const cb = await fetch(base + "/auth/github/callback?error=access_denied", { redirect: "manual" });
+  assert.ok((cb.headers.getSetCookie?.() || []).some(c => /^cal_ghtry=;.*Max-Age=0/.test(c)), "cleared when GitHub sends them back");
+  const st = await fetch(base + "/start?via=gh-return&back=%2Fmessages%2F%40host-person&invite=host-person");
+  assert.equal(st.status, 200); const html = await st.text();
+  assert.match(html, /name="back" value="\/messages\/@host-person"/); assert.match(html, /name="invite" value="host-person"/);
+});
