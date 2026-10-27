@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.28.15",
+      "date": "2026-10-26",
+      "title": "Private repos stay private by default",
+      "items": [
+        "Setting up Caldera in Obsidian no longer turns on showing your private repos by name. Until you choose in Settings, Caldera's default applies: new members start on Anonymous (one padlocked district, no names, sizes or activity).",
+        "Updated Privacy Policy and Terms: see what changed at caldera.social/privacy#changes and caldera.social/terms#changes."
+      ]
+    },
+    {
       "version": "0.28.14",
       "date": "2026-10-26",
       "title": "The live panel no longer cuts off",
