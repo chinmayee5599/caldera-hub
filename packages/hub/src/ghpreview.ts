@@ -36,9 +36,30 @@ export function cityStats(city: CityData): { repos: number; commits: number } {
 }
 
 /** The README badge. flat: a 28px shields-style pill; card: a 420x92 mini skyline with the numbers. */
-export function badgeSvg(o: { who: string; repos: number; commits: number; city?: CityData | null; style?: string }): string {
+
+  export function badgeSvg(o: { who: string; repos: number; commits: number; city?: CityData | null; style?: string }): string {
   const sans = `-apple-system,'Segoe UI',Helvetica,Arial,'DejaVu Sans',sans-serif`;
   const nums = `${fmt(o.repos)} repo${o.repos === 1 ? "" : "s"} · ${fmt(o.commits)} commit${o.commits === 1 ? "" : "s"}/yr`;
+
+  if (o.style === "stats") {
+    const left = "caldera city";
+    const lw = Math.round(left.length * 6.2 + 20);
+    const rw = Math.round(nums.length * 5.8 + 20);
+    const W = lw + rw;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="20" viewBox="0 0 ${W} 20" role="img" aria-label="${esc(left)}: ${esc(nums)}">
+<title>${esc(o.who)}'s Caldera city stats: ${esc(nums)}</title>
+<clipPath id="r"><rect width="${W}" height="20" rx="3"/></clipPath>
+<g clip-path="url(#r)">
+<rect width="${lw}" height="20" fill="#1C1730"/>
+<rect x="${lw}" width="${rw}" height="20" fill="#6D4AE8"/>
+</g>
+<g font-family="${sans}" font-size="11" font-weight="600">
+<text x="10" y="14" fill="#F2F2F5">${esc(left)}</text>
+<text x="${lw + 10}" y="14" fill="#FFFFFF">${esc(nums)}</text>
+</g>
+</svg>`;
+  }
   const logo = (x: number, y: number, s: number) => `<g transform="translate(${x} ${y}) scale(${s / 32})"><path d="M3 26 L11 10 L14 15 L17 8 L29 26 Z" fill="#A58BFA"/><circle cx="16" cy="21" r="2.4" fill="#4FB89A"/></g>`;
   if (o.style !== "card") {
     const left = "GitHub city", lw = Math.round(left.length * 6.6 + 34), rw = Math.round(nums.length * 6.3 + 20), W = lw + rw;
@@ -212,7 +233,8 @@ ${seeForm("", true)}<p class="ghp-ex">Try: ${ex.map(l => `<a href="/gh/${l}">@${
     }
     const m = p.match(/^\/gh\/([^/]+)(\/badge\.svg|\/card\.png|\/)?$/); if (!m) return false;
     const login = decodeURIComponent(m[1]); if (!LOGIN_RX.test(login)) { send(res, 404, "text/html; charset=utf-8", notFound(login.slice(0, 39), "missing"), "no-cache", { "content-security-policy": CSP }); return true; }
-    const style = url.searchParams.get("style") === "card" ? "card" : "flat";
+    const requestedStyle = url.searchParams.get("style");
+    const style = requestedStyle === "card" || requestedStyle === "stats" ? requestedStyle : "flat";
     const member = c.memberOf(login.toLowerCase());
     if (member) {
       if (m[2] === "/badge.svg") { await memberBadge(res, member, style); return true; }

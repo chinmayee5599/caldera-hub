@@ -49,9 +49,15 @@ test("/gh/<login>: a preview city from public data, cached, never the email; bad
     const n = calls; await S.get("/gh/Octo"); assert.equal(calls, n, "served from cache");
     const b = await S.get("/gh/Octo/badge.svg"); assert.equal(b.status, 200); assert.match(b.headers.get("content-type"), /image\/svg\+xml/);
     const svg = await b.text(); assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/); assert.match(svg, /2 repos · 107 commits\/yr/);
-    const card = await (await S.get("/gh/Octo/badge.svg?style=card")).text(); assert.match(card, /width="420" height="92"/); assert.match(card, /GitHub city on Caldera/);
+   const stats = await S.get("/gh/Octo/badge.svg?style=stats");
+   assert.equal(stats.status, 200);
+   const statsSvg = await stats.text();
+   assert.match(statsSvg, /height="20"/);
+   assert.match(statsSvg, /caldera city/);
+   assert.match(statsSvg, /2 repos · 107 commits\/yr/);
+   const card = await (await S.get("/gh/Octo/badge.svg?style=card")).text(); assert.match(card, /width="420" height="92"/); assert.match(card, /GitHub city on Caldera/);
     // organizations get a company city (no claim button); other account types are refused
-    const org = await S.get("/gh/acme"); assert.equal(org.status, 200); const oh = await org.text();
+   const org = await S.get("/gh/acme"); assert.equal(org.status, 200); const oh = await org.text();
     assert.match(oh, /acme\/api|>api</); assert.doesNotMatch(oh, /Claim it with GitHub/); assert.match(oh, /careers page/);
     assert.equal((await S.get("/gh/bot1")).status, 422);
     assert.equal((await S.get("/gh/nobody-here")).status, 404);
