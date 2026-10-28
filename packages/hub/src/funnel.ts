@@ -1,7 +1,8 @@
 /**
  * The sign-up funnel, step by step, so we can see where people drop: viewed the homepage (or a /gh preview) -> clicked
  * "Sign up with GitHub" -> came back from GitHub -> account created (or signed in) -> landed on their city -> and, from
- * the account records, whether we have their email and whether they turned on the daily summary. "gh-return": went to
+ * the account records, whether we have their email and whether they turned on the daily summary. "click-ext": reached the
+ * GitHub sign-up URL without coming from one of our pages (another site, an email, a bookmark or a script). "gh-return": went to
  * GitHub, came back to us without finishing, and took the email sign-up we offered instead (site.js).
  *
  * No cookie and nothing personal: a visitor is a one-day hash of IP + browser (like page views), so the same person is
@@ -10,7 +11,7 @@
 import type http from "node:http";
 import crypto from "node:crypto";
 
-export const STEPS = ["view", "preview", "gate", "click", "back", "created", "signin", "fail", "landed", "email-start", "email-sent", "email-created", "gh-return"] as const;
+export const STEPS = ["view", "preview", "gate", "click", "back", "created", "signin", "fail", "landed", "email-start", "email-sent", "email-created", "gh-return", "click-ext"] as const;
 /** Crawlers, link previewers and scripts: never counted in the funnel or page views. Real browsers never match.
  *  Many crawlers ignore robots.txt and follow sign-up links (Meta's AI agents, GoogleOther, BigBug): named here. */
 export const BOT_UA = /bot|crawl|spider|slurp|preview|fetch|curl|wget|python|node|headless|monitor|lighthouse|facebookexternalhit|facebookcatalog|embedly|discord|slack|telegram|whatsapp|externalagent|webindexer|googleother|google-inspectiontool|google-extended|bigbug|wrendex|scrapy|httpx|axios|okhttp|go-http|java\/|libwww|ia_archiver|barkrowler|dataprovider|petalsearch|yisou|sogou|seznam|ahrefs|semrush|mj12|bytespider|claude-user|claude-searchbot|anthropic-ai|perplexity|ccbot|cohere|diffbot|timpi|imagesift|omgili|youbot|qwant|yandex|baidu|meta-/i;

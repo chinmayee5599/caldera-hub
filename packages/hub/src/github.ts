@@ -720,7 +720,11 @@ ${sug.length ? `<p style="margin:.8em 0 .3em">People you might know:</p>${sug.ma
       // a marker the page can read (no HttpOnly, nothing personal): if they come back without finishing at GitHub (no
       // account, didn't want to sign in), site.js offers email sign-up instead. Cleared when GitHub sends them back.
       res.appendHeader("set-cookie", `cal_ghtry=1; Path=/; SameSite=Lax; Max-Age=1800${secure ? "; Secure" : ""}`);
-      const si = signin() || a; ctx.track?.(req, "click", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
+      // "click" = came from one of our pages; "click-ext" = a direct hit on this URL (another site, an email, a bookmark, or a
+      // script following links). Clicks swing 12-87/day while returns stay 1-5, so the two are kept apart (2026-10-28).
+      const sfs = String(req.headers["sec-fetch-site"] || ""); let refHost = ""; try { refHost = new URL(String(req.headers.referer || "")).host; } catch { /* none */ }
+      const ours = sfs === "same-origin" || sfs === "same-site" || (!sfs && !!refHost && refHost === new URL(pub).host);
+      const si = signin() || a; ctx.track?.(req, ours ? "click" : "click-ext", back ? "from " + back.split("/").slice(0, 2).join("/") : "");
       redirect(res, `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(si.client_id)}&redirect_uri=${encodeURIComponent(pub + "/auth/github/callback")}&state=${state}${(si as any).scope ? `&scope=${encodeURIComponent((si as any).scope)}` : ""}`); return true;
     }
     if (req.method === "GET" && p === "/auth/github/callback") {

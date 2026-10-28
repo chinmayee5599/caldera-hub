@@ -385,7 +385,7 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   // someone already owns @mike
   const mk = C.newIdentity(); await fetch(base + "/v1/envelopes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(C.sign(mk, "profile.manifest", { name: "M", handle: "mike", boxKey: mk.boxPublic })) });
   const signIn = async (code) => {
-    const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (" + code + ")" } });
+    const a = await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (" + code + ")", "sec-fetch-site": "same-origin" } });
     assert.match(a.headers.get("location"), /^https:\/\/github\.com\/login\/oauth\/authorize\?client_id=cid/);
     const state = new URL(a.headers.get("location")).searchParams.get("state"), oauth = a.headers.get("set-cookie").split(";")[0];
     const cb = await fetch(base + `/auth/github/callback?code=${code}&state=${state}`, { headers: { cookie: oauth, "user-agent": "Mozilla/5.0 (" + code + ")" }, redirect: "manual" });
@@ -398,6 +398,11 @@ test("sign up with GitHub: hosted profile + city, edit, claim into a vault, dele
   assert.equal(cb.status, 302); assert.equal(cb.headers.get("location"), "/me?welcome=1"); assert.ok(cookie);
   // the sign-up funnel counted it: clicked, came back from GitHub, account created
   { const today = h.admin["funnel-report"](1).pop().counts; assert.equal(today.click, 1); assert.equal(today.back, 1); assert.equal(today.created, 1); }
+  // a direct hit on the sign-up URL (no Sec-Fetch-Site, no referrer from us) is counted apart from a click on our pages
+  { await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (direct)" } });
+    await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (fromref)", referer: "http://hub.test/people" } });
+    await fetch(base + "/auth/github", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (xsite)", "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" } });
+    const t = h.admin["funnel-report"](1).pop().counts; assert.equal(t.click, 2); assert.equal(t["click-ext"], 2); }
   // pressing Cancel on GitHub goes back to the start, never into a retry loop
   { const c = await fetch(base + "/auth/github/callback?error=access_denied&state=x", { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (cancel)" } });
     assert.equal(c.headers.get("location"), "/#install"); }
